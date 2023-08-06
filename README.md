@@ -1,0 +1,3 @@
+# Vite font extractor plugin
+
+Coming soon...
