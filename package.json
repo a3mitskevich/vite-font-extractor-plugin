@@ -1,6 +1,6 @@
 {
   "name": "vite-font-extractor-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Vite plugin for extracting glyphes by ligatures from font and creating new minimized fonts with them",
   "files": [
     "build"
@@ -15,7 +15,7 @@
   "author": "Aleksandr Mitskevich",
   "license": "MIT",
   "dependencies": {
-    "fontext": "1.0.4",
+    "fontext": "1.0.7",
     "lodash.groupby": "4.6.0"
   },
   "devDependencies": {
