@@ -20,19 +20,13 @@ npm install vite-font-extractor-plugin
 import FontExtractor from "vite-font-extractor-plugin";
 
 const MaterialIconRegularTarget = {
-    fontName: 'MaterialIcons-Regular',
+    fontName: 'Material Icons',
     ligatures: ['abc, close'],
 }
 
 export default defineConfig({
     plugins: [
-        FontExtractor({
-            targets: {
-                // Font filename without extension
-                fontName: 'MaterialIcons-Regular', // catched MaterialIcons-Regular.eot, MaterialIcons-Regular.woff etc.
-                ligatures: ['abc, close'],
-            }
-        }),
+        FontExtractor({ targets: MaterialIconRegularTarget }),
     ],
 })
 ```
@@ -75,8 +69,8 @@ createApp().app.$mount('#app');
 // material-design-icons-iconfont/dist/material-design-icons-no-codepoints.css
 @charset "UTF-8";
 @font-face {
+  // See font name here
     font-family: 'Material Icons';
-    // See filenames here
     src: url("./fonts/MaterialIcons-Regular.eot");
     src: url("./fonts/MaterialIcons-Regular.woff2") format("woff2"),
     url("./fonts/MaterialIcons-Regular.woff") format("woff"),

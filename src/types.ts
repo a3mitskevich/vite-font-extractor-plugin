@@ -1,8 +1,8 @@
 import {OutputAsset} from "rollup";
 import {MinifyOption} from "fontext";
 
-export interface PotentialReplacementFile {
-    source: string
+export interface PotentialReplacementFile extends OutputAsset {
+    source: string,
 }
 
 export type Target = Omit<MinifyOption, 'formats'>
