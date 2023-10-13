@@ -70,7 +70,7 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
             const oldReferenceId = assetUrlRE.exec(font)[1]
             const referenceId = this.emitFile({
                 type: 'asset',
-                name: 'fontExtractor.template',
+                name: 'fontExtractor.ext',
                 source: sid + oldReferenceId,
             });
             fontNameTransformMap.set(oldReferenceId, referenceId);
@@ -130,25 +130,26 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
                     transformQueue.forEach(transform => {
                         const extension = getFontExtension(transform.old.fileName);
                         const minifiedBuffer = minifiedBuffers[extension];
-                        if (minifiedBuffer?.length < Buffer.from(transform.old.source).length) {
-                            const realReferenceId = this.emitFile({
-                                type: 'asset',
-                                name: transform.old.name,
-                                source: minifiedBuffer,
-                            });
+                        const originalBuffer = Buffer.from(transform.old.source);
+                        const resultLessThanOriginal = minifiedBuffer?.length < originalBuffer.length;
+
+                        const fixedFilename = transform.new.fileName.replace('ext', extension);
+                        this.info(`changes temporal name from "${transform.new.fileName}" to ${fixedFilename} and update content`)
+                        if (resultLessThanOriginal) {
                             Object.keys(bundle).forEach(key => {
                                 const asset = bundle[key];
-                                const fileName = this.getFileName(realReferenceId);
                                 if (asset.type === 'asset' && typeof asset.source === 'string' && asset.source.includes(transform.new.fileName)) {
-                                    this.info(`[vite-font-extractor-plugin] change name from "${transform.new.fileName}" to ${fileName} in ${key}`)
-                                    asset.source = asset.source.replace(transform.new.fileName, fileName);
+                                    this.info(`change name from "${transform.new.fileName}" to ${fixedFilename} in ${key}`)
+                                    asset.source = asset.source.replace(transform.new.fileName, fixedFilename);
                                 }
-                                if (key.includes(transform.old.fileName) || key.includes(transform.new.fileName)) {
+                                if (key.includes(transform.old.fileName)) {
                                     this.info(`delete ${key}`)
                                     delete bundle[key];
                                 }
                             })
                         }
+                        transform.new.source = resultLessThanOriginal ? minifiedBuffer : originalBuffer;
+                        transform.new.fileName = fixedFilename
                     })
                 }))
             } catch (error) {
