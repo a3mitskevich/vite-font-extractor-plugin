@@ -70,7 +70,7 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
             const oldReferenceId = assetUrlRE.exec(font)[1]
             const referenceId = this.emitFile({
                 type: 'asset',
-                name: 'fontExtractor.ext',
+                name: 'fontExtractor.woff',
                 source: sid + oldReferenceId,
             });
             fontNameTransformMap.set(oldReferenceId, referenceId);
@@ -133,7 +133,7 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
                         const originalBuffer = Buffer.from(transform.old.source);
                         const resultLessThanOriginal = minifiedBuffer?.length < originalBuffer.length;
 
-                        const fixedFilename = transform.new.fileName.replace('ext', extension);
+                        const fixedFilename = transform.new.fileName.replace('woff', extension);
                         this.info(`changes temporal name from "${transform.new.fileName}" to ${fixedFilename} and update content`)
                         if (resultLessThanOriginal) {
                             Object.keys(bundle).forEach(key => {
