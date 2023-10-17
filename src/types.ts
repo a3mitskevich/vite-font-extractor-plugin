@@ -14,4 +14,5 @@ export interface ExtractInfo {
 
 export interface PluginOption {
     targets: Target[] | Target,
+    cache?: string | boolean;
 }
