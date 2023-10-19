@@ -1,11 +1,11 @@
 import {mkdirSync, existsSync, writeFileSync, readFileSync, rmSync} from "node:fs";
-import {normalizePath} from "vite";
+import {mergePath} from "./utils";
 
 export class Cache {
     public readonly path: string;
 
-    constructor(sid: string, root: string, to: string = 'node_modules') {
-        this.path = this.getPathTo(root, to, `font-extractor-${sid}`);
+    constructor(sid: string, to: string) {
+        this.path = mergePath(to, `font-extractor-${sid}`);
         this.createDir();
     }
 
@@ -38,6 +38,6 @@ export class Cache {
     }
 
     getPathTo(...to: string[]) {
-        return normalizePath([this.path, ...to].filter(Boolean).join('/'))
+        return mergePath(this.path, ...to)
     }
 }

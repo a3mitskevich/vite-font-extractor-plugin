@@ -1,10 +1,11 @@
 import {isCSSRequest, type Plugin, TransformResult} from 'vite'
 import type {OutputAsset} from 'rollup'
-import path from 'node:path';
+import path, {isAbsolute} from 'node:path';
 import extract, {Format} from 'fontext';
 import type {PluginOption, Target} from "./types";
 import {createHash} from 'node:crypto'
 import {Cache} from './cache';
+import {mergePath} from "./utils";
 
 
 const FONT_URL_REGEX = /url\(['"]?(.*?)['"]?\)/g;
@@ -48,7 +49,7 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
     const transformMap: Map<string, Map<string, string>> = new Map();
 
     const tryTransform = async function (result: TransformResult): Promise<TransformResult> {
-        const code = result?.code || '';
+        let code = result?.code || '';
         if (!FONT_FACE_BLOCK_REGEX.test(code)) {
             return result;
         }
@@ -75,11 +76,14 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
                 source: sid + oldReferenceId,
             });
             fontNameTransformMap.set(oldReferenceId, referenceId);
-            result.code = code.replace(font, font.replace(oldReferenceId, referenceId))
+            code = code.replace(font, font.replace(oldReferenceId, referenceId))
         })
         transformMap.set(fontName, fontNameTransformMap);
 
-        return result;
+        return {
+            ...result,
+            code,
+        };
     }
 
     return {
@@ -87,8 +91,8 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
         apply: 'build',
         configResolved(config) {
             if (pluginOption.cache) {
-                const cachePath = typeof pluginOption.cache === 'string' && pluginOption.cache;
-                cache = new Cache(sid, config.root, cachePath || 'node_modules')
+                const cachePath = (typeof pluginOption.cache === 'string' && pluginOption.cache) || 'node_modules';
+                cache = new Cache(sid, isAbsolute(cachePath) ? cachePath : mergePath(config.root, cachePath))
             }
             const viteCssPlugin = config.plugins.find(plugin => plugin.name === 'vite:css');
             const originalTransform = viteCssPlugin.transform;
@@ -135,17 +139,17 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
 
                     const needExtracting = transformQueue.some(transform => !transform.cache)
 
+                    const minifiedBuffers = {};
+
                     if (needExtracting) {
                         this.debug('Clear cache because some files have a different content')
                         cache?.clearCache();
-                    }
-
-                    const minifiedBuffers = needExtracting
-                        ? await extract(Buffer.from(entryPoint.old.source), {
+                        const result = await extract(Buffer.from(entryPoint.old.source), {
                             ...option,
                             formats: transformQueue.map(transform => getFontExtension(transform.old.fileName)),
-                        })
-                        : {};
+                        });
+                        Object.assign(minifiedBuffers, result)
+                    }
 
                     transformQueue.forEach(transform => {
                         const extension = getFontExtension(transform.old.fileName);
