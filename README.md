@@ -2,8 +2,8 @@
 
 **`vite-font-extractor-plugin`** is a vite plugin that to extracted glyphs from fonts that are used in applications and change the original font files to minimized.
 
-#### **NOTE: The main goal of this plugin is a minimize fonts and save easy use way on the page and in frameworks.**
-
+> [!IMPORTANT]
+> The main goal of this plugin is a minimize fonts and save easy use way on the page and in frameworks.**
 
 ## Installation
 To install vite-font-extractor-plugin use npm:

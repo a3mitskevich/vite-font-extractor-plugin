@@ -1,7 +1,7 @@
-import {isCSSRequest, type Plugin, TransformResult} from 'vite'
+import {isCSSRequest, type Plugin, type TransformResult} from 'vite'
 import type {OutputAsset} from 'rollup'
 import path, {isAbsolute} from 'node:path';
-import extract, {Format} from 'fontext';
+import extract, { type Format } from 'fontext';
 import type {PluginOption, Target} from "./types";
 import {createHash} from 'node:crypto'
 import {Cache} from './cache';
