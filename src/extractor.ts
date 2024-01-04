@@ -39,7 +39,7 @@ const extractFontInfo = (code: string): {
 
 export default function FontExtractor(pluginOption: PluginOption): Plugin {
     const sid = getHash(JSON.stringify(pluginOption));
-    let cache: Cache;
+    let cache: Cache | null;
     const targets = Array.isArray(pluginOption.targets) ? pluginOption.targets : [pluginOption.targets];
     const optionsMap: Map<Target['fontName'], Target> = new Map(
         targets.map(target => [target.fontName, target])
@@ -68,7 +68,7 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
 
         const fontNameTransformMap = new Map<string, string>();
         fonts.forEach(font => {
-            const assetUrlRE = /__VITE_ASSET__([a-z\d]+)__(?:\$_(.*?)__)?/g
+            const assetUrlRE = /__VITE_ASSET__([\w$]+)__(?:\$_(.*?)__)?/g
             const oldReferenceId = assetUrlRE.exec(font)[1]
             const referenceId = this.emitFile({
                 type: 'asset',
@@ -86,6 +86,32 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
         };
     }
 
+    const hijackTransformPlugin = (plugin: Plugin) => {
+        if (!plugin.transform) {
+            return;
+        }
+
+        const originalFn = typeof plugin.transform === 'function' ? plugin.transform : plugin.transform.handler
+
+        const wrappedFn: Plugin['transform'] = async function (...args) {
+            const id = args[1];
+            const result: TransformResult = await originalFn.apply(this, args);
+            if (isCSSRequest(id)) {
+                return tryTransform.call(this, result)
+            }
+            return result;
+        }
+
+        if (typeof plugin.transform === 'function') {
+            plugin.transform = wrappedFn;
+        } else {
+            plugin.transform = {
+                ...plugin.transform,
+                handler: wrappedFn,
+            }
+        }
+    }
+
     return {
         name: 'vite-font-extractor-plugin',
         apply: 'build',
@@ -94,21 +120,19 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
                 const cachePath = (typeof pluginOption.cache === 'string' && pluginOption.cache) || 'node_modules';
                 cache = new Cache(sid, isAbsolute(cachePath) ? cachePath : mergePath(config.root, cachePath))
             }
+
             const viteCssPlugin = config.plugins.find(plugin => plugin.name === 'vite:css');
-            const originalTransform = viteCssPlugin.transform;
-            viteCssPlugin.transform = async function (...args) {
-                const id = args[1];
-                const originalFunction = typeof originalTransform === 'function' ? originalTransform : originalTransform.handler;
-                const result: TransformResult = await originalFunction.apply(this, args);
-                if (isCSSRequest(id)) {
-                    return tryTransform.call(this, result)
-                }
-                return result;
-            }
+            hijackTransformPlugin(viteCssPlugin);
         },
         async generateBundle(_, bundle) {
             if (cache) {
-                this.debug(`Cache created in - ${cache.path}`)
+                if (pluginOption.cache) {
+                    this.debug(`Cache created in - ${cache.path}`)
+                } else {
+                    this.debug(`Cache cleaned and destroyed`)
+                    cache.clearCache();
+                    cache = null;
+                }
             }
             try {
                 const findAssetByReferenceId = (referenceId: string): OutputAsset =>
@@ -142,8 +166,10 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
                     const minifiedBuffers = {};
 
                     if (needExtracting) {
-                        this.debug('Clear cache because some files have a different content')
-                        cache?.clearCache();
+                        if (cache) {
+                            this.debug('Clear cache because some files have a different content')
+                            cache.clearCache();
+                        }
                         const result = await extract(Buffer.from(entryPoint.old.source), {
                             ...option,
                             formats: transformQueue.map(transform => getFontExtension(transform.old.fileName)),
