@@ -1,11 +1,11 @@
-import {isCSSRequest, type Plugin, type TransformResult} from 'vite'
-import type {OutputAsset} from 'rollup'
-import path, {isAbsolute} from 'node:path';
+import { isCSSRequest, type Plugin, type TransformResult } from 'vite'
+import type { OutputAsset } from 'rollup'
+import path, { isAbsolute } from 'node:path';
 import extract, { type Format } from 'fontext';
-import type {PluginOption, Target} from "./types";
-import {createHash} from 'node:crypto'
-import {Cache} from './cache';
-import {mergePath} from "./utils";
+import type { PluginOption, Target } from "./types";
+import { createHash } from 'node:crypto'
+import { Cache } from './cache';
+import { mergePath } from "./utils";
 
 
 const FONT_URL_REGEX = /url\(['"]?(.*?)['"]?\)/g;
@@ -16,11 +16,7 @@ const FONT_FACE_BLOCK_REGEX = /@font-face\s*{([\s\S]*?)}/;
 const getFontExtension = (fontFileName: string): Format => path.extname(fontFileName).slice(1) as Format;
 const getHash = (text: Buffer | string): string => createHash('sha256').update(text).digest('hex').substring(0, 8);
 
-const extractFontInfo = (code: string): {
-    fontName: string,
-    fonts: string[],
-} => {
-    const [fontFaceString] = FONT_FACE_BLOCK_REGEX.exec(code);
+const extractFonts = (fontFaceString: string): string[] => {
     const fonts = [];
     let match = null;
     FONT_URL_REGEX.lastIndex = 0;
@@ -30,11 +26,17 @@ const extractFontInfo = (code: string): {
             fonts.push(url)
         }
     }
+    return fonts;
+}
+
+const extractFontFace = (code: string) => {
+    const [fontFaceString] = FONT_FACE_BLOCK_REGEX.exec(code);
+    return fontFaceString;
+}
+
+const extractFontName = (fontFaceString: string) => {
     const [_, fontName] = FONT_FAMILY_RE.exec(fontFaceString);
-    return {
-        fontName: fontName.replace(/["']/g, ''),
-        fonts,
-    };
+    return fontName.replace(/["']/g, '');
 }
 
 export default function FontExtractor(pluginOption: PluginOption): Plugin {
@@ -48,12 +50,25 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
     const progress: Set<string> = new Set();
     const transformMap: Map<string, Map<string, string>> = new Map();
 
-    const tryTransform = async function (result: TransformResult): Promise<TransformResult> {
+    const tryTransform = async function (result: TransformResult, originalCode: string): Promise<TransformResult> {
         let code = result?.code || '';
         if (!FONT_FACE_BLOCK_REGEX.test(code)) {
             return result;
         }
-        const {fonts, fontName} = extractFontInfo(code);
+        const resultFontFace = extractFontFace(result.code);
+        const originalFontFace = extractFontFace(originalCode);
+        const fontName = extractFontName(resultFontFace);
+        const resultFonts = extractFonts(resultFontFace);
+        const originalFonts = extractFonts(originalFontFace);
+
+        if (resultFonts.length !== originalFonts.length) {
+            this.error('Resulted font face not equals with original');
+        }
+
+        const fonts = resultFonts.map((resultFont, index) => ({
+            viteAlias: resultFont,
+            originalUrl: originalFonts[index],
+        }))
 
         if (!optionsMap.has(fontName)) {
             return result;
@@ -64,19 +79,20 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
         } else {
             progress.add(fontName);
         }
-
-
+        // TODO: replace extracting to here
+        // TODO: add split mechanics by unicode
         const fontNameTransformMap = new Map<string, string>();
         fonts.forEach(font => {
             const assetUrlRE = /__VITE_ASSET__([\w$]+)__(?:\$_(.*?)__)?/g
-            const oldReferenceId = assetUrlRE.exec(font)[1]
+            const oldReferenceId = assetUrlRE.exec(font.viteAlias)[1]
             const referenceId = this.emitFile({
                 type: 'asset',
-                name: 'fontExtractor.woff',
+                name: path.basename(font.originalUrl),
                 source: sid + oldReferenceId,
             });
             fontNameTransformMap.set(oldReferenceId, referenceId);
-            code = code.replace(font, font.replace(oldReferenceId, referenceId))
+            // TODO: rework to generate new url strings by config instead replace a old reference id
+            code = code.replace(font.viteAlias, font.viteAlias.replace(oldReferenceId, referenceId))
         })
         transformMap.set(fontName, fontNameTransformMap);
 
@@ -86,18 +102,18 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
         };
     }
 
-    const hijackTransformPlugin = (plugin: Plugin) => {
+    const hijackPluginTransformHook = (plugin: Plugin) => {
         if (!plugin.transform) {
-            return;
+            throw new Error(`Target plugin (${plugin.name}) not contain a transform hook`)
         }
 
         const originalFn = typeof plugin.transform === 'function' ? plugin.transform : plugin.transform.handler
 
         const wrappedFn: Plugin['transform'] = async function (...args) {
-            const id = args[1];
+            const [code, id] = args;
             const result: TransformResult = await originalFn.apply(this, args);
             if (isCSSRequest(id)) {
-                return tryTransform.call(this, result)
+                return tryTransform.call(this, result, code)
             }
             return result;
         }
@@ -122,7 +138,7 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
             }
 
             const viteCssPlugin = config.plugins.find(plugin => plugin.name === 'vite:css');
-            hijackTransformPlugin(viteCssPlugin);
+            hijackPluginTransformHook(viteCssPlugin);
         },
         async generateBundle(_, bundle) {
             if (cache) {
@@ -138,21 +154,19 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
                 const findAssetByReferenceId = (referenceId: string): OutputAsset =>
                     Object.values(bundle).find(asset => asset.fileName.includes(this.getFileName(referenceId))) as OutputAsset;
 
-                const fontsTransformQueues = Array.from(transformMap.keys())
-                    .map(fontName => {
-                        const map = transformMap.get(fontName);
-                        return Array.from(map.keys())
-                            .map(oldReferenceId => {
-                                const newReferenceId = map.get(oldReferenceId);
-                                return ({
-                                    old: findAssetByReferenceId(oldReferenceId),
-                                    new: findAssetByReferenceId(newReferenceId),
-                                    cache: !!cache?.check(newReferenceId),
-                                    cacheKey: newReferenceId,
-                                    fontName,
-                                });
-                            })
-                    });
+                const fontsTransformQueues = Array.from(transformMap.entries())
+                    .map(([fontName, map]) => Array.from(map.keys())
+                        .map(oldReferenceId => {
+                            const newReferenceId = map.get(oldReferenceId);
+                            return ({
+                                old: findAssetByReferenceId(oldReferenceId),
+                                new: findAssetByReferenceId(newReferenceId),
+                                cache: !!cache?.check(newReferenceId),
+                                cacheKey: newReferenceId,
+                                fontName,
+                            });
+                        })
+                    );
 
                 await Promise.all(fontsTransformQueues.map(async transformQueue => {
                     const entryPoint = transformQueue.find(transform => SUPPORT_START_FONT_REGEX.test(transform.old.fileName));
@@ -192,16 +206,8 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
                         const originalBuffer = Buffer.from(transform.old.source);
                         const resultLessThanOriginal = minifiedBuffer?.length < originalBuffer.length;
 
-
-                        const fixedFilename = transform.new.fileName.replace('woff', extension);
-                        this.debug(`changes temporal name from "${transform.new.fileName}" to ${fixedFilename} and update content`)
                         if (resultLessThanOriginal) {
                             Object.keys(bundle).forEach(key => {
-                                const asset = bundle[key];
-                                if (asset.type === 'asset' && typeof asset.source === 'string' && asset.source.includes(transform.new.fileName)) {
-                                    this.debug(`change name from "${transform.new.fileName}" to ${fixedFilename} in ${key}`)
-                                    asset.source = asset.source.replace(transform.new.fileName, fixedFilename);
-                                }
                                 if (key.includes(transform.old.fileName)) {
                                     this.debug(`delete ${key}`)
                                     delete bundle[key];
@@ -209,7 +215,6 @@ export default function FontExtractor(pluginOption: PluginOption): Plugin {
                             })
                         }
                         transform.new.source = resultLessThanOriginal ? minifiedBuffer : originalBuffer;
-                        transform.new.fileName = fixedFilename
                     })
                 }))
             } catch (error) {
