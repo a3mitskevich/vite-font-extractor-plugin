@@ -1,4 +1,4 @@
-import FontExtractor from "./extractor";
-export type { PluginOption, Target } from './types';
+import FontExtractor from './extractor'
+export type { PluginOption, Target } from './types'
 
-export default FontExtractor;
+export { FontExtractor as default, FontExtractor}

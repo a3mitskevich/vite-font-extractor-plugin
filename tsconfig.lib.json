@@ -1,0 +1,7 @@
+{
+  "extends": "@tsconfig/node20/tsconfig.json",
+  "include": ["src/**/*.ts", "*.d.ts"],
+  "compilerOptions": {
+    "moduleResolution": "Bundler"
+  }
+}
