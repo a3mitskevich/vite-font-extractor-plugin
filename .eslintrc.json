@@ -1,7 +1,8 @@
 {
   "env": {
     "browser": false,
-    "es2021": true
+    "es2021": true,
+    "jest": true
   },
   "extends": "standard-with-typescript",
   "parserOptions": {
@@ -15,5 +16,13 @@
     "@typescript-eslint/no-non-null-assertion": "off",
     "@typescript-eslint/return-await": ["error", "never"],
     "@typescript-eslint/comma-dangle": ["error", "always-multiline"]
-  }
+  },
+  "overrides": [
+    {
+      "files": ["*.spec.ts"],
+      "rules": {
+        "@typescript-eslint/explicit-function-return-type": "off"
+      }
+    }
+  ]
 }
