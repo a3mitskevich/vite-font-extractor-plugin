@@ -93,6 +93,9 @@ FontExtractor(pluginOption: PluginOption): Plugin
 
 ### PluginOption parameters:
 * **targets** `Target[] | Target`: Targets for font extracting.
+* **cache** `boolean | string | undefined`: Enable a minifying result cache.
+* **logLevel** `LogLevel | undefined`: Setup a log level for plugin options. By default get a vite config logLevel.
+* **apply** `"build" | "serve" | undefined`: Apply the plugin only for serve or build, or on certain conditions
 
 ### Target parameters:
 * **fontName** `string`: The font filename that is to be extracted.
