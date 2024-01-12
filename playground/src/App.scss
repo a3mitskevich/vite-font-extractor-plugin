@@ -1,0 +1,12 @@
+// HERE: second way to import-js font
+@import "material-design-icons-iconfont/dist/material-design-icons-no-codepoints.css";
+@import "material-design-icons-iconfont/src/variables";
+@import "material-design-icons-iconfont/src/mixins";
+
+$icons: close;
+
+@each $icon in $icons {
+  .material-icons .#{$icon} {
+    @include material-icon($icon);
+  }
+}
