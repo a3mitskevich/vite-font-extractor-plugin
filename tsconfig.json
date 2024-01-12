@@ -1,27 +1,8 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "compilerOptions": {
-    "target": "ESNext",
-    "moduleResolution": "node",
-    "rootDir": "src",
-    "outDir": "build",
-    "removeComments": true,
-    "declaration": true,
-    "strictNullChecks": false,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitOverride": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-
-    "esModuleInterop": true,
-    "isolatedModules": true,
-    "skipLibCheck": false,
-    "resolveJsonModule": true
-  },
-  "exclude": [
-    "node_modules",
-    "test"
-  ],
-  "include": ["src"]
+  "files": [],
+  "references": [
+    { "path": "tsconfig.lib.json" },
+    { "path": "tsconfig.config.json" },
+    { "path": "tsconfig.test.json" },
+  ]
 }

@@ -1,0 +1,28 @@
+{
+  "env": {
+    "browser": false,
+    "es2021": true,
+    "jest": true
+  },
+  "extends": "standard-with-typescript",
+  "parserOptions": {
+    "project": "./tsconfig.*.json",
+    "ecmaVersion": "latest",
+    "sourceType": "module"
+  },
+  "rules": {
+    "@typescript-eslint/prefer-nullish-coalescing": "off",
+    "@typescript-eslint/strict-boolean-expressions": "off",
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "@typescript-eslint/return-await": ["error", "never"],
+    "@typescript-eslint/comma-dangle": ["error", "always-multiline"]
+  },
+  "overrides": [
+    {
+      "files": ["*.spec.ts"],
+      "rules": {
+        "@typescript-eslint/explicit-function-return-type": "off"
+      }
+    }
+  ]
+}

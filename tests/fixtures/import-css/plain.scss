@@ -1,0 +1,11 @@
+// comment
+@font-face {
+  font-family: 'FontName';
+  src: url("../fonts/font.eot"); // comment
+  src: local("☺"),
+    // comment
+  url("../fonts/font.woff2") /* comment */ format("woff2"),
+  url("../fonts/font.woff") format("woff"),
+  url("../fonts/font.ttf") format("truetype");
+}
+// comment
