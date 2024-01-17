@@ -93,7 +93,8 @@ createApp().app.$mount('#app');
 
 ## Google fonts urls
 
-Plugin additionally supports Google font url transformation to enable [minification](https://developers.google.com/fonts/docs/getting_started?hl=en#optimizing_your_font_requests):
+Plugin additionally supports Google font url transformation to
+enable [minification](https://developers.google.com/fonts/docs/getting_started?hl=en#optimizing_your_font_requests):
 
 ### Config file
 
@@ -115,12 +116,14 @@ export default defineConfig({
 ```
 
 ### CSS file
+
 ```css
 /* Import throw css import */
 @import "https://fonts.googleapis.com/icon?family=Material+Icons";
 ```
 
 ### HTML file
+
 ```html
 <!doctype html>
 <html lang="en">
@@ -137,7 +140,6 @@ export default defineConfig({
 </html>
 ```
 
-
 ## API
 
 ```
@@ -150,6 +152,7 @@ FontExtractor(pluginOption: PluginOption): Plugin
 * **cache** `boolean | string | undefined`: Enable a minifying result cache.
 * **logLevel** `LogLevel | undefined`: Setup a log level for plugin options. By default get a vite config logLevel.
 * **apply** `"build" | "serve" | undefined`: Apply the plugin only for serve or build, or on certain conditions
+* **ignore** `string[] | undefined`: Font names what will be ignored by plugin processing
 
 ### Target parameters:
 
