@@ -3,7 +3,8 @@ import type { OutputAsset, RollupError, TransformPluginContext } from 'rollup'
 import { basename, isAbsolute } from 'node:path'
 import { extract, type ExtractedResult, type Format } from 'fontext'
 import type {
-  FontMeta,
+  FontFaceMeta,
+  GoogleFontMeta,
   ImportResolvers,
   InternalLogger,
   MinifyFontOptions,
@@ -19,6 +20,7 @@ import {
   extractFontFaces,
   extractFontName,
   extractFonts,
+  extractGoogleFontsUrls,
   getFontExtension,
   getHash,
   mergePath,
@@ -50,7 +52,7 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
   const optionsMap = new Map<Target['fontName'], OptionsWithCacheSid>(
     targets.map(target => [target.fontName, { sid: JSON.stringify(target), target }]),
   )
-  const progress = new Set<string>()
+  const progress = new Map<string, string>()
   const transformMap = new Map<string, string>()
 
   const changeResource = function (
@@ -93,14 +95,6 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
     if (unsupportedFont) {
       logger.error(`Font face have a unsupported extension - ${unsupportedFont.extension ?? 'undefined'}`)
       return null
-    }
-
-    if (progress.has(fontName)) {
-      // TODO: have chance to conflict by `unicode-range` attribute. Fix it
-      logger.error('Plugin not support a multiply files with same font name')
-      return null
-    } else {
-      progress.add(fontName)
     }
 
     const entryPoint = fonts.find(font => SUPPORT_START_FONT_REGEX.test(font.extension))
@@ -159,12 +153,27 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
     return minifiedBuffers
   }
 
+  const checkFontProcessing = (name: string, id: string): void | never => {
+    const duplicateId = progress.get(name)
+
+    if (duplicateId) {
+      const placeInfo = `Font placed in "${styler.path(id)}" and "${styler.path(duplicateId)}"`
+      const errorMessage = `Plugin not support a multiply files with same font name [${name}]. ${placeInfo}`
+      // TODO: have chance to conflict by `unicode-range` attribute. Fix it
+      logger.error(errorMessage)
+      throw new Error(errorMessage)
+    } else {
+      progress.set(name, id)
+    }
+  }
+
   const processFont = async function (
     this: TransformPluginContext,
     code: string,
     id: string,
-    font: FontMeta,
+    font: FontFaceMeta,
   ): Promise<string> {
+    checkFontProcessing(font.name, id)
     if (isServe) {
       const minifiedBuffers = await processMinify(
         font.name,
@@ -200,6 +209,26 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
     return code
   }
 
+  const processGoogleFontUrl = function (
+    this: TransformPluginContext,
+    code: string,
+    id: string,
+    font: GoogleFontMeta,
+  ): string {
+    checkFontProcessing(font.name, id)
+    const oldText = font.url.searchParams.get('text')
+    if (oldText) {
+      logger.warn(`Font [${font.name}] in ${id} has duplicated logic for minification`)
+    }
+    const text = [oldText, ...font.options.target.ligatures]
+      .filter(exists)
+      .join(' ')
+    const originalUrl = font.url.toString()
+    const fixedUrl = new URL(originalUrl)
+    fixedUrl.searchParams.set('text', text)
+    return code.replace(originalUrl, fixedUrl.toString())
+  }
+
   return {
     name: PLUGIN_NAME,
     configResolved (config) {
@@ -228,18 +257,65 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
       })
     },
     async transform (code, id) {
+      if (
+        (id.endsWith('.html') || (isCSSRequest(id) && code.includes('@import'))) &&
+          code.includes('fonts.googleapis.com')
+      ) {
+        const fonts = extractGoogleFontsUrls(code)
+          .map<GoogleFontMeta | null>(raw => {
+          const url = new URL(raw)
+          const name = url.searchParams.get('family')
+          if (!name) {
+            logger.warn(`No specified google font name in ${styler.path(id)}`)
+            return null
+          }
+          if (name.includes('|')) {
+            // TODO: add extracting font url with minification
+            logger.warn('Google font url includes multiple families. Not supported')
+            return null
+          }
+
+          const options = optionsMap.get(name)
+          if (!options) {
+            logger.warn(`Font "${name}" has no minify options`)
+            return null
+          }
+
+          return {
+            name,
+            options,
+            url,
+          }
+        })
+          .filter(exists)
+
+        for (const font of fonts) {
+          try {
+            code = processGoogleFontUrl.call(this, code, id, font)
+          } catch (e) {
+            logger.error(`Process ${font.name} Google font is failed`, { error: e as Error })
+          }
+        }
+      }
       if (isCSSRequest(id) && code.includes('@font-face')) {
         logger.fix()
         const fonts = extractFontFaces(code)
-          .map<FontMeta | null>(face => {
+          .map<FontFaceMeta | null>(face => {
           const name = extractFontName(face)
           const options = optionsMap.get(name)
           if (!options) {
-            logger.warn(`Font "${name}" have not a minify options`)
+            logger.warn(`Font "${name}" has no minify options`)
             return null
           }
 
           const aliases = extractFonts(face)
+
+          const urlSources = aliases.filter(alias => alias.startsWith('http'))
+          if (urlSources.length) {
+            logger.warn(`Font "${name}" has external url sources: ${urlSources.toString()}`)
+            return null
+          }
+
           return {
             name,
             face,
@@ -253,11 +329,11 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
           try {
             code = await processFont.call(this, code, id, font)
           } catch (e) {
-            logger.error(`Process ${font.name} font is filed`, { error: e as Error })
+            logger.error(`Process ${font.name} local font is failed`, { error: e as Error })
           }
         }
-        return code
       }
+      return code
     },
     async generateBundle (_, bundle) {
       if (!transformMap.size) {
