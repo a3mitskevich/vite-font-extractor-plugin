@@ -8,6 +8,7 @@ export interface PluginOption {
   cache?: string | boolean
   apply?: Plugin['apply']
   logLevel?: InlineConfig['logLevel']
+  ignore?: string[]
 }
 
 export interface ResourceTransformMeta {

@@ -16,6 +16,7 @@ import type {
 import Cache from './cache'
 import {
   createResolvers,
+  intersection,
   exists,
   extractFontFaces,
   extractFontName,
@@ -93,7 +94,7 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
   ): Promise<ExtractedResult | null> => {
     const unsupportedFont = fonts.find(font => !SUPPORTED_RESULTS_FORMATS.includes(font.extension))
     if (unsupportedFont) {
-      logger.error(`Font face have a unsupported extension - ${unsupportedFont.extension ?? 'undefined'}`)
+      logger.error(`Font face has unsupported extension - ${unsupportedFont.extension ?? 'undefined'}`)
       return null
     }
 
@@ -234,6 +235,12 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
     configResolved (config) {
       logger = createInternalLogger(pluginOption.logLevel ?? config.logLevel, config.customLogger)
       logger.fix()
+
+      const intersectionIgnoreWithTargets = intersection(pluginOption.ignore ?? [], targets.map(target => target.fontName));
+      if (intersectionIgnoreWithTargets.length) {
+        logger.warn(`Ignore option has intersection with targets: ${intersectionIgnoreWithTargets.toString()}`)
+      }
+
       importResolvers = createResolvers(config)
 
       if (pluginOption.cache) {
@@ -265,6 +272,9 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
           .map<GoogleFontMeta | null>(raw => {
           const url = new URL(raw)
           const name = url.searchParams.get('family')
+          if (pluginOption.ignore?.includes(name!)) {
+            return null
+          }
           if (!name) {
             logger.warn(`No specified google font name in ${styler.path(id)}`)
             return null
@@ -302,6 +312,9 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
         const fonts = extractFontFaces(code)
           .map<FontFaceMeta | null>(face => {
           const name = extractFontName(face)
+          if (pluginOption.ignore?.includes(name)) {
+            return null
+          }
           const options = optionsMap.get(name)
           if (!options) {
             logger.warn(`Font "${name}" has no minify options`)
