@@ -23,7 +23,7 @@ type InlineConfig = InlineConfigV5 & InlineConfigV4
 type Plugin = PluginV4 & PluginV5
 type ContainerVersion = typeof versionV4 | typeof versionV5
 type Logger = LoggerV5 & LoggerV4
-interface LoggerMessage { type: string, message: string }
+interface LoggerMessage { type: 'error' | 'warn' | 'info', message: string }
 type FakeLogger = Logger & { messages: LoggerMessage[] }
 type CssMinify = ResolvedConfig['build']['cssMinify']
 
@@ -61,7 +61,7 @@ const fontsLength = {
 const outDir = join(dir, 'dist')
 
 const DEFAULT_FONT: Font = {
-  name: 'FontName',
+  name: 'Font Name',
   urls: [
     '../fonts/font.eot',
     '../fonts/font.ttf',
@@ -77,12 +77,17 @@ const createFixture = (name: string, options: Omit<Fixture, 'path'> = {
   ...options,
 })
 
+const DEFAULT_GOOGLE_FONT = { fonts: [{ name: 'Index', urls: [] }, { name: 'Css font', urls: [] }] }
+
 const fixtures = {
   'import-css': createFixture('import-css'),
   'import-js': createFixture('import-js'),
   mixins: createFixture('mixins', { fonts: [{ ...DEFAULT_FONT, urls: ['../fonts/font.woff'] }] }),
   plain: createFixture('plain'),
   'plain-html': createFixture('plain-html'),
+  'google-font': createFixture('google-font', DEFAULT_GOOGLE_FONT),
+  'google-font-warn': createFixture('google-font-warn', DEFAULT_GOOGLE_FONT),
+  'font-family-resource-is-url': createFixture('font-family-resource-is-url', { fonts: [{ ...DEFAULT_FONT, urls: [] }] }),
 } as const
 
 type FixturesNames = Array<keyof typeof fixtures>
@@ -108,11 +113,11 @@ const viteBuild = {
 const createLogger = (): FakeLogger => {
   const messages: LoggerMessage[] = []
   return new Proxy({}, {
-    get (target: any, key: string): any {
+    get (_: any, key: any): any {
       if (key === 'messages') {
         return messages
       }
-      if (['clearScreen', 'hasErrorLogged'].includes(key)) {
+      if (['clearScreen', 'hasErrorLogged'].includes(key as string)) {
         return () => false
       }
       return (message: string) => {
@@ -139,7 +144,7 @@ describe('Plugin', () => {
 
     const targets = options.targets?.map<Target>(fontName => ({
       fontName,
-      ligatures: ['close'],
+      ligatures: ['close', 'play_arrow'],
     })) ?? []
 
     const FontExtract = await plugin({
@@ -173,12 +178,12 @@ describe('Plugin', () => {
     }
   }
 
-  const runTests = (version: ContainerVersion, fixturesNames: FixturesNames) => {
-    describe(`Test for vite@${version}`, () => {
+  const runCommonTest = (version: ContainerVersion, fixturesNames: FixturesNames) => {
+    describe(`Common test for vite@${version}`, () => {
       fixturesNames.forEach((fixtureName) => {
         const fixture = fixtures[fixtureName]
         Array.from(['lightningcss', 'esbuild'] as CssMinify[]).forEach(cssMinify => {
-          describe(`Build test for ${fixtureName} fixture with ${cssMinify} css minification`, () => {
+          describe(`Build test for ${fixtureName} fixture with ${cssMinify} css minificator`, () => {
             const build = async (options?: BuildOptions) => buildByVersion(version, {
               ...options,
               fixture: fixture.path,
@@ -196,24 +201,27 @@ describe('Plugin', () => {
               fontAssets
                 .map<OutputAsset>(asset => asset)
                 .forEach(asset => {
-                  const ext = extname(asset.name).slice(1)
-                  expect(asset.source.length < fontsLength[ext]).toBeTruthy()
+                  const ext = extname(asset.name).slice(1) as keyof typeof fontsLength
+                  expect(asset.source.length).toBeLessThan(fontsLength[ext])
                 })
             })
 
             it('should correct log', async () => {
               const { messages } = await build()
-              const hasCacheMessage = messages.some(({ message }) => message.includes('Save a minified buffer for'))
-              const hasDeleteOldFontMessage = messages.some(({ message }) => message.includes('Delete old redundant asset from:'))
+              const hasCacheMessage = messages.some(({ message, type }) =>
+                message.includes('Save a minified buffer for') && type === 'info')
+              const hasDeleteOldFontMessage = messages.some(({ message, type }) =>
+                message.includes('Delete old redundant asset from:') && type === 'info')
               const hasErrorMessages = messages.some(({ type }) => type === 'error')
+              expect(hasErrorMessages).toBeFalsy()
               expect(hasCacheMessage).toBeTruthy()
               expect(hasDeleteOldFontMessage).toBeTruthy()
-              expect(hasErrorMessages).toBeFalsy()
             })
 
             it('should not contain cache messages', async () => {
               const { messages } = await build({ cache: false })
-              const hasCacheMessage = messages.some(({ message }) => message.includes('Save a minified buffer for'))
+              const hasCacheMessage = messages.some(({ message, type }) =>
+                message.includes('Save a minified buffer for') && type === 'info')
               expect(hasCacheMessage).toBeFalsy()
             })
           })
@@ -222,10 +230,102 @@ describe('Plugin', () => {
     })
   }
 
+  const runGoogleFontTest = (version: ContainerVersion) => {
+    describe(`Google font test for ${version}`, () => {
+      Array.from(['lightningcss', 'esbuild'] as CssMinify[]).forEach(cssMinify => {
+        describe(`Css minificator is ${cssMinify}`, () => {
+          describe('Build test', () => {
+            const fixture = fixtures['google-font']
+            const build = async (options?: BuildOptions) => buildByVersion(version, {
+              ...options,
+              fixture: fixture.path,
+              targets: fixture.fonts.map(font => font.name),
+            })
+
+            it('should return fixed urls', async () => {
+              const { output } = await build()
+              const targets = output
+                .filter((asset): asset is OutputAsset => asset.type === 'asset' &&
+                      typeof asset.source === 'string' &&
+                      asset.source.includes('fonts.googleapis.com'),
+                )
+                .map<string>(asset => asset.source.toString())
+
+              expect(targets).toHaveLength(2)
+              targets.forEach(content => {
+                expect(content).toContain('&text=close+play_arrow')
+              })
+            })
+          })
+
+          describe('Duplication minification logic', () => {
+            const fixture = fixtures['google-font-warn']
+            const build = async (options?: BuildOptions) => buildByVersion(version, {
+              ...options,
+              fixture: fixture.path,
+              targets: fixture.fonts.map(font => font.name),
+            })
+
+            it('should warn message if original url has text option', async () => {
+              const { messages, output } = await build()
+
+              const hasWarning = messages.some(({ message, type }) =>
+                message.includes('has duplicated logic for minification') && type === 'warn')
+              expect(hasWarning).toBeTruthy()
+
+              const targets = output
+                .filter((asset): asset is OutputAsset => asset.type === 'asset' &&
+                      typeof asset.source === 'string' &&
+                      asset.source.includes('fonts.googleapis.com'),
+                )
+                .map<string>(asset => asset.source.toString())
+
+              expect(targets).toHaveLength(2)
+              targets.forEach(content => {
+                expect(content).toContain('&text=duplicate+close+play_arrow')
+              })
+            })
+          })
+        })
+      })
+    })
+  }
+
+  const runSpecialTest = (version: ContainerVersion) => {
+    describe(`Google font test for ${version}`, () => {
+      Array.from(['lightningcss', 'esbuild'] as CssMinify[]).forEach(cssMinify => {
+        describe(`Css minificator is ${cssMinify}`, () => {
+          describe('Has an url in sources', () => {
+            const fixture = fixtures['font-family-resource-is-url']
+
+            const build = async (options?: BuildOptions) => buildByVersion(version, {
+              ...options,
+              fixture: fixture.path,
+              targets: fixture.fonts.map(font => font.name),
+            })
+
+            it('should log warn about expected font has an url source', async () => {
+              const { messages } = await build()
+
+              const hasError = messages.some(({ message, type }) =>
+                message.includes('has external url sources:') && type === 'warn')
+              expect(hasError).toBeTruthy()
+            })
+          })
+        })
+      })
+    })
+  }
+
   const runAllTests = () => {
-    Object.keys(viteBuild).forEach(version => { runTests(version, Object.keys(fixtures) as FixturesNames) })
+    Object.keys(viteBuild).forEach(version => {
+      runCommonTest(version, ['plain', 'plain-html', 'mixins', 'import-css', 'import-js'])
+      runSpecialTest(version)
+      runGoogleFontTest(version)
+    })
   }
 
   runAllTests()
-  // runTests(versionV4, ['plain-html']) // for single debug
+  // runCommonTest(versionV4, ['plain-html']) // for single debug
+  // runGoogleFontTest(versionV4)
 })

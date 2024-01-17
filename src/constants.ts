@@ -2,6 +2,7 @@ import type { Format } from 'fontext'
 
 export const PLUGIN_NAME = 'vite-font-extractor-plugin'
 export const CSS_LANGS_RE = /\.(css|less|sass|scss|styl|stylus|pcss|postcss|sss)(?:$|\?)/
+export const GOOGLE_FONT_URL_RE = /["'](.+fonts.googleapis.com.+)["']/g
 export const POSTFIX_URL_RE = /[?#].*$/s
 export const FONT_URL_REGEX = /url\(['"]?(.*?)['"]?\)/g
 export const FONT_FAMILY_RE = /font-family:\s*(.*?);/

@@ -27,9 +27,16 @@ export interface OptionsWithCacheSid {
 
 export interface FontMeta {
   name: string
+  options: OptionsWithCacheSid
+}
+
+export interface GoogleFontMeta extends FontMeta {
+  url: URL
+}
+
+export interface FontFaceMeta extends FontMeta {
   face: string
   aliases: string[]
-  options: OptionsWithCacheSid
 }
 
 export interface MinifyFontOptions {

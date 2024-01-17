@@ -2,7 +2,7 @@ import { normalizePath, type ResolvedConfig, type ResolveFn } from 'vite'
 import { extname, join } from 'node:path'
 import { createHash } from 'node:crypto'
 import type { Format } from 'fontext'
-import { FONT_FACE_BLOCK_REGEX, FONT_FAMILY_RE, FONT_URL_REGEX, POSTFIX_URL_RE } from './constants'
+import { FONT_FACE_BLOCK_REGEX, FONT_FAMILY_RE, FONT_URL_REGEX, GOOGLE_FONT_URL_RE, POSTFIX_URL_RE } from './constants'
 import type { ImportResolvers } from './types'
 
 export const mergePath = (...paths: string[]): string => normalizePath(join(...paths.filter(Boolean)))
@@ -66,6 +66,19 @@ export const extractFonts = (fontFaceString: string): string[] => {
     }
   }
   return fonts
+}
+
+export const extractGoogleFontsUrls = (code: string): string[] => {
+  const urls = []
+  let match = null
+  GOOGLE_FONT_URL_RE.lastIndex = 0
+  while ((match = GOOGLE_FONT_URL_RE.exec(code))) {
+    const url = match[1]
+    if (url) {
+      urls.push(url)
+    }
+  }
+  return urls
 }
 
 export const extractFontName = (fontFaceString: string): string => {
