@@ -2,16 +2,17 @@ import { isCSSRequest, type Plugin, send } from 'vite'
 import type { OutputAsset, RollupError, TransformPluginContext } from 'rollup'
 import { basename, isAbsolute } from 'node:path'
 import { extract, type ExtractedResult, type Format } from 'fontext'
-import type {
-  FontFaceMeta,
-  GoogleFontMeta,
-  ImportResolvers,
-  InternalLogger,
-  MinifyFontOptions,
-  OptionsWithCacheSid,
-  PluginOption,
-  ResourceTransformMeta,
-  Target,
+import {
+  type FontFaceMeta,
+  type GoogleFontMeta,
+  type ImportResolvers,
+  type InternalLogger,
+  type MinifyFontOptions,
+  type OptionsWithCacheSid,
+  type PluginOption,
+  type ResourceTransformMeta,
+  type Target,
+  type TargetOptionsMap,
 } from './types'
 import Cache from './cache'
 import {
@@ -24,7 +25,7 @@ import {
   extractGoogleFontsUrls,
   getFontExtension,
   getHash,
-  mergePath,
+  mergePath, findUnicodeGlyphs, escapeString,
 } from './utils'
 import { readFileSync } from 'node:fs'
 import {
@@ -38,7 +39,8 @@ import { createInternalLogger } from './internal-loger'
 import groupBy from 'lodash.groupby'
 import camelcase from 'lodash.camelcase'
 
-export default function FontExtractor (pluginOption: PluginOption): Plugin {
+export default function FontExtractor (pluginOption: PluginOption = { type: 'auto' }): Plugin {
+  const mode: PluginOption['type'] = pluginOption.type ?? 'manual'
   let cache: Cache | null
   let importResolvers: ImportResolvers
   let logger: InternalLogger
@@ -49,10 +51,43 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
     content: Buffer
   }>()
 
-  const targets = Array.isArray(pluginOption.targets) ? pluginOption.targets : [pluginOption.targets]
-  const optionsMap = new Map<Target['fontName'], OptionsWithCacheSid>(
+  const autoTarget: Required<Target> = {
+    fontName: '[auto detected font name]',
+    raws: [],
+    withWhitespace: true,
+    ligatures: [],
+  }
+
+  const autoProxyOption = new Proxy<OptionsWithCacheSid>({
+    sid: '[calculating...]',
+    target: autoTarget,
+  }, {
+    get (_: OptionsWithCacheSid, key: keyof OptionsWithCacheSid): any {
+      if (key === 'sid') {
+        return JSON.stringify(autoTarget)
+      }
+      if (key === 'target') {
+        return autoTarget
+      }
+    },
+  })
+
+  const targets = pluginOption.targets
+    ? Array.isArray(pluginOption.targets) ? pluginOption.targets : [pluginOption.targets]
+    : []
+
+  const casualOptionsMap = new Map(
     targets.map(target => [target.fontName, { sid: JSON.stringify(target), target }]),
   )
+
+  const optionsMap = {
+    get: (key: string) => {
+      const option = casualOptionsMap.get(key)
+      return mode === 'auto' ? option ?? autoProxyOption : option
+    },
+    has: (key: string) => mode === 'auto' || casualOptionsMap.has(key),
+  } satisfies TargetOptionsMap
+
   const progress = new Map<string, string>()
   const transformMap = new Map<string, string>()
 
@@ -67,7 +102,7 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
     const referenceId = this.emitFile({
       type: 'asset',
       name: transform.name + PROCESS_EXTENSION,
-      source: sid + oldReferenceId,
+      source: Buffer.from(sid + oldReferenceId),
     })
     transformMap.set(oldReferenceId, referenceId)
     // TODO: rework to generate new url strings by config instead replace a old reference id
@@ -129,6 +164,7 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
         Buffer.from(source),
         {
           ...options.target,
+          fontName,
           formats: fonts.map(font => font.extension),
         },
       )
@@ -176,6 +212,11 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
   ): Promise<string> {
     checkFontProcessing(font.name, id)
     if (isServe) {
+      if (mode === 'auto') {
+        logger.warn('Serve minification disabled in "auto" mode')
+        return code
+      }
+
       const minifiedBuffers = await processMinify(
         font.name,
         font.aliases.map<MinifyFontOptions>(url => ({
@@ -195,6 +236,12 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
         })
       }
     } else {
+      if (mode === 'auto') {
+        const message = `"auto" mod detected. "${font.name}" font` +
+          ' is stubbed and result file hash will be recalculated randomly that may potential problem with external cache systems.' +
+          ' If this font is not target please add it to ignore'
+        logger.warn(message)
+      }
       font.aliases.forEach(alias => {
         code = changeResource.call(
           this,
@@ -202,7 +249,8 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
           {
             alias,
             name: font.name,
-            sid: font.options.sid,
+            // TODO: must be reworked
+            sid: mode === 'auto' ? Math.random().toString() : font.options.sid,
           },
         )
       })
@@ -221,7 +269,7 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
     if (oldText) {
       logger.warn(`Font [${font.name}] in ${id} has duplicated logic for minification`)
     }
-    const text = [oldText, ...font.options.target.ligatures]
+    const text = [oldText, ...font.options.target.ligatures ?? []]
       .filter(exists)
       .join(' ')
     const originalUrl = font.url.toString()
@@ -235,8 +283,9 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
     configResolved (config) {
       logger = createInternalLogger(pluginOption.logLevel ?? config.logLevel, config.customLogger)
       logger.fix()
+      logger.info(`Plugin starts in "${mode}" mode`)
 
-      const intersectionIgnoreWithTargets = intersection(pluginOption.ignore ?? [], targets.map(target => target.fontName));
+      const intersectionIgnoreWithTargets = intersection(pluginOption.ignore ?? [], targets.map(target => target.fontName))
       if (intersectionIgnoreWithTargets.length) {
         logger.warn(`Ignore option has intersection with targets: ${intersectionIgnoreWithTargets.toString()}`)
       }
@@ -264,11 +313,21 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
       })
     },
     async transform (code, id) {
+      logger.fix()
+
+      const isCssFile = isCSSRequest(id)
+      const isAutoType = mode === 'auto'
+      const isCssFileWithFontFaces = isCssFile && code.includes('@font-face')
+
+      if (isAutoType && isCssFile) {
+        const glyphs = findUnicodeGlyphs(code)
+        autoTarget.raws.push(...glyphs)
+      }
       if (
-        (id.endsWith('.html') || (isCSSRequest(id) && code.includes('@import'))) &&
+        (id.endsWith('.html') || (isCssFile && code.includes('@import'))) &&
           code.includes('fonts.googleapis.com')
       ) {
-        const fonts = extractGoogleFontsUrls(code)
+        const googleFonts = extractGoogleFontsUrls(code)
           .map<GoogleFontMeta | null>(raw => {
           const url = new URL(raw)
           const name = url.searchParams.get('family')
@@ -299,7 +358,7 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
         })
           .filter(exists)
 
-        for (const font of fonts) {
+        for (const font of googleFonts) {
           try {
             code = processGoogleFontUrl.call(this, code, id, font)
           } catch (e) {
@@ -307,8 +366,7 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
           }
         }
       }
-      if (isCSSRequest(id) && code.includes('@font-face')) {
-        logger.fix()
+      if (isCssFileWithFontFaces) {
         const fonts = extractFontFaces(code)
           .map<FontFaceMeta | null>(face => {
           const name = extractFontName(face)
@@ -316,6 +374,7 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
             return null
           }
           const options = optionsMap.get(name)
+
           if (!options) {
             logger.warn(`Font "${name}" has no minify options`)
             return null
@@ -337,7 +396,6 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
           }
         })
           .filter(exists)
-
         for (const font of fonts) {
           try {
             code = await processFont.call(this, code, id, font)
@@ -360,15 +418,20 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
           ) as OutputAsset
 
         const resources = Array.from(transformMap.entries())
-          .map(([oldReferenceId, newReferenceId]) => [
+          .map<[OutputAsset, OutputAsset]>(([oldReferenceId, newReferenceId]) => {
+          return [
             findAssetByReferenceId(oldReferenceId),
             findAssetByReferenceId(newReferenceId),
-          ])
+          ]
+        })
 
         const unminifiedFonts = groupBy(
           resources.filter(([_, newFont]) => newFont.fileName.endsWith(PROCESS_EXTENSION)),
           ([_, newFont]) => newFont.name!.replace(PROCESS_EXTENSION, ''),
         )
+
+        const stringAssets: Array<{ source: string, fileName: string }> = Object.values(bundle)
+          .filter(asset => asset.type === 'asset' && typeof asset.source === 'string') as any
 
         await Promise.all(Object.entries(unminifiedFonts)
           .map(async ([fontName, transforms]) => {
@@ -382,27 +445,25 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
               optionsMap.get(fontName)!,
             )
 
-            if (!minifiedBuffer) {
-              return
-            }
-
             transforms.forEach(([originalFont, newFont]) => {
               const extension = getFontExtension(originalFont.fileName)
               const fixedName = originalFont.name ? basename(originalFont.name, `.${extension}`) : camelcase(fontName)
-              const fixedFilename = (basename(newFont.fileName, PROCESS_EXTENSION) + `.${extension}`)
+              const temporalNewFontFilename = newFont.fileName
+              const fixedBasename = (basename(newFont.fileName, PROCESS_EXTENSION) + `.${extension}`)
                 .replace(fontName, fixedName)
               newFont.name = fixedName + `.${extension}`
-              newFont.fileName = fixedFilename
+              newFont.fileName = newFont.fileName.replace(basename(temporalNewFontFilename), fixedBasename)
 
-              Object.values(bundle).forEach(asset => {
-                if (asset.type === 'asset' && typeof asset.source === 'string' && asset.source.includes(newFont.fileName)) {
-                  logger.info(`Change name from "${newFont.fileName}" to ${fixedFilename} in ${asset.fileName}`)
-                  asset.source = asset.source.replace(newFont.fileName, fixedFilename)
+              const temporalNewFontBasename = escapeString(temporalNewFontFilename)
+
+              stringAssets.forEach(asset => {
+                if (asset.source.includes(temporalNewFontBasename)) {
+                  logger.info(`Change name from "${temporalNewFontBasename}" to ${newFont.fileName} in ${asset.fileName}`)
+                  asset.source = asset.source.replace(temporalNewFontBasename, newFont.fileName)
                 }
               })
 
-              const source = minifiedBuffer[extension]
-              newFont.source = source || originalFont.source
+              newFont.source = minifiedBuffer?.[extension] ?? Buffer.alloc(0)
             })
           }))
 
@@ -410,17 +471,16 @@ export default function FontExtractor (pluginOption: PluginOption): Plugin {
           const originalBuffer = Buffer.from(originalFont.source)
           const newLength = newFont.source.length
           const originalLength = originalBuffer.length
-          const resultLessThanOriginal = newLength < originalLength
+          const resultLessThanOriginal = newLength > 0 && newLength < originalLength
 
-          if (resultLessThanOriginal) {
-            logger.info(`Delete old redundant asset from: ${styler.path(originalFont.fileName)}`)
-            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-            delete bundle[originalFont.fileName]
-          } else {
+          if (!resultLessThanOriginal) {
             const comparePreview = styler.red(`[${newLength} < ${originalLength}]`)
             logger.warn(`New font no less than original ${comparePreview}. Revert content to original font`)
             newFont.source = originalBuffer
           }
+          logger.info(`Delete old asset from: ${styler.path(originalFont.fileName)}`)
+          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+          delete bundle[originalFont.fileName]
         })
       } catch (error) {
         logger.error('Clean up generated bundle is filed', { error: error as RollupError })

@@ -1,0 +1,16 @@
+@font-face {
+    font-family: 'Font Name';
+    src: url("../fonts/font.eot");
+    src: local("☺"),
+    url("../fonts/font.woff2") format("woff2"),
+    url("../fonts/font.woff") format("woff"),
+    url("../fonts/font.ttf") format("truetype");
+}
+
+.font-class {
+    font-family: "Font Name", serif;
+}
+
+.font-class.close {
+    content: "";
+}

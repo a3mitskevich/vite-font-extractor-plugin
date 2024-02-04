@@ -2,7 +2,14 @@ import { normalizePath, type ResolvedConfig, type ResolveFn } from 'vite'
 import { extname, join } from 'node:path'
 import { createHash } from 'node:crypto'
 import type { Format } from 'fontext'
-import { FONT_FACE_BLOCK_REGEX, FONT_FAMILY_RE, FONT_URL_REGEX, GOOGLE_FONT_URL_RE, POSTFIX_URL_RE } from './constants'
+import {
+  FONT_FACE_BLOCK_REGEX,
+  FONT_FAMILY_RE,
+  FONT_URL_REGEX,
+  GLYPH_REGEX,
+  GOOGLE_FONT_URL_RE,
+  POSTFIX_URL_RE, SYMBOL_REGEX, UNICODE_REGEX,
+} from './constants'
 import type { ImportResolvers } from './types'
 
 export const mergePath = (...paths: string[]): string => normalizePath(join(...paths.filter(Boolean)))
@@ -85,3 +92,20 @@ export const extractFontName = (fontFaceString: string): string => {
   const fontName = FONT_FAMILY_RE.exec(fontFaceString)?.[1]
   return fontName?.replace(/["']/g, '') ?? ''
 }
+
+export const findUnicodeGlyphs = (code: string): string[] => {
+  const matches = code.match(GLYPH_REGEX) || []
+  return matches.map(match => {
+    const [, unicodeMatch] = match.match(UNICODE_REGEX) || []
+    if (unicodeMatch) {
+      return String.fromCharCode(parseInt(unicodeMatch, 16))
+    }
+    const [, symbolMatch] = match.match(SYMBOL_REGEX) || []
+    if (symbolMatch) {
+      return symbolMatch
+    }
+    return ''
+  }).filter(Boolean)
+}
+
+export const escapeString = (value: string): string => value.replaceAll(' ', '\\ ')
