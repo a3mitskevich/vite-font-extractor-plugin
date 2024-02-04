@@ -1,10 +1,10 @@
 # Vite font extractor plugin
 
 **`vite-font-extractor-plugin`** is a vite plugin that to extracted glyphs from fonts that are used in applications and
-change the original font files to minimized.
+change the original font files to minimize.
 
 > [!IMPORTANT]
-> The main goal of this plugin is a minimize fonts and save easy use way on the page and in frameworks.**
+> The main goal of this plugin is a minimize fonts and save easy use way on the page and in frameworks.
 
 ## Installation
 
@@ -24,12 +24,12 @@ npm install vite-font-extractor-plugin
 ## Warning
 
 > [!WARNING]
-> When using the 'auto' type, the system identifies only CSS properties with 'content: "."' 
+> When using the `auto` type, the system identifies only CSS properties with `content: "."` 
 > and attempts to extract all font ligatures from each font file.
 > Furthermore, in every build, the system recalculates a hash on font files since the plugin cannot
 > detect changes when dependent on Unicode.
 > 
-> It is strongly recommended to use the 'manual' type if these limitations are critical for your project
+> It is strongly recommended to use the `manual` type if these limitations are critical for your project
 
 ## Usage
 
@@ -41,7 +41,20 @@ import FontExtractor from "vite-font-extractor-plugin";
 
 export default defineConfig({
  plugins: [
-  FontExtractor() // by default use "auto" type,
+  FontExtractor() // by default use "auto" type
+ ],
+})
+```
+
+### Config file by auto config:
+
+```javascript
+// vite.config.js
+import FontExtractor from "vite-font-extractor-plugin";
+
+export default defineConfig({
+ plugins: [
+  FontExtractor({ type: 'auto', targets: [] }) // 'targets' is not required and can be undefined
  ],
 })
 ```
@@ -53,14 +66,13 @@ export default defineConfig({
 import FontExtractor from "vite-font-extractor-plugin";
 
 const MaterialIconRegularTarget = {
- type: 'manual',
  fontName: 'Material Icons',
  ligatures: ['abc, close'],
 }
 
 export default defineConfig({
  plugins: [
-  FontExtractor({targets: MaterialIconRegularTarget}),
+  FontExtractor({ type: 'manual', targets: MaterialIconRegularTarget}), // 'targets' is required
  ],
 })
 ```
