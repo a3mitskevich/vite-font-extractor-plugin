@@ -28,8 +28,7 @@
     "versioning": "npm version $PART -m \"Updating the application version to %s\"",
     "versioning:patch": "npm run versioning --PART patch",
     "versioning:minor": "npm run versioning --PART minor",
-    "versioning:major": "npm run versioning --PART major",
-    "tsx:test": "npx tsx src/analyser.ts"
+    "versioning:major": "npm run versioning --PART major"
   },
   "keywords": [
     "vite",
@@ -43,7 +42,7 @@
   "license": "MIT",
   "dependencies": {
     "css-tree": "2.3.1",
-    "fontext": "1.1.2",
+    "fontext": "1.2.0",
     "lodash.camelcase": "4.3.0",
     "lodash.groupby": "4.6.0",
     "picocolors": "1.0.0"

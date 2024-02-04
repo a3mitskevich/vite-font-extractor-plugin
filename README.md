@@ -14,15 +14,46 @@ To install vite-font-extractor-plugin use npm:
 npm install vite-font-extractor-plugin
 ```
 
+## Features
+
+- Save ligatures
+- Auto detect font ligatures by css `content: "."`
+- Support goggle font urls
+- Support zero config
+
+## Warning
+
+> [!WARNING]
+> When using the 'auto' type, the system identifies only CSS properties with 'content: "."' 
+> and attempts to extract all font ligatures from each font file.
+> Furthermore, in every build, the system recalculates a hash on font files since the plugin cannot
+> detect changes when dependent on Unicode.
+> 
+> It is strongly recommended to use the 'manual' type if these limitations are critical for your project
+
 ## Usage
 
-### Config file:
+### Config file by zero config:
+
+```javascript
+// vite.config.js
+import FontExtractor from "vite-font-extractor-plugin";
+
+export default defineConfig({
+ plugins: [
+  FontExtractor() // by default use "auto" type,
+ ],
+})
+```
+
+### Config file by manual type behavior:
 
 ```javascript
 // vite.config.js
 import FontExtractor from "vite-font-extractor-plugin";
 
 const MaterialIconRegularTarget = {
+ type: 'manual',
  fontName: 'Material Icons',
  ligatures: ['abc, close'],
 }
@@ -148,7 +179,8 @@ FontExtractor(pluginOption: PluginOption): Plugin
 
 ### PluginOption parameters:
 
-* **targets** `Target[] | Target`: Targets for font extracting.
+* **type** `"auto" | "manual"`: Type plugin behaviour.
+* **targets** `Target[] | Target | undefined`: Targets for font extracting.
 * **cache** `boolean | string | undefined`: Enable a minifying result cache.
 * **logLevel** `LogLevel | undefined`: Setup a log level for plugin options. By default get a vite config logLevel.
 * **apply** `"build" | "serve" | undefined`: Apply the plugin only for serve or build, or on certain conditions
@@ -157,7 +189,8 @@ FontExtractor(pluginOption: PluginOption): Plugin
 ### Target parameters:
 
 * **fontName** `string`: The font filename that is to be extracted.
-* **ligatures** `string[]`: An array of ligatures to extracted from the font.
+* **ligatures** `string[] | undefined`: An array of ligatures to extracted from the font.
+* **raws** `string[] | undefined`: An array of unicode and symbols that will found and extracted from the font.
 * **withWhitespace** `boolean | undefined`: Set to true if you want to include whitespace glyphs in the font.
 
 ### Returns
