@@ -5,6 +5,11 @@
   "files": [
     "dist"
   ],
+  "homepage": "https://github.com/a3mitskevich/vite-font-extractor-plugin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/a3mitskevich/vite-font-extractor-plugin.git"
+  },
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -41,7 +46,6 @@
   "author": "Aleksandr Mitskevich",
   "license": "MIT",
   "dependencies": {
-    "css-tree": "2.3.1",
     "fontext": "1.2.0",
     "lodash.camelcase": "4.3.0",
     "lodash.groupby": "4.6.0",
