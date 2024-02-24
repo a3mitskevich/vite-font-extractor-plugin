@@ -15,7 +15,7 @@ export default defineConfig({
   plugins: [
     Vue2(),
     Components({ resolvers: [VuetifyResolver()] }),
-    FontExtractor({ targets: MaterialIconRegularTarget, cache: './' }),
+    FontExtractor({ type: 'auto', cache: './' }),
   ],
   resolve: {
     alias: {

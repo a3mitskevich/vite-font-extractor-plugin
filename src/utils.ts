@@ -8,9 +8,11 @@ import {
   FONT_URL_REGEX,
   GLYPH_REGEX,
   GOOGLE_FONT_URL_RE,
-  POSTFIX_URL_RE, SYMBOL_REGEX, UNICODE_REGEX,
+  POSTFIX_URL_RE,
+  SUPPORTED_RESULTS_FORMATS,
+  SYMBOL_REGEX, UNICODE_REGEX,
 } from './constants'
-import type { ImportResolvers } from './types'
+import { type ImportResolvers } from './types'
 
 export const mergePath = (...paths: string[]): string => normalizePath(join(...paths.filter(Boolean)))
 
@@ -25,6 +27,16 @@ export function exists<T> (value: T): value is NonNullable<T> {
 
 export function intersection<T> (array1: T[], array2: T[]): T[] {
   return array1.filter(item => array2.includes(item))
+}
+
+export function hasDifferent<T> (array1: T[], array2: T[]): boolean {
+  if (array1.length !== array2.length) {
+    return true
+  }
+  const [biggest, lowest] = array1.length > array2.length
+   ? [array1, array2]
+   : [array2, array1]
+  return biggest.some(item => !lowest.includes(item))
 }
 
 export const escapeComments = (str: string): string => str.replaceAll(/\/\/.+\s/g, '')
@@ -44,6 +56,16 @@ export function createResolvers (config: ResolvedConfig): ImportResolvers {
             tryIndex: false,
             preferRelative: false,
           }))
+      )
+    },
+    get font () {
+      return (
+        fontResolve ??
+       (fontResolve = config.createResolver({
+         extensions: SUPPORTED_RESULTS_FORMATS,
+         tryIndex: false,
+         preferRelative: false,
+       }))
       )
     },
   }

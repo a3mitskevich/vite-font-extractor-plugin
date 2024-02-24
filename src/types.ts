@@ -31,11 +31,13 @@ export interface ResourceTransformMeta {
 
 export interface ImportResolvers {
   common: ResolveFn
+  font: ResolveFn
 }
 
 export interface OptionsWithCacheSid {
   sid: string
   target: Target
+  auto: boolean
 }
 
 export interface FontMeta {

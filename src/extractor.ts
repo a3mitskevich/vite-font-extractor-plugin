@@ -25,7 +25,10 @@ import {
   extractGoogleFontsUrls,
   getFontExtension,
   getHash,
-  mergePath, findUnicodeGlyphs, escapeString,
+  mergePath,
+  findUnicodeGlyphs,
+  escapeString,
+  hasDifferent,
 } from './utils'
 import { readFileSync } from 'node:fs'
 import {
@@ -39,6 +42,11 @@ import { createInternalLogger } from './internal-loger'
 import groupBy from 'lodash.groupby'
 import camelcase from 'lodash.camelcase'
 
+interface ServeFontStubResponse {
+  extension: Format
+  content: Buffer
+  id: string
+}
 export default function FontExtractor (pluginOption: PluginOption = { type: 'auto' }): Plugin {
   const mode: PluginOption['type'] = pluginOption.type ?? 'manual'
   let cache: Cache | null
@@ -46,29 +54,39 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
   let logger: InternalLogger
 
   let isServe: boolean = false
-  const fontServeProxy = new Map<string, {
-    extension: Format
-    content: Buffer
-  }>()
+  const fontServeProxy = new Map<string, () => Promise<ServeFontStubResponse | null>>()
 
-  const autoTarget: Required<Target> = {
-    fontName: '[auto detected font name]',
-    raws: [],
-    withWhitespace: true,
-    ligatures: [],
-  }
+  const glyphsFindMap = new Map<string, string[]>()
+
+  const autoTarget = new Proxy<Required<Target>>(
+    {
+      fontName: 'ERROR: Illegal access. Font name must be provided from another place instead it',
+      raws: [],
+      withWhitespace: true,
+      ligatures: [],
+    },
+    {
+      get (target: Required<Target>, key: keyof Target): any {
+        if (key === 'fontName') {
+          throw Error(target[key])
+        }
+        if (key === 'raws') {
+          return Array.from(glyphsFindMap.values()).flat()
+        }
+        return target[key]
+      },
+    })
 
   const autoProxyOption = new Proxy<OptionsWithCacheSid>({
     sid: '[calculating...]',
     target: autoTarget,
+    auto: true,
   }, {
-    get (_: OptionsWithCacheSid, key: keyof OptionsWithCacheSid): any {
+    get (target: OptionsWithCacheSid, key: keyof OptionsWithCacheSid): any {
       if (key === 'sid') {
         return JSON.stringify(autoTarget)
       }
-      if (key === 'target') {
-        return autoTarget
-      }
+      return target[key]
     },
   })
 
@@ -76,14 +94,16 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
     ? Array.isArray(pluginOption.targets) ? pluginOption.targets : [pluginOption.targets]
     : []
 
-  const casualOptionsMap = new Map(
-    targets.map(target => [target.fontName, { sid: JSON.stringify(target), target }]),
+  const casualOptionsMap = new Map<string, OptionsWithCacheSid>(
+    targets.map(target => [target.fontName, { sid: JSON.stringify(target), target, auto: false }]),
   )
 
   const optionsMap = {
     get: (key: string) => {
       const option = casualOptionsMap.get(key)
-      return mode === 'auto' ? option ?? autoProxyOption : option
+      return mode === 'auto'
+        ? option ?? autoProxyOption
+        : option
     },
     has: (key: string) => mode === 'auto' || casualOptionsMap.has(key),
   } satisfies TargetOptionsMap
@@ -110,9 +130,7 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
   }
 
   const getSourceByUrl = async (url: string, importer?: string): Promise<Buffer | null> => {
-    const entrypointFilePath = isAbsolute(url)
-      ? url
-      : await importResolvers.common(url, importer)
+    const entrypointFilePath = await importResolvers.font(url, importer)
 
     if (!entrypointFilePath) {
       logger.warn(`Can not resolve entrypoint font by url: ${styler.path(url)}`)
@@ -193,7 +211,7 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
   const checkFontProcessing = (name: string, id: string): void | never => {
     const duplicateId = progress.get(name)
 
-    if (duplicateId) {
+    if (duplicateId && !isServe) {
       const placeInfo = `Font placed in "${styler.path(id)}" and "${styler.path(duplicateId)}"`
       const errorMessage = `Plugin not support a multiply files with same font name [${name}]. ${placeInfo}`
       // TODO: have chance to conflict by `unicode-range` attribute. Fix it
@@ -204,6 +222,74 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
     }
   }
 
+  const processServeFontMinify = (id: string, url: string, fontName: string): () => Promise<ServeFontStubResponse | null> => {
+    let result: ServeFontStubResponse | null = null
+    let prevOptions = optionsMap.get(fontName)
+
+    return async (): Promise<ServeFontStubResponse | null> => {
+      const currentOptions = optionsMap.get(fontName)
+      if (currentOptions && (!result || currentOptions.sid !== prevOptions?.sid)) {
+        prevOptions = currentOptions
+        const extension = getFontExtension(url)
+        const minifiedBuffers = await processMinify(
+          fontName,
+          [{
+            url,
+            importer: id,
+            extension,
+          }],
+          currentOptions,
+        )
+        const content = minifiedBuffers?.[extension]
+        if (content) {
+          result = {
+            content,
+            extension,
+            id,
+          }
+        } else {
+          result = null
+        }
+      }
+      return result
+    }
+  }
+
+  const processServeAutoFontMinify = (id: string, url: string, fontName: string): () => Promise<ServeFontStubResponse | null> => {
+    let previousRaws = autoProxyOption.target.raws ?? []
+    let result: ServeFontStubResponse | null
+
+    return async (): Promise<ServeFontStubResponse | null> => {
+      const currentRaws = autoProxyOption.target.raws ?? []
+      if (!result || hasDifferent(previousRaws, currentRaws)) {
+        previousRaws = currentRaws
+        const extension = getFontExtension(url)
+        const minifiedBuffers = await processMinify(
+          fontName,
+          [{
+            url,
+            importer: id,
+            extension,
+          }],
+          autoProxyOption,
+        )
+        const content = minifiedBuffers?.[extension]
+        if (content) {
+          result = {
+            content,
+            extension,
+            id,
+          }
+        } else {
+          result = null
+        }
+      }
+      return result
+    }
+  }
+
+  const loadedAutoFontMap = new Map<string, boolean>()
+
   const processFont = async function (
     this: TransformPluginContext,
     code: string,
@@ -212,29 +298,21 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
   ): Promise<string> {
     checkFontProcessing(font.name, id)
     if (isServe) {
-      if (mode === 'auto') {
-        logger.warn('Serve minification disabled in "auto" mode')
-        return code
-      }
-
-      const minifiedBuffers = await processMinify(
-        font.name,
-        font.aliases.map<MinifyFontOptions>(url => ({
+      font.aliases.forEach(url => {
+        if (fontServeProxy.has(url)) {
+          return
+        }
+        const process = font.options.auto
+          ? processServeAutoFontMinify(id, url, font.name)
+          : processServeFontMinify(id, url, font.name)
+        fontServeProxy.set(
           url,
-          importer: id,
-          extension: getFontExtension(url),
-        })),
-        font.options,
-      )
-      if (minifiedBuffers) {
-        font.aliases.forEach(url => {
-          const extension = getFontExtension(url)
-          fontServeProxy.set(url, {
-            extension,
-            content: minifiedBuffers[extension]!,
-          })
-        })
-      }
+          process,
+        )
+        if (font.options.auto) {
+          loadedAutoFontMap.set(url, false)
+        }
+      })
     } else {
       if (mode === 'auto') {
         const message = `"auto" mod detected. "${font.name}" font` +
@@ -302,13 +380,26 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
       isServe = true
       server.middlewares.use((req, res, next) => {
         const url = req.url!
-        const stub = fontServeProxy.get(url)
-        if (stub) {
-          logger.fix()
-          logger.info(`Stub server response for: ${styler.path(url)}`)
-          send(req, res, stub.content, `font/${stub.extension}`, { headers: server.config.server.headers })
-        } else {
+        const process = fontServeProxy.get(url)
+        if (!process) {
           next()
+        } else {
+          void (async () => {
+            const stub = await process()
+            if (!stub) {
+              next()
+              return
+            }
+            logger.fix()
+            logger.info(`Stub server response for: ${styler.path(url)}`)
+            send(req, res, stub.content, `font/${stub.extension}`, {
+              cacheControl: 'no-cache',
+              headers: server.config.server.headers,
+              // Disable cache for font request
+              etag: '',
+            })
+            loadedAutoFontMap.set(url, true)
+          })()
         }
       })
     },
@@ -321,7 +412,7 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
 
       if (isAutoType && isCssFile) {
         const glyphs = findUnicodeGlyphs(code)
-        autoTarget.raws.push(...glyphs)
+        glyphsFindMap.set(id, glyphs)
       }
       if (
         (id.endsWith('.html') || (isCssFile && code.includes('@import'))) &&
@@ -458,7 +549,7 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
 
               stringAssets.forEach(asset => {
                 if (asset.source.includes(temporalNewFontBasename)) {
-                  logger.info(`Change name from "${temporalNewFontBasename}" to ${newFont.fileName} in ${asset.fileName}`)
+                  logger.info(`Change name from "${styler.green(temporalNewFontBasename)}" to "${styler.green(newFont.fileName)}" in ${styler.path(asset.fileName)}`)
                   asset.source = asset.source.replace(temporalNewFontBasename, newFont.fileName)
                 }
               })
