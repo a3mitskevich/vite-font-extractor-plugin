@@ -84,7 +84,7 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
   }, {
     get (target: OptionsWithCacheSid, key: keyof OptionsWithCacheSid): any {
       if (key === 'sid') {
-        return JSON.stringify(autoTarget)
+        return JSON.stringify(autoTarget.raws)
       }
       return target[key]
     },
@@ -181,9 +181,11 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
       const minifyResult = await extract(
         Buffer.from(source),
         {
-          ...options.target,
           fontName,
           formats: fonts.map(font => font.extension),
+          raws: options.target.raws,
+          ligatures: options.target.ligatures,
+          withWhitespace: options.target.withWhitespace,
         },
       )
       Object.assign(minifiedBuffers, minifyResult)
