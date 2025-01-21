@@ -13,6 +13,13 @@ import {
   type Logger as LoggerV5,
 } from 'vite-5'
 import {
+  build as buildV6,
+  type InlineConfig as InlineConfigV6,
+  version as versionV6,
+  type Plugin as PluginV6,
+  type Logger as LoggerV6,
+} from 'vite-6'
+import {
   type ResolvedConfig,
 } from 'vite'
 import { dirname, join } from 'node:path'
@@ -21,10 +28,10 @@ import { readFileSync, rmSync } from 'node:fs'
 import type { FontExtractorPlugin, Target, PluginOption } from '../src'
 import type { RollupOutput } from 'rollup'
 
-export type InlineConfig = InlineConfigV4 & InlineConfigV5
-export type Plugin = PluginV4 & PluginV5
-export type ContainerVersion = typeof versionV4 | typeof versionV5
-export type Logger = LoggerV5 & LoggerV4
+export type InlineConfig = InlineConfigV4 & InlineConfigV5 & InlineConfigV6
+export type Plugin = PluginV4 & PluginV5 & PluginV6
+export type ContainerVersion = typeof versionV4 | typeof versionV5 | typeof versionV6
+export type Logger = LoggerV5 & LoggerV4 & LoggerV6
 export interface LoggerMessage { type: 'error' | 'warn' | 'info', message: string }
 export type FakeLogger = Logger & { messages: LoggerMessage[] }
 export type CssMinify = ResolvedConfig['build']['cssMinify']
@@ -125,6 +132,7 @@ export const generateId = (): string => Math.random().toString(32).slice(2, 10)
 export const viteBuild = {
   [versionV4]: buildV4,
   [versionV5]: buildV5,
+  [versionV6]: buildV6,
 }
 
 const createLogger = (): FakeLogger => {
@@ -178,6 +186,18 @@ export const buildByVersion = async (version: ContainerVersion, options: BuildOp
       emptyOutDir: true,
       sourcemap: false,
       cssMinify: options.cssMinify,
+    },
+    environments: {
+      client: {
+        build: {
+          commonjsOptions: {
+            include: ['node_modules'],
+          },
+          dynamicImportVarsOptions: {
+            exclude: ['node_modules'],
+          },
+        },
+      },
     },
   }
   const bundle = await viteBuild[version](inlineConfig) as RollupOutput

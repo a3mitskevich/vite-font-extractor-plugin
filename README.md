@@ -6,6 +6,13 @@ change the original font files to minimize.
 > [!IMPORTANT]
 > The main goal of this plugin is a minimize fonts and save easy use way on the page and in frameworks.
 
+
+| Vite version | Support status |
+|--------------|----------------|
+| v4           | Stable         |
+| v5           | Stable         |
+| v6           | Support        |
+
 ## Installation
 
 To install vite-font-extractor-plugin use npm:
