@@ -38,7 +38,13 @@ describe('Common', () => {
                   expect(asset.source.length).toBeLessThan(fontsLength[ext])
                 })
               cssAssets.forEach(asset => {
-                expect(asset.source.toString()).not.toContain('.fef')
+                const content = asset.source.toString()
+                expect(content).not.toContain('.fef')
+                if (content.includes('@font-face')) {
+                  fontAssets.forEach(asset => {
+                    expect(content).toContain(asset.fileName)
+                  })
+                }
               })
             })
           })
