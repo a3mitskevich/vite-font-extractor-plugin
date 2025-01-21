@@ -34,8 +34,8 @@ export function hasDifferent<T> (array1: T[], array2: T[]): boolean {
     return true
   }
   const [biggest, lowest] = array1.length > array2.length
-   ? [array1, array2]
-   : [array2, array1]
+    ? [array1, array2]
+    : [array2, array1]
   return biggest.some(item => !lowest.includes(item))
 }
 
@@ -129,5 +129,3 @@ export const findUnicodeGlyphs = (code: string): string[] => {
     return ''
   }).filter(Boolean)
 }
-
-export const escapeString = (value: string): string => value.replaceAll(' ', '\\ ')

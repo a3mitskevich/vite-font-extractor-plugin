@@ -10,7 +10,10 @@ import {
   type InlineConfig as InlineConfigV5,
   version as versionV5,
   type Plugin as PluginV5,
-  type Logger as LoggerV5, type ResolvedConfig,
+  type Logger as LoggerV5,
+} from 'vite-5'
+import {
+  type ResolvedConfig,
 } from 'vite'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,7 +21,7 @@ import { readFileSync, rmSync } from 'node:fs'
 import type { FontExtractorPlugin, Target, PluginOption } from '../src'
 import type { RollupOutput } from 'rollup'
 
-export type InlineConfig = InlineConfigV5 & InlineConfigV4
+export type InlineConfig = InlineConfigV4 & InlineConfigV5
 export type Plugin = PluginV4 & PluginV5
 export type ContainerVersion = typeof versionV4 | typeof versionV5
 export type Logger = LoggerV5 & LoggerV4
@@ -120,8 +123,8 @@ export const plugin = async (...args: Parameters<FontExtractorPlugin>): Promise<
 export const generateId = (): string => Math.random().toString(32).slice(2, 10)
 
 export const viteBuild = {
-  [versionV5]: buildV5,
   [versionV4]: buildV4,
+  [versionV5]: buildV5,
 }
 
 const createLogger = (): FakeLogger => {

@@ -27,7 +27,6 @@ import {
   getHash,
   mergePath,
   findUnicodeGlyphs,
-  escapeString,
   hasDifferent,
 } from './utils'
 import { readFileSync } from 'node:fs'
@@ -47,6 +46,7 @@ interface ServeFontStubResponse {
   content: Buffer
   id: string
 }
+
 export default function FontExtractor (pluginOption: PluginOption = { type: 'auto' }): Plugin {
   const mode: PluginOption['type'] = pluginOption.type ?? 'manual'
   let cache: Cache | null
@@ -318,8 +318,8 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
     } else {
       if (mode === 'auto') {
         const message = `"auto" mod detected. "${font.name}" font` +
-          ' is stubbed and result file hash will be recalculated randomly that may potential problem with external cache systems.' +
-          ' If this font is not target please add it to ignore'
+                    ' is stubbed and result file hash will be recalculated randomly that may potential problem with external cache systems.' +
+                    ' If this font is not target please add it to ignore'
         logger.warn(message)
       }
       font.aliases.forEach(alias => {
@@ -418,7 +418,7 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
       }
       if (
         (id.endsWith('.html') || (isCssFile && code.includes('@import'))) &&
-          code.includes('fonts.googleapis.com')
+                code.includes('fonts.googleapis.com')
       ) {
         const googleFonts = extractGoogleFontsUrls(code)
           .map<GoogleFontMeta | null>(raw => {
@@ -544,13 +544,23 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
               const temporalNewFontFilename = newFont.fileName
               const fixedBasename = (basename(newFont.fileName, PROCESS_EXTENSION) + `.${extension}`)
                 .replace(fontName, fixedName)
-              newFont.name = fixedName + `.${extension}`
+              const correctName = fixedName + `.${extension}`
+              Object.defineProperty(newFont, 'name', {
+                get (): any {
+                  return correctName
+                },
+              })
+
               newFont.fileName = newFont.fileName.replace(basename(temporalNewFontFilename), fixedBasename)
 
-              const temporalNewFontBasename = escapeString(temporalNewFontFilename)
+              const potentialTemporalNewFontBaseNames = [
+                temporalNewFontFilename.replace(' ', '\\ '),
+                temporalNewFontFilename.replace(' ', '%20'),
+              ]
 
               stringAssets.forEach(asset => {
-                if (asset.source.includes(temporalNewFontBasename)) {
+                const temporalNewFontBasename = potentialTemporalNewFontBaseNames.find(candidate => asset.source.includes(candidate))
+                if (temporalNewFontBasename) {
                   logger.info(`Change name from "${styler.green(temporalNewFontBasename)}" to "${styler.green(newFont.fileName)}" in ${styler.path(asset.fileName)}`)
                   asset.source = asset.source.replace(temporalNewFontBasename, newFont.fileName)
                 }
