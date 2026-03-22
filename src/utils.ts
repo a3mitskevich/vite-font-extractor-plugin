@@ -44,6 +44,8 @@ export function hasDifferent<T>(array1: T[], array2: T[]): boolean {
 
 export const escapeComments = (str: string): string => str.replaceAll(/\/\/.+\s/g, "");
 
+export const stripCssComments = (code: string): string => code.replace(/\/\*[\s\S]*?\*\//g, "");
+
 export function cleanUrl(url: string): string {
   return url.replace(POSTFIX_URL_RE, "");
 }
@@ -75,10 +77,11 @@ export function createResolvers(config: ResolvedConfig): ImportResolvers {
 }
 
 export const extractFontFaces = (code: string): string[] => {
+  const cleaned = stripCssComments(code);
   const faces = [];
   let match = null;
   FONT_FACE_BLOCK_REGEX.lastIndex = 0;
-  while ((match = FONT_FACE_BLOCK_REGEX.exec(code))) {
+  while ((match = FONT_FACE_BLOCK_REGEX.exec(cleaned))) {
     const face = match[0];
     if (face) {
       faces.push(face);
@@ -101,10 +104,11 @@ export const extractFonts = (fontFaceString: string): string[] => {
 };
 
 export const extractGoogleFontsUrls = (code: string): string[] => {
+  const cleaned = stripCssComments(code);
   const urls = [];
   let match = null;
   GOOGLE_FONT_URL_RE.lastIndex = 0;
-  while ((match = GOOGLE_FONT_URL_RE.exec(code))) {
+  while ((match = GOOGLE_FONT_URL_RE.exec(cleaned))) {
     const url = match[1];
     if (url) {
       urls.push(url);
@@ -134,7 +138,7 @@ export function groupBy<T>(array: T[], key: (item: T) => string): Record<string,
 }
 
 export const findUnicodeGlyphs = (code: string): string[] => {
-  const matches = code.match(GLYPH_REGEX) || [];
+  const matches = stripCssComments(code).match(GLYPH_REGEX) || [];
   return matches
     .map((match) => {
       const [, unicodeMatch] = match.match(UNICODE_REGEX) || [];
