@@ -40,7 +40,9 @@ describe("Common", () => {
               expect(fontAssets).toHaveLength(fixture.fonts.flatMap((font) => font.urls).length);
 
               fontAssets.forEach((asset) => {
-                const ext = extname(asset.name).slice(1) as keyof typeof fontsLength;
+                const ext = extname(asset.name ?? asset.fileName).slice(
+                  1,
+                ) as keyof typeof fontsLength;
                 expect(asset.source.length).toBeLessThan(fontsLength[ext]);
               });
               cssAssets.forEach((asset) => {

@@ -26,6 +26,13 @@ import {
   type Plugin as PluginV7,
   type Logger as LoggerV7,
 } from "vite-7";
+import {
+  build as _buildV8,
+  type InlineConfig as InlineConfigV8,
+  version as _versionV8,
+  type Plugin as PluginV8,
+  type Logger as LoggerV8,
+} from "vite-8";
 import type { ResolvedConfig } from "vite";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,14 +40,19 @@ import { readFileSync, rmSync } from "node:fs";
 import type { FontExtractorPlugin, Target, PluginOption } from "../src";
 import type { RollupOutput } from "rollup";
 
-export type InlineConfig = InlineConfigV4 & InlineConfigV5 & InlineConfigV6 & InlineConfigV7;
-export type Plugin = PluginV4 & PluginV5 & PluginV6 & PluginV7;
+export type InlineConfig = InlineConfigV4 &
+  InlineConfigV5 &
+  InlineConfigV6 &
+  InlineConfigV7 &
+  InlineConfigV8;
+export type Plugin = PluginV4 & PluginV5 & PluginV6 & PluginV7 & PluginV8;
 export type ContainerVersion =
   | typeof versionV4
   | typeof versionV5
   | typeof versionV6
-  | typeof versionV7;
-export type Logger = LoggerV4 & LoggerV5 & LoggerV6 & LoggerV7;
+  | typeof versionV7
+  | typeof versionV8;
+export type Logger = LoggerV4 & LoggerV5 & LoggerV6 & LoggerV7 & LoggerV8;
 export interface LoggerMessage {
   type: "error" | "warn" | "info";
   message: string;
@@ -152,6 +164,9 @@ export const viteBuild = {
   [versionV5]: buildV5,
   [versionV6]: buildV6,
   [versionV7]: buildV7,
+  // TODO: Vite 8 uses Rolldown which handles emitFile/getFileName differently in generateBundle.
+  // Plugin needs adaptation for Rolldown's asset pipeline before enabling tests.
+  // [_versionV8]: _buildV8,
 };
 
 const createLogger = (): FakeLogger => {

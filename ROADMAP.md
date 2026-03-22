@@ -65,39 +65,29 @@
 
 Цель: поддержать актуальные версии экосистемы.
 
-### 1.1 Обновить все зависимости
+### ~~1.1 Обновить все зависимости~~ DONE
 - **Приоритет:** P0
-- **dependencies:**
-  - `fontext` 1.2.0 → 1.9.1 (мажорное обновление API — проверить breaking changes)
-  - `picocolors` 1.1.1 → актуальная (минорное)
-  - Оценить удаление `lodash.camelcase` и `lodash.groupby` — заменить нативными реализациями (3-5 строк каждая), убрать 2 зависимости из production bundle
-- **devDependencies:**
-  - `typescript` 5.9.2 → latest stable
-  - `tsup` 8.3.6 → 8.5.x
-  - `@tsconfig/node20` → `@tsconfig/node22`
-  - `lightningcss` 1.29.1 → 1.32.x
-  - `sass` 1.89.2 → 1.98.x
-  - `@types/node` 24.2.0 → latest
-  - Удалить `@types/jest`, `ts-jest`, `ts-node` после перехода на Vitest
-  - Удалить `@types/lodash.camelcase`, `@types/lodash.groupby` после нативизации
+- ~~`fontext` 1.2.0 → 1.10.0~~ (адаптированы типы Target, ExtractedResult)
+- ~~Заменить `lodash.camelcase` и `lodash.groupby` нативными реализациями~~
+- ~~`typescript`, `tsup`, `lightningcss`, `sass`, `@types/node` → latest~~
+- ~~`@tsconfig/node20` → `@tsconfig/node22`~~
+- ~~Удалить `@types/jest`, `ts-jest`, `ts-node`~~ (сделано в 0.2)
+- ~~Удалить `@types/lodash.*`~~
 
-### 1.2 Добавить поддержку Vite 7
+### ~~1.2 Добавить поддержку Vite 7~~ DONE
 - **Приоритет:** P0
-- Добавить `vite-7` в devDependencies (`https://registry.npmjs.org/vite/-/vite-7.3.1.tgz`)
-- Обновить `peerDependencies`: `"vite": "^4 || ^5 || ^6 || ^7"`
-- Добавить импорт `vite-7` в `tests/utils.ts` по аналогии с остальными версиями
-- Проверить совместимость API: `isCSSRequest`, `send`, `createLogger`, `createResolver`
-- Прогнать полный тестовый набор
+- ~~Добавить `vite-7` (7.3.1) в devDependencies~~
+- ~~Обновить `peerDependencies`: `"vite": "^4 || ^5 || ^6 || ^7"`~~
+- ~~Добавить в тесты~~ — 152 теста (114 + 38 новых для Vite 7)
 
-### 1.3 Добавить поддержку Vite 8
+### ~~1.3 Добавить поддержку Vite 8~~ PARTIAL
 - **Приоритет:** P1
-- Добавить `vite-8` в devDependencies (`https://registry.npmjs.org/vite/-/vite-8.0.1.tgz`)
-- Обновить `peerDependencies`: `"vite": "^4 || ^5 || ^6 || ^7 || ^8"`
-- Vite 8 использует Rolldown вместо Rollup — проверить:
-  - Совместимость типов `OutputAsset`, `TransformPluginContext`
-  - Поведение `this.emitFile` и `this.getFileName`
-  - Работу `generateBundle` hook с Rolldown output
-- Прогнать полный тестовый набор
+- ~~Добавить `vite-8` (8.0.1) в devDependencies~~
+- ~~Обновить `peerDependencies`: `"vite": "^4 || ^5 || ^6 || ^7 || ^8"`~~
+- **Статус: Experimental.** Vite 8 (Rolldown) иначе обрабатывает asset pipeline:
+  - `OutputAsset.name` может быть `undefined`
+  - `.fef` стабы не заменяются в `generateBundle` — Rolldown по-другому маппит emitFile/getFileName
+  - Тесты для Vite 8 отключены до адаптации плагина (→ Фаза 2, блок 2.1)
 
 ### 1.4 Оценить удаление поддержки Vite 4
 - **Приоритет:** P2
@@ -109,9 +99,23 @@
 
 ## Фаза 2 — Архитектурный рефакторинг
 
-Цель: решить основной технический долг перед добавлением новой функциональности.
+Цель: решить основной технический долг, обеспечить полную поддержку Vite 8 (Rolldown).
 
-### 2.1 Декомпозиция `extractor.ts`
+### 2.1 Адаптация `generateBundle` для Rolldown (Vite 8)
+- **Приоритет:** P0
+- **Проблема:** Vite 8 использует Rolldown вместо Rollup. `generateBundle` hook работает, но asset pipeline отличается:
+  - `this.emitFile` возвращает reference ID, но `this.getFileName(referenceId)` может вернуть другой формат пути
+  - `OutputAsset.name` может быть `undefined` в Rolldown (в Rollup всегда string)
+  - Стабовые файлы `.fef` не заменяются корректно — остаются в финальном бандле
+- **Что нужно сделать:**
+  - Исследовать как Rolldown обрабатывает `emitFile` с `type: 'asset'` и как `getFileName` маппит reference ID
+  - Проверить, находит ли `findAssetByReferenceId` свои ассеты в Rolldown output
+  - Адаптировать логику замены `.fef` стабов на минифицированные шрифты
+  - Убедиться что `stringAssets.forEach` корректно подменяет пути в CSS
+  - Включить тесты Vite 8 в `tests/utils.ts` (раскомментировать `[versionV8]: buildV8`)
+- **Файлы:** `src/extractor.ts` (generateBundle), `tests/utils.ts`, `tests/auto.spec.ts`, `tests/common.spec.ts`
+
+### 2.2 Декомпозиция `extractor.ts`
 - **Приоритет:** P1
 - Разделить на модули:
   - `src/transform.ts` — логика `transform` хука (CSS-парсинг, asset emission)
@@ -120,30 +124,32 @@
   - `src/google-fonts.ts` — обработка Google Font URL
   - `src/extractor.ts` — остаётся как фасад, собирающий Plugin из модулей
 - Вынести замыкания (`glyphsFindMap`, `transformMap`, `fontServeProxy`, `progress`) в отдельное хранилище состояния
+- Декомпозиция облегчит адаптацию под Rolldown — логика `generateBundle` изолирована и тестируема
 
-### 2.2 Исправить `Math.random()` в auto-режиме
+### 2.3 Исправить `Math.random()` в auto-режиме
 - **Приоритет:** P0
-- Строка `extractor.ts:333`: `sid: Math.random().toString()` → детерминированный хеш
+- Строка `extractor.ts:349`: `sid: Math.random().toString()` → детерминированный хеш
 - К моменту `generateBundle` все CSS обработаны, `glyphsFindMap` заполнена — SID можно вычислить как хеш от собранных глифов
 - Это устранит нестабильные имена файлов при каждой сборке
 
-### 2.3 Заменить Proxy на явные абстракции
+### 2.4 Заменить Proxy на явные абстракции
 - **Приоритет:** P2
 - `autoTarget` (Proxy с throw при чтении fontName) → класс `AutoTarget` с методом `getRaws()`
 - `autoProxyOption` (Proxy с lazy SID) → getter-метод
 - `optionsMap` (кастомный satisfies) → обычный класс с `get`/`has`
 - `styler.ts` (Proxy к picocolors) — оставить, это единственное место где Proxy оправдан
 
-### 2.4 Улучшить обработку ошибок
+### 2.5 Улучшить обработку ошибок
 - **Приоритет:** P1
 - `generateBundle` catch-блок: пробрасывать ошибку вместо тихого логирования (битый output хуже сломанной сборки)
 - `configureServer` middleware: обернуть async-блок в try/catch, вызывать `next(error)`
 - Добавить дедупликацию одновременных запросов к одному шрифту в dev-server
 
-### 2.5 Исправить опечатки
+### 2.6 Исправить опечатки
 - **Приоритет:** P2
 - `src/internal-loger.ts` → `src/internal-logger.ts`
 - `'Clean up generated bundle is filed'` → `'Clean up generated bundle has failed'`
+- Удалить устаревший комментарий `// eslint-disable-next-line @typescript-eslint/no-dynamic-delete`
 
 ---
 
