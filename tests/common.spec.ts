@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest'
 import { extname } from 'node:path'
 import type { OutputAsset } from 'rollup'
 import {

@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest'
 import { buildByVersion, type BuildOptions, type ContainerVersion, type CssMinify, fixtures, viteBuild } from './utils'
 
 describe('Minificators', () => {

@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest'
 import type { OutputAsset } from 'rollup'
 import { buildByVersion, type BuildOptions, type ContainerVersion, type CssMinify, fixtures, viteBuild } from './utils'
 
