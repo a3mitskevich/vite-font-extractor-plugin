@@ -39,7 +39,7 @@ import {
   SUPPORTED_RESULTS_FORMATS,
 } from "./constants";
 import styler from "./styler";
-import { createInternalLogger } from "./internal-loger";
+import { createInternalLogger } from "./internal-logger";
 
 interface ServeFontStubResponse {
   extension: Format;
@@ -616,11 +616,10 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
             newFont.source = originalBuffer;
           }
           logger.info(`Delete old asset from: ${styler.path(originalFont.fileName)}`);
-          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
           delete bundle[originalFont.fileName];
         });
       } catch (error) {
-        logger.error("Clean up generated bundle is filed", { error: error as RollupError });
+        logger.error("Clean up generated bundle has failed", { error: error as RollupError });
       }
     },
   };

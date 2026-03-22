@@ -193,7 +193,6 @@ export const buildByVersion = async (
   version: ContainerVersion,
   options: BuildOptions = {
     fixture: fixtures.plain.path,
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   },
 ) => {
   const id = generateId() + `-V${version}`;
