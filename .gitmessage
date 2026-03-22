@@ -1,0 +1,23 @@
+# <type>(<scope>): <description>
+#
+# Types:
+#   feat     — new feature
+#   fix      — bug fix
+#   chore    — maintenance (deps, config, CI)
+#   docs     — documentation only
+#   style    — formatting, no code change
+#   refactor — code change that neither fixes a bug nor adds a feature
+#   perf     — performance improvement
+#   test     — adding or updating tests
+#   ci       — CI/CD changes
+#   build    — build system or external dependencies
+#   revert   — revert a previous commit
+#
+# Scope (optional): cache, extractor, serve, google-fonts, deps, ci
+#
+# Examples:
+#   feat: add vite 7 support
+#   fix(cache): resolve hash collision on concurrent builds
+#   chore(deps): update fontext to 1.9
+#
+# Setup: git config commit.template .gitmessage
