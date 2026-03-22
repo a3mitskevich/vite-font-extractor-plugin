@@ -139,11 +139,10 @@
 - `optionsMap` (кастомный satisfies) → обычный класс с `get`/`has`
 - `styler.ts` (Proxy к picocolors) — оставить, это единственное место где Proxy оправдан
 
-### 2.5 Улучшить обработку ошибок
-- **Приоритет:** P1
-- `generateBundle` catch-блок: пробрасывать ошибку вместо тихого логирования (битый output хуже сломанной сборки)
-- `configureServer` middleware: обернуть async-блок в try/catch, вызывать `next(error)`
-- Добавить дедупликацию одновременных запросов к одному шрифту в dev-server
+### ~~2.5 Улучшить обработку ошибок~~ DONE
+- ~~`generateBundle` catch-блок: пробрасывать ошибку~~ → `throw error` после логирования
+- ~~`configureServer` middleware~~ → `.then().catch()` с `next(error)`
+- ~~Дедупликация одновременных запросов~~ → `inFlightRequests` Map
 
 ### ~~2.6 Исправить опечатки~~ DONE
 - ~~`src/internal-loger.ts` → `src/internal-logger.ts`~~
