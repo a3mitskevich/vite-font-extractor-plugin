@@ -338,18 +338,18 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       });
     } else {
       if (mode === "auto") {
-        const message =
-          `"auto" mod detected. "${font.name}" font` +
-          " is stubbed and result file hash will be recalculated randomly that may potential problem with external cache systems." +
-          " If this font is not target please add it to ignore";
-        logger.warn(message);
+        logger.warn(
+          `"auto" mode detected. "${font.name}" font is stubbed based on auto-detected glyphs.` +
+            " If this font is not a target please add it to ignore.",
+        );
       }
       font.aliases.forEach((alias) => {
         code = changeResource.call(this, code, {
           alias,
           name: font.name,
-          // TODO: must be reworked
-          sid: mode === "auto" ? Math.random().toString() : font.options.sid,
+          // TODO: recheck it
+          // sid: mode === "auto" ? Math.random().toString() : font.options.sid,
+          sid: font.options.sid,
         });
       });
     }
