@@ -530,7 +530,7 @@ export default function FontExtractor (pluginOption: PluginOption = { type: 'aut
           .map(async ([fontName, transforms]) => {
             const minifiedBuffer = await processMinify(
               fontName,
-              transforms.map<MinifyFontOptions>(([originalFont, newFont]) => ({
+              transforms.map<MinifyFontOptions>(([originalFont, _newFont]) => ({
                 extension: getFontExtension(originalFont.fileName),
                 source: Buffer.from(originalFont.source),
                 url: '',
