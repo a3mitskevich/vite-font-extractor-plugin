@@ -153,11 +153,10 @@
 
 Цель: сделать обработку CSS надёжнее.
 
-### 3.1 Добавить unit-тесты для regex-парсинга
-- **Приоритет:** P1
-- Покрыть тестами `extractFontFaces`, `extractFontName`, `extractFonts`, `findUnicodeGlyphs`, `extractGoogleFontsUrls`
-- Кейсы: комментарии в CSS, многострочные значения, экранированные кавычки, нестандартные пробелы
-- Это предохранитель перед рефакторингом регулярок
+### ~~3.1 Добавить unit-тесты для regex-парсинга~~ DONE
+- 30 unit-тестов в `tests/utils.spec.ts`
+- Покрыты: `extractFontFaces`, `extractFontName`, `extractFonts`, `findUnicodeGlyphs`, `extractGoogleFontsUrls`, `camelCase`, `groupBy`
+- Найден потенциальный баг: `extractFontName` захватывает trailing whitespace
 
 ### 3.2 Предварительная очистка CSS от комментариев
 - **Приоритет:** P2

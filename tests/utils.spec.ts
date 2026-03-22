@@ -5,6 +5,7 @@ import {
   extractFonts,
   extractGoogleFontsUrls,
   findUnicodeGlyphs,
+  stripCssComments,
   camelCase,
   groupBy,
 } from "../src/utils";
@@ -43,6 +44,45 @@ describe("extractFontFaces", () => {
     const result = extractFontFaces(css);
     expect(result).toHaveLength(1);
     expect(result[0]).toContain("MaterialIcons-Regular.woff2");
+  });
+
+  it("should ignore @font-face inside CSS comments", () => {
+    const css = `
+      /* @font-face { font-family: 'Commented'; src: url("no.woff2"); } */
+      @font-face { font-family: 'Real'; src: url("yes.woff2"); }
+    `;
+    const result = extractFontFaces(css);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain("'Real'");
+  });
+});
+
+describe("stripCssComments", () => {
+  it("should remove single-line comments", () => {
+    expect(stripCssComments("a { /* comment */ color: red; }")).toBe("a {  color: red; }");
+  });
+
+  it("should remove multi-line comments", () => {
+    const css = `a {
+  /* this is
+     a multi-line comment */
+  color: red;
+}`;
+    expect(stripCssComments(css)).toContain("color: red;");
+    expect(stripCssComments(css)).not.toContain("multi-line");
+  });
+
+  it("should handle multiple comments", () => {
+    const css = "/* first */ .b { /* second */ color: red; /* third */ }";
+    const result = stripCssComments(css);
+    expect(result).not.toContain("first");
+    expect(result).not.toContain("second");
+    expect(result).not.toContain("third");
+    expect(result).toContain("color: red;");
+  });
+
+  it("should return unchanged string without comments", () => {
+    expect(stripCssComments(".a { color: red; }")).toBe(".a { color: red; }");
   });
 });
 
@@ -124,6 +164,16 @@ describe("extractGoogleFontsUrls", () => {
   it("should return empty array for non-Google fonts", () => {
     expect(extractGoogleFontsUrls(`@import "https://example.com/font.css";`)).toEqual([]);
   });
+
+  it("should ignore Google Font urls inside CSS comments", () => {
+    const css = `
+      /* @import "https://fonts.googleapis.com/css?family=Commented"; */
+      @import "https://fonts.googleapis.com/css?family=Real";
+    `;
+    const result = extractGoogleFontsUrls(css);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain("family=Real");
+  });
 });
 
 describe("findUnicodeGlyphs", () => {
@@ -158,6 +208,16 @@ describe("findUnicodeGlyphs", () => {
     const css = `.icon::before { content: '\\e5cd'; }`;
     const result = findUnicodeGlyphs(css);
     expect(result).toHaveLength(1);
+  });
+
+  it("should ignore glyphs inside CSS comments", () => {
+    const css = `
+      /* .commented { content: "\\e001"; } */
+      .real { content: "\\e002"; }
+    `;
+    const result = findUnicodeGlyphs(css);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(String.fromCharCode(0xe002));
   });
 });
 
