@@ -145,11 +145,10 @@
 - `configureServer` middleware: обернуть async-блок в try/catch, вызывать `next(error)`
 - Добавить дедупликацию одновременных запросов к одному шрифту в dev-server
 
-### 2.6 Исправить опечатки
-- **Приоритет:** P2
-- `src/internal-loger.ts` → `src/internal-logger.ts`
-- `'Clean up generated bundle is filed'` → `'Clean up generated bundle has failed'`
-- Удалить устаревший комментарий `// eslint-disable-next-line @typescript-eslint/no-dynamic-delete`
+### ~~2.6 Исправить опечатки~~ DONE
+- ~~`src/internal-loger.ts` → `src/internal-logger.ts`~~
+- ~~`'Clean up generated bundle is filed'` → `'Clean up generated bundle has failed'`~~
+- ~~Удалить устаревшие `eslint-disable` комментарии~~
 
 ---
 
