@@ -10,47 +10,47 @@
 
 Цель: привести в порядок tooling, CI и developer experience до начала работы над функциональностью.
 
-### 0.1 Добавить `.nvmrc`
+### ~~0.1 Добавить `.nvmrc`~~ DONE
 - **Приоритет:** P0
-- Зафиксировать версию Node.js (22 LTS) для всех контрибьюторов
-- CI должен использовать `.nvmrc` как source of truth
+- ~~Зафиксировать версию Node.js (22 LTS) для всех контрибьюторов~~ → зафиксировано Node 24
+- ~~CI должен использовать `.nvmrc` как source of truth~~ → CI обновлен на [20.x, 22.x, 24.x]
 
-### 0.2 Переход с Jest на Vitest
+### ~~0.2 Переход с Jest на Vitest~~ DONE
 - **Приоритет:** P0
-- Удалить `jest`, `ts-jest`, `@types/jest`
-- Настроить `vitest` с поддержкой TypeScript из коробки (не нужен `ts-jest`)
-- Убрать `NODE_OPTIONS="--experimental-vm-modules"` — Vitest нативно поддерживает ESM
-- Переписать `jest.config.ts` → `vitest.config.ts`
-- Обновить `tsconfig.test.json` — убрать `"types": ["jest"]`
-- Адаптировать тесты: API совместим, но проверить `describe`/`it`/`expect` импорты
+- ~~Удалить `jest`, `ts-jest`, `@types/jest`~~ + удалён `ts-node`
+- ~~Настроить `vitest` с поддержкой TypeScript из коробки~~
+- ~~Убрать `NODE_OPTIONS="--experimental-vm-modules"`~~
+- ~~Переписать `jest.config.ts` → `vitest.config.ts`~~
+- ~~Обновить `tsconfig.test.json` — убрать `"types": ["jest"]`~~
+- ~~Адаптировать тесты~~ — добавлены явные импорты из `vitest` во все 5 файлов
 
-### 0.3 Переход с ESLint на oxlint + oxfmt (Oxc toolchain)
+### ~~0.3 Переход с ESLint на oxlint + oxfmt (Oxc toolchain)~~ DONE
 - **Приоритет:** P1
-- Удалить `eslint`, `@typescript-eslint/eslint-plugin`, `eslint-config-standard-with-typescript`, `.eslintrc.json`, `.eslintcache`, `.eslintignore`
-- Установить `oxlint` — линтинг (замена ESLint)
-- Установить `oxfmt` — форматирование (замена Prettier, которого и не было)
-- Создать `oxlint.json` с правилами, эквивалентными текущему конфигу
-- Обновить npm-скрипты: `"lint": "oxlint"`, `"fmt": "oxfmt"`, `"fmt:check": "oxfmt --check"`
+- ~~Удалить `eslint`, `@typescript-eslint/eslint-plugin`, `eslint-config-standard-with-typescript`, `.eslintrc.json`, `.eslintcache`, `.eslintignore`~~
+- ~~Установить `oxlint` — линтинг (замена ESLint)~~
+- ~~Установить `oxfmt` — форматирование~~
+- ~~Создать `oxlintrc.json`~~ — с TypeScript, import, promise правилами + категория correctness
+- ~~Обновить npm-скрипты~~
+- Дополнительно: `fast-glob` перенесён в прямые зависимости
 
-### 0.4 Git-хуки (pre-commit, commit-msg)
+### ~~0.4 Git-хуки (pre-commit, commit-msg)~~ DONE
 - **Приоритет:** P1
-- Установить `simple-git-hooks` (или `lefthook`) — легковесная альтернатива husky
-- Pre-commit hook: `oxlint && oxfmt --check`
-- Commit-msg hook: валидация по Conventional Commits (`feat:`, `fix:`, `chore:` и т.д.)
-- Добавить `lint-staged` для проверки только staged-файлов
+- ~~Установить `simple-git-hooks`~~ + `lint-staged`
+- ~~Pre-commit hook~~ → `npx lint-staged` (oxlint + oxfmt --check на staged .ts)
+- ~~Commit-msg hook~~ → `scripts/verify-commit-msg.mjs` (Conventional Commits)
+- Весь кодбейз отформатирован oxfmt
 
-### 0.5 `.gitmessage` — шаблон коммитов
+### ~~0.5 `.gitmessage` — шаблон коммитов~~ DONE
 - **Приоритет:** P1
-- Создать `.gitmessage` с шаблоном Conventional Commits
-- Документировать настройку: `git config commit.template .gitmessage`
+- ~~Создать `.gitmessage` с шаблоном Conventional Commits~~
+- Настройка: `git config commit.template .gitmessage`
 
-### 0.6 Автоматический CHANGELOG
+### ~~0.6 Автоматический CHANGELOG~~ DONE
 - **Приоритет:** P1
-- Внедрить `changesets` (`@changesets/cli`) — каждый PR содержит changeset-файл, описывающий изменение
-- При релизе `changeset version` автоматически обновляет `CHANGELOG.md` и бампит версию
-- Альтернатива: `release-it` + `@release-it/conventional-changelog` если нужен более простой flow
-- Удалить ручные npm-скрипты `versioning:*`
-- Добавить GitHub Action для автоматического релиза
+- ~~Внедрить `changesets` (`@changesets/cli`)~~
+- ~~Удалить ручные npm-скрипты `versioning:*`~~
+- Скрипты: `changeset`, `version`, `release`
+- GitHub Action для автоматического релиза — отложено на отдельный PR
 
 ### 0.7 Обновить CI pipeline
 - **Приоритет:** P1
