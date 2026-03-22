@@ -402,28 +402,42 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
     configureServer(server) {
       isServe = true;
+      const inFlightRequests = new Map<string, Promise<ServeFontStubResponse | null>>();
       server.middlewares.use((req, res, next) => {
         const url = req.url!;
-        const process = fontServeProxy.get(url);
-        if (!process) {
+        const processFont = fontServeProxy.get(url);
+        if (!processFont) {
           next();
         } else {
-          void (async () => {
-            const stub = await process();
-            if (!stub) {
-              next();
-              return;
-            }
-            logger.fix();
-            logger.info(`Stub server response for: ${styler.path(url)}`);
-            send(req, res, stub.content, `font/${stub.extension}`, {
-              cacheControl: "no-cache",
-              headers: server.config.server.headers,
-              // Disable cache for font request
-              etag: "",
+          const pending =
+            inFlightRequests.get(url) ??
+            (() => {
+              const p = processFont();
+              inFlightRequests.set(url, p);
+              p.finally(() => inFlightRequests.delete(url));
+              return p;
+            })();
+          pending
+            .then((stub) => {
+              if (!stub) {
+                next();
+                return;
+              }
+              logger.fix();
+              logger.info(`Stub server response for: ${styler.path(url)}`);
+              send(req, res, stub.content, `font/${stub.extension}`, {
+                cacheControl: "no-cache",
+                headers: server.config.server.headers,
+                etag: "",
+              });
+              loadedAutoFontMap.set(url, true);
+            })
+            .catch((error) => {
+              logger.error(`Failed to process font: ${styler.path(url)}`, {
+                error: error as Error,
+              });
+              next(error);
             });
-            loadedAutoFontMap.set(url, true);
-          })();
         }
       });
     },
@@ -620,6 +634,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         });
       } catch (error) {
         logger.error("Clean up generated bundle has failed", { error: error as RollupError });
+        throw error;
       }
     },
   };
