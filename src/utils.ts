@@ -13,7 +13,7 @@ import {
   SYMBOL_REGEX,
   UNICODE_REGEX,
 } from "./constants";
-import { type ImportResolvers } from "./types";
+import type { ImportResolvers } from "./types";
 
 export const mergePath = (...paths: string[]): string =>
   normalizePath(join(...paths.filter(Boolean)));
@@ -117,6 +117,21 @@ export const extractFontName = (fontFaceString: string): string => {
   const fontName = FONT_FAMILY_RE.exec(fontFaceString)?.[1];
   return fontName?.replace(/["']/g, "") ?? "";
 };
+
+export function camelCase(str: string): string {
+  return str
+    .replace(/[\s_-]+(.)?/g, (_, c: string | undefined) => (c ? c.toUpperCase() : ""))
+    .replace(/^[A-Z]/, (c) => c.toLowerCase());
+}
+
+export function groupBy<T>(array: T[], key: (item: T) => string): Record<string, T[]> {
+  const result: Record<string, T[]> = {};
+  for (const item of array) {
+    const k = key(item);
+    (result[k] ??= []).push(item);
+  }
+  return result;
+}
 
 export const findUnicodeGlyphs = (code: string): string[] => {
   const matches = code.match(GLYPH_REGEX) || [];

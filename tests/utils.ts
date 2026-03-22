@@ -19,7 +19,7 @@ import {
   type Plugin as PluginV6,
   type Logger as LoggerV6,
 } from "vite-6";
-import { type ResolvedConfig } from "vite";
+import type { ResolvedConfig } from "vite";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync, rmSync } from "node:fs";

@@ -52,13 +52,12 @@
 - Скрипты: `changeset`, `version`, `release`
 - GitHub Action для автоматического релиза — отложено на отдельный PR
 
-### 0.7 Обновить CI pipeline
+### ~~0.7 Обновить CI pipeline~~ DONE
 - **Приоритет:** P1
-- Добавить шаг `lint` (`oxlint`) в CI
-- Добавить шаг `fmt:check` (`oxfmt --check`) в CI
-- Обновить матрицу Node.js: `[20.x, 22.x, 24.x]` (убрать 18.x — EOL)
-- Добавить job для `npm run build` + проверка, что `dist/` собирается без ошибок
-- Добавить caching для `node_modules`
+- ~~Добавить шаг `lint` (`oxlint`) в CI~~
+- ~~Добавить шаг `fmt:check` (`oxfmt --check`) в CI~~
+- ~~Обновить матрицу Node.js~~ (сделано в 0.1)
+- Lint и test — параллельные job'ы, lint использует `.nvmrc`
 
 ---
 

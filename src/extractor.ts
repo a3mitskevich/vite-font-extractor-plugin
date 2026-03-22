@@ -2,21 +2,23 @@ import { isCSSRequest, type Plugin, send } from "vite";
 import type { OutputAsset, RollupError, TransformPluginContext } from "rollup";
 import { basename, isAbsolute } from "node:path";
 import { extract, type ExtractedResult, type Format } from "fontext";
-import {
-  type FontFaceMeta,
-  type GoogleFontMeta,
-  type ImportResolvers,
-  type InternalLogger,
-  type MinifyFontOptions,
-  type OptionsWithCacheSid,
-  type PluginOption,
-  type ResourceTransformMeta,
-  type Target,
-  type TargetOptionsMap,
+import type {
+  FontFaceMeta,
+  GoogleFontMeta,
+  ImportResolvers,
+  InternalLogger,
+  MinifyFontOptions,
+  OptionsWithCacheSid,
+  PluginOption,
+  ResourceTransformMeta,
+  Target,
+  TargetOptionsMap,
 } from "./types";
 import Cache from "./cache";
 import {
+  camelCase,
   createResolvers,
+  groupBy,
   intersection,
   exists,
   extractFontFaces,
@@ -38,8 +40,6 @@ import {
 } from "./constants";
 import styler from "./styler";
 import { createInternalLogger } from "./internal-loger";
-import groupBy from "lodash.groupby";
-import camelcase from "lodash.camelcase";
 
 interface ServeFontStubResponse {
   extension: Format;
@@ -58,7 +58,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
 
   const glyphsFindMap = new Map<string, string[]>();
 
-  const autoTarget = new Proxy<Required<Target>>(
+  const autoTarget = new Proxy<Target>(
     {
       fontName: "ERROR: Illegal access. Font name must be provided from another place instead it",
       raws: [],
@@ -66,7 +66,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       ligatures: [],
     },
     {
-      get(target: Required<Target>, key: keyof Target): any {
+      get(target: Target, key: keyof Target): any {
         if (key === "fontName") {
           throw Error(target[key]);
         }
@@ -170,11 +170,14 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     }
 
     const sid = options.sid;
-    const cacheKey = camelcase(fontName) + "-" + getHash(sid + entryPoint.url);
+    const cacheKey = camelCase(fontName) + "-" + getHash(sid + entryPoint.url);
 
     const needExtracting = fonts.some((font) => !cache?.check(cacheKey + `.${font.extension}`));
 
-    const minifiedBuffers: ExtractedResult = { meta: [] };
+    const minifiedBuffers: ExtractedResult = {
+      meta: [],
+      report: { originalSize: 0, formats: {} },
+    };
 
     if (needExtracting) {
       if (cache) {
@@ -560,7 +563,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
               const extension = getFontExtension(originalFont.fileName);
               const fixedName = originalFont.name
                 ? basename(originalFont.name, `.${extension}`)
-                : camelcase(fontName);
+                : camelCase(fontName);
               const temporalNewFontFilename = newFont.fileName;
               const fixedBasename = (
                 basename(newFont.fileName, PROCESS_EXTENSION) + `.${extension}`

@@ -1,7 +1,7 @@
 import color from "picocolors";
 import { basename, dirname, sep } from "node:path";
 import type { Colors } from "picocolors/types";
-import { type StyleMessage } from "./types";
+import type { StyleMessage } from "./types";
 
 const DEFAULT = (message: string): string => message;
 

@@ -5,7 +5,7 @@ import {
   type LogOptions,
   type LogType,
 } from "vite";
-import { type InternalLogger, type PluginOption } from "./types";
+import type { InternalLogger, PluginOption } from "./types";
 import { PLUGIN_NAME } from "./constants";
 import styler from "./styler";
 
