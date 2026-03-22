@@ -19,6 +19,13 @@ import {
   type Plugin as PluginV6,
   type Logger as LoggerV6,
 } from "vite-6";
+import {
+  build as buildV7,
+  type InlineConfig as InlineConfigV7,
+  version as versionV7,
+  type Plugin as PluginV7,
+  type Logger as LoggerV7,
+} from "vite-7";
 import type { ResolvedConfig } from "vite";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,10 +33,14 @@ import { readFileSync, rmSync } from "node:fs";
 import type { FontExtractorPlugin, Target, PluginOption } from "../src";
 import type { RollupOutput } from "rollup";
 
-export type InlineConfig = InlineConfigV4 & InlineConfigV5 & InlineConfigV6;
-export type Plugin = PluginV4 & PluginV5 & PluginV6;
-export type ContainerVersion = typeof versionV4 | typeof versionV5 | typeof versionV6;
-export type Logger = LoggerV5 & LoggerV4 & LoggerV6;
+export type InlineConfig = InlineConfigV4 & InlineConfigV5 & InlineConfigV6 & InlineConfigV7;
+export type Plugin = PluginV4 & PluginV5 & PluginV6 & PluginV7;
+export type ContainerVersion =
+  | typeof versionV4
+  | typeof versionV5
+  | typeof versionV6
+  | typeof versionV7;
+export type Logger = LoggerV4 & LoggerV5 & LoggerV6 & LoggerV7;
 export interface LoggerMessage {
   type: "error" | "warn" | "info";
   message: string;
@@ -140,6 +151,7 @@ export const viteBuild = {
   [versionV4]: buildV4,
   [versionV5]: buildV5,
   [versionV6]: buildV6,
+  [versionV7]: buildV7,
 };
 
 const createLogger = (): FakeLogger => {
