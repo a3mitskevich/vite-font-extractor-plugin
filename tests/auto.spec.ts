@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { extname } from 'node:path'
-import type { OutputAsset } from 'rollup'
+import { describe, it, expect } from "vitest";
+import { extname } from "node:path";
+import type { OutputAsset } from "rollup";
 import {
   buildByVersion,
   type BuildOptions,
@@ -9,51 +9,56 @@ import {
   fixtures,
   fontsLength,
   viteBuild,
-} from './utils'
+} from "./utils";
 
-describe('Auto', () => {
+describe("Auto", () => {
   const runCommonTest = (version: ContainerVersion) => {
     describe(`Common test for vite@${version}`, () => {
-      const fixture = fixtures.auto
-      Array.from(['lightningcss', 'esbuild'] as CssMinify[]).forEach(cssMinify => {
+      const fixture = fixtures.auto;
+      Array.from(["lightningcss", "esbuild"] as CssMinify[]).forEach((cssMinify) => {
         describe(`Build test for "auto" fixture with "${cssMinify}" css minificator`, () => {
-          const build = async (options?: BuildOptions) => buildByVersion(version, {
-            ...options,
-            pluginOptions: {
-              type: 'auto',
-            },
-            fixture: fixture.path,
-            targets: fixture.fonts.map(font => font.name),
-          })
+          const build = async (options?: BuildOptions) =>
+            buildByVersion(version, {
+              ...options,
+              pluginOptions: {
+                type: "auto",
+              },
+              fixture: fixture.path,
+              targets: fixture.fonts.map((font) => font.name),
+            });
 
-          it('should return a bundle with minified fonts', async () => {
-            const { output } = await build()
-            const fontAssets = output
-              .filter((asset): asset is OutputAsset => asset.type === 'asset' && asset.fileName.includes('font-'))
-            const cssAssets = output.filter((asset): asset is OutputAsset => asset.type === 'asset' && asset.fileName.endsWith('.css'))
+          it("should return a bundle with minified fonts", async () => {
+            const { output } = await build();
+            const fontAssets = output.filter(
+              (asset): asset is OutputAsset =>
+                asset.type === "asset" && asset.fileName.includes("font-"),
+            );
+            const cssAssets = output.filter(
+              (asset): asset is OutputAsset =>
+                asset.type === "asset" && asset.fileName.endsWith(".css"),
+            );
 
-            expect(fontAssets).toHaveLength(fixture.fonts.flatMap(font => font.urls).length)
+            expect(fontAssets).toHaveLength(fixture.fonts.flatMap((font) => font.urls).length);
 
-            fontAssets
-              .forEach(asset => {
-                const ext = extname(asset.name).slice(1) as keyof typeof fontsLength
-                expect(asset.source.length).toBeLessThan(fontsLength[ext])
-              })
-            cssAssets.forEach(asset => {
-              expect(asset.source.toString()).not.toContain('.fef')
-            })
-          })
-        })
-      })
-    })
-  }
+            fontAssets.forEach((asset) => {
+              const ext = extname(asset.name).slice(1) as keyof typeof fontsLength;
+              expect(asset.source.length).toBeLessThan(fontsLength[ext]);
+            });
+            cssAssets.forEach((asset) => {
+              expect(asset.source.toString()).not.toContain(".fef");
+            });
+          });
+        });
+      });
+    });
+  };
 
   const runAllTests = () => {
-    Object.keys(viteBuild).forEach(version => {
-      runCommonTest(version)
-    })
-  }
+    Object.keys(viteBuild).forEach((version) => {
+      runCommonTest(version);
+    });
+  };
 
-  runAllTests()
+  runAllTests();
   // runCommonTest(versionV4, ['plain-html']) // for single debug
-})
+});
