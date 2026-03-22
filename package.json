@@ -32,10 +32,9 @@
     "fmt": "oxfmt --write src tests/*.ts tests/utils.ts",
     "fmt:check": "oxfmt --check src tests/*.ts tests/utils.ts",
     "prepare": "simple-git-hooks",
-    "versioning": "npm version $PART -m \"Updating the application version to %s\"",
-    "versioning:patch": "npm run versioning --PART patch",
-    "versioning:minor": "npm run versioning --PART minor",
-    "versioning:major": "npm run versioning --PART major"
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "changeset publish"
   },
   "simple-git-hooks": {
     "pre-commit": "npx lint-staged",
@@ -68,6 +67,7 @@
     "vite": "^4 || ^5 || ^6"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.30.0",
     "@tsconfig/node20": "20.1.4",
     "@types/lodash.camelcase": "4.3.9",
     "@types/lodash.groupby": "4.6.9",
