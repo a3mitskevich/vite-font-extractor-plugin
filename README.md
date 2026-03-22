@@ -35,11 +35,13 @@ That's it. The plugin scans your CSS for `content: "..."` declarations, figures 
 
 ## Vite Compatibility
 
-| Vite | Status |
-|------|--------|
-| v4   | Stable |
-| v5   | Stable |
-| v6   | Stable |
+| Vite | Status       |
+|------|--------------|
+| v4   | Stable       |
+| v5   | Stable       |
+| v6   | Stable       |
+| v7   | Stable       |
+| v8   | Experimental |
 
 ## How It Works
 
