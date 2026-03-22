@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-unused-vars": "error",
+    "no-console": "warn",
+    "eqeqeq": ["error", "smart"],
+    "no-var": "error",
+    "prefer-const": "error",
+    "no-throw-literal": "error",
+    "no-template-curly-in-string": "warn",
+    "no-self-compare": "error",
+    "no-promise-executor-return": "error",
+
+    "typescript/no-floating-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-for-in-array": "error",
+    "typescript/no-unnecessary-type-assertion": "warn",
+    "typescript/no-duplicate-enum-values": "error",
+    "typescript/no-non-null-asserted-optional-chain": "error",
+    "typescript/no-unsafe-declaration-merging": "error",
+    "typescript/prefer-as-const": "error",
+    "typescript/no-useless-empty-export": "warn",
+    "typescript/no-import-type-side-effects": "warn",
+
+    "import/no-self-import": "error",
+    "import/no-cycle": "error",
+    "import/default": "error",
+    "import/no-duplicates": "warn"
+  },
+  "ignorePatterns": ["dist", "node_modules", "playground", "coverage"]
+}
