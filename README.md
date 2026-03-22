@@ -1,226 +1,179 @@
-# Vite font extractor plugin
+<p align="center">
+  <img src="https://img.shields.io/npm/v/vite-font-extractor-plugin?color=blue&label=npm" alt="npm version" />
+  <img src="https://img.shields.io/npm/l/vite-font-extractor-plugin" alt="license" />
+  <img src="https://img.shields.io/github/actions/workflow/status/a3mitskevich/vite-font-extractor-plugin/node.js.yml?branch=master&label=tests" alt="CI" />
+  <img src="https://img.shields.io/npm/dm/vite-font-extractor-plugin" alt="downloads" />
+</p>
 
-**`vite-font-extractor-plugin`** is a vite plugin that to extracted glyphs from fonts that are used in applications and
-change the original font files to minimize.
+# vite-font-extractor-plugin
 
-> [!IMPORTANT]
-> The main goal of this plugin is a minimize fonts and save easy use way on the page and in frameworks.
+Drop-in Vite plugin that **extracts only the glyphs you actually use** from font files and replaces the originals with minimized versions. Works with local fonts and Google Fonts, in both `build` and `dev server` modes.
 
+```
+Material Icons (full)     →  348 KB
+Material Icons (3 icons)  →   12 KB   (~97% smaller)
+```
 
-| Vite version | Support status |
-|--------------|----------------|
-| v4           | Stable         |
-| v5           | Stable         |
-| v6           | Support        |
-
-## Installation
-
-To install vite-font-extractor-plugin use npm:
+## Quick Start
 
 ```bash
 npm install vite-font-extractor-plugin
 ```
 
-## Features
+```js
+// vite.config.js
+import FontExtractor from 'vite-font-extractor-plugin'
 
-- Save ligatures
-- Auto detect font ligatures by css `content: "."`
-- Support goggle font urls
-- Support zero config
+export default defineConfig({
+  plugins: [
+    FontExtractor() // zero-config: auto-detects used glyphs
+  ],
+})
+```
 
-## Warning
+That's it. The plugin scans your CSS for `content: "..."` declarations, figures out which glyphs are referenced, and strips everything else from font files.
+
+## Vite Compatibility
+
+| Vite | Status |
+|------|--------|
+| v4   | Stable |
+| v5   | Stable |
+| v6   | Stable |
+
+## How It Works
+
+The plugin hooks into two stages of Vite's pipeline:
+
+**During `build`** — intercepts `@font-face` declarations, emits stub assets, then in `generateBundle` replaces them with minified font buffers containing only the glyphs you need.
+
+**During `serve`** — registers middleware that intercepts font requests and responds with minified versions on the fly. Fonts are re-minified only when glyph usage changes.
+
+## Modes
+
+### Auto (default)
+
+Scans all CSS for `content: "..."` properties and extracts unicode/symbol glyphs automatically.
+
+```js
+FontExtractor({ type: 'auto' })
+```
 
 > [!WARNING]
-> When using the `auto` type, the system identifies only CSS properties with `content: "."` 
-> and attempts to extract all font ligatures from each font file.
-> Furthermore, in every build, the system recalculates a hash on font files since the plugin cannot
-> detect changes when dependent on Unicode.
-> 
-> It is strongly recommended to use the `manual` type if these limitations are critical for your project
+> In `auto` mode, the plugin cannot detect changes based on Unicode — font file hashes are recalculated on every build. Use `manual` mode if deterministic output is critical for your caching strategy.
 
-## Usage
+### Manual
 
-### Config file by zero config:
+You specify exactly which ligatures and symbols to keep:
 
-```javascript
-// vite.config.js
-import FontExtractor from "vite-font-extractor-plugin";
-
-export default defineConfig({
- plugins: [
-  FontExtractor() // by default use "auto" type
- ],
+```js
+FontExtractor({
+  type: 'manual',
+  targets: {
+    fontName: 'Material Icons',
+    ligatures: ['close', 'menu', 'search'],
+  },
 })
 ```
 
-### Config file by auto config:
+## Font Sources
 
-```javascript
-// vite.config.js
-import FontExtractor from "vite-font-extractor-plugin";
+The plugin handles fonts regardless of how they're imported:
 
-export default defineConfig({
- plugins: [
-  FontExtractor({ type: 'auto', targets: [] }) // 'targets' is not required and can be undefined
- ],
-})
-```
-
-### Config file by manual type behavior:
-
-```javascript
-// vite.config.js
-import FontExtractor from "vite-font-extractor-plugin";
-
-const MaterialIconRegularTarget = {
- fontName: 'Material Icons',
- ligatures: ['abc, close'],
-}
-
-export default defineConfig({
- plugins: [
-  FontExtractor({ type: 'manual', targets: MaterialIconRegularTarget}), // 'targets' is required
- ],
-})
-```
-
-### Through JS import:
-
-```javascript
-// main.js
-import Vue from 'vue';
-import App from './App.vue';
-import Vuetify from "vuetify";
-// First way to import fonts
-import 'material-design-icons-iconfont/dist/material-design-icons-no-codepoints.css';
-
-Vue.use(Vuetify)
-
-export function createApp() {
- const app = new Vue({
-  vuetify: new Vuetify({
-   icons: {
-    iconfont: 'md',
-   },
-  }),
-  render: (h) => h(App),
- });
-
- return {app};
-}
-
-createApp().app.$mount('#app');
-```
-
-### Through CSS import:
-
+**CSS import:**
 ```scss
-// App.scss
-// Second way to import font
 @import "material-design-icons-iconfont/dist/material-design-icons-no-codepoints.css";
 ```
 
-### Through CSS file:
-
-```scss
-// material-design-icons-iconfont/dist/material-design-icons-no-codepoints.css
-@charset "UTF-8";
-@font-face {
-  // See font name here
-  font-family: 'Material Icons';
-  src: url("./fonts/MaterialIcons-Regular.eot");
-  src: url("./fonts/MaterialIcons-Regular.woff2") format("woff2"),
-  url("./fonts/MaterialIcons-Regular.woff") format("woff"),
-  url("./fonts/MaterialIcons-Regular.ttf") format("truetype");
-  ...
-}
-
-.material-icons {
-  ...
-}
-
+**JS import:**
+```js
+import 'material-design-icons-iconfont/dist/material-design-icons-no-codepoints.css'
 ```
 
-## Google fonts urls
+**HTML link tag or CSS `@font-face`** — detected automatically.
 
-Plugin additionally supports Google font url transformation to
-enable [minification](https://developers.google.com/fonts/docs/getting_started?hl=en#optimizing_your_font_requests):
+## Google Fonts
 
-### Config file
+Google Font URLs are optimized by appending the `&text=` parameter, letting Google's servers do the subsetting:
 
-```javascript
-// vite.config.js
-import FontExtractor from "vite-font-extractor-plugin";
-
-const MaterialIconGoogleFontTarget = {
- // Warning: "+" sign from url should be transformed to plain space sign
- fontName: 'Material Icons', // 'Material+Icons' is wrong notation
- ligatures: ['play_arrow', 'close'],
-}
-
-export default defineConfig({
- plugins: [
-  FontExtractor({targets: MaterialIconGoogleFontTarget}),
- ],
+```js
+FontExtractor({
+  type: 'manual',
+  targets: {
+    // Use spaces, not "+" signs
+    fontName: 'Material Icons',
+    ligatures: ['play_arrow', 'close'],
+  },
 })
 ```
 
-### CSS file
-
-```css
-/* Import throw css import */
-@import "https://fonts.googleapis.com/icon?family=Material+Icons";
-```
-
-### HTML file
+Works with both `<link>` tags in HTML and `@import` in CSS:
 
 ```html
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8"/>
-    <!-- Import throw html link tag -->
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons"
-          rel="stylesheet">
-</head>
-<body>
-<div id="app"></div>
-<script type="module" src="/src/main.ts"></script>
-</body>
-</html>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+```
+
+```css
+@import "https://fonts.googleapis.com/icon?family=Material+Icons";
 ```
 
 ## API
 
+```ts
+FontExtractor(options?: PluginOption): Plugin
 ```
-FontExtractor(pluginOption: PluginOption): Plugin
+
+### `PluginOption`
+
+| Parameter  | Type                        | Description                                            |
+|------------|-----------------------------|--------------------------------------------------------|
+| `type`     | `'auto' \| 'manual'`       | Glyph detection strategy. Default: `'auto'`            |
+| `targets`  | `Target \| Target[]`        | Font targets for extraction. Required in manual mode   |
+| `cache`    | `boolean \| string`         | Enable disk cache. Pass string for custom cache path   |
+| `logLevel` | `'info' \| 'warn' \| 'error' \| 'silent'` | Log verbosity. Inherits from Vite config |
+| `apply`    | `'build' \| 'serve'`       | Restrict plugin to specific mode                       |
+| `ignore`   | `string[]`                  | Font names to skip                                     |
+
+### `Target`
+
+| Parameter       | Type       | Description                                       |
+|-----------------|------------|---------------------------------------------------|
+| `fontName`      | `string`   | Font family name (must match `@font-face` declaration) |
+| `ligatures`     | `string[]` | Ligature names to preserve                        |
+| `raws`          | `string[]` | Raw unicode characters / symbols to preserve      |
+| `withWhitespace`| `boolean`  | Include whitespace glyphs. Default: `false`       |
+
+## Caching
+
+Enable disk caching to skip re-minification when fonts haven't changed:
+
+```js
+FontExtractor({
+  type: 'manual',
+  targets: { fontName: 'Material Icons', ligatures: ['close'] },
+  cache: true,            // caches in node_modules/.font-extractor-cache
+  // cache: './my-cache', // or specify a custom path
+})
 ```
 
-### PluginOption parameters:
+## Troubleshooting
 
-* **type** `"auto" | "manual"`: Type plugin behaviour.
-* **targets** `Target[] | Target | undefined`: Targets for font extracting.
-* **cache** `boolean | string | undefined`: Enable a minifying result cache.
-* **logLevel** `LogLevel | undefined`: Setup a log level for plugin options. By default get a vite config logLevel.
-* **apply** `"build" | "serve" | undefined`: Apply the plugin only for serve or build, or on certain conditions
-* **ignore** `string[] | undefined`: Font names what will be ignored by plugin processing
+**Font not being minified?**
+- Verify that `fontName` in your target exactly matches the `font-family` value in the CSS `@font-face` block (without quotes)
+- Check that the font isn't in the `ignore` list
 
-### Target parameters:
+**Google Font URL not transformed?**
+- Use spaces in `fontName`, not `+` signs: `'Material Icons'`, not `'Material+Icons'`
+- URLs with multiple families (`family=Foo|Bar`) are not currently supported
 
-* **fontName** `string`: The font filename that is to be extracted.
-* **ligatures** `string[] | undefined`: An array of ligatures to extracted from the font.
-* **raws** `string[] | undefined`: An array of unicode and symbols that will found and extracted from the font.
-* **withWhitespace** `boolean | undefined`: Set to true if you want to include whitespace glyphs in the font.
-
-### Returns
-
-* **Plugin**: plugin model for vite.
+**Auto mode missing glyphs?**
+- Auto mode only detects glyphs from CSS `content: "..."` properties
+- If you reference icons via class names or JS, switch to `manual` mode and list the ligatures explicitly
 
 ## License
 
-`vite-font-extractor-plugin` is released under the MIT License. See the LICENSE file for details.
+MIT — see [LICENSE](./LICENSE) for details.
 
-## Contributions
+## Contributing
 
-Contributions are welcome! If you find a bug or want to add a new feature, please open an issue or submit a pull
-request.
+Issues and pull requests are welcome at [GitHub](https://github.com/a3mitskevich/vite-font-extractor-plugin).
