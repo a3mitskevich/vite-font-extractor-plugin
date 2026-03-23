@@ -95,16 +95,13 @@ export async function processMinify(
   return minifiedBuffers;
 }
 
-export function checkFontProcessing(ctx: PluginContext, name: string, id: string): void | never {
-  const duplicateId = ctx.progress.get(name);
+export function checkFontProcessing(ctx: PluginContext, name: string, id: string): void {
+  const existingId = ctx.progress.get(name);
 
-  if (duplicateId && !ctx.isServe) {
-    const placeInfo = `Font placed in "${styler.path(id)}" and "${styler.path(duplicateId)}"`;
-    const errorMessage = `Plugin not support a multiply files with same font name [${name}]. ${placeInfo}`;
-    // TODO: have chance to conflict by `unicode-range` attribute. Fix it
-    ctx.logger.error(errorMessage);
-    throw new Error(errorMessage);
-  } else {
-    ctx.progress.set(name, id);
+  if (existingId && existingId !== id && !ctx.isServe) {
+    ctx.logger.warn(
+      `Font "${name}" found in multiple files: "${styler.path(existingId)}" and "${styler.path(id)}". Both will be processed.`,
+    );
   }
+  ctx.progress.set(name, id);
 }
