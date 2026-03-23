@@ -41,6 +41,39 @@ describe("Google", () => {
             });
           });
 
+          describe("Multi-family URL", () => {
+            const fixture = fixtures["google-font-multi"];
+            const build = async (options?: BuildOptions) =>
+              buildByVersion(version, {
+                ...options,
+                fixture: fixture.path,
+                pluginOptions: {
+                  type: "manual",
+                  targets: fixture.fonts.map((font) => ({
+                    fontName: font.name,
+                    ligatures: ["close", "play_arrow"],
+                  })),
+                },
+              });
+
+            it("should handle pipe-separated families in Google Font URL", async () => {
+              const { output } = await build();
+              const targets = output
+                .filter(
+                  (asset): asset is OutputAsset =>
+                    asset.type === "asset" &&
+                    typeof asset.source === "string" &&
+                    asset.source.includes("fonts.googleapis.com"),
+                )
+                .map<string>((asset) => asset.source.toString());
+
+              expect(targets).toHaveLength(2);
+              targets.forEach((content) => {
+                expect(content).toContain("&text=close+play_arrow");
+              });
+            });
+          });
+
           describe("Duplication minification logic", () => {
             const fixture = fixtures["google-font-warn"];
             const build = async (options?: BuildOptions) =>
