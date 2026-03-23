@@ -57,7 +57,10 @@ function collectFontReferences(
       const options = ctx.optionsMap.get(fontName);
       if (options) {
         const subset = parseSubsetParam(alias);
-        ctx.transformMap.set(referenceId, { fontName, options, subset });
+        // Composite key: same file with different ?subset= → different entries
+        const subsetKey = subset ? JSON.stringify(subset) : "";
+        const mapKey = `${referenceId}:${subsetKey}`;
+        ctx.transformMap.set(mapKey, { fontName, options, subset, referenceId });
       }
     }
   }
@@ -207,14 +210,17 @@ export async function transformHook(
       if (!query || !query.includes("subset=")) continue;
 
       const referenceId = assetMatch[1];
-      if (ctx.transformMap.has(referenceId)) continue;
-
       const subset = parseSubsetParam(query);
-      if (subset) {
-        // For JS imports we don't have a fontName from @font-face
-        const fontName = `__subset_${referenceId}`;
+      if (!subset) continue;
+
+      const subsetKey = JSON.stringify(subset);
+      const mapKey = `${referenceId}:${subsetKey}`;
+      if (ctx.transformMap.has(mapKey)) continue;
+
+      {
+        const fontName = `__subset_${referenceId}_${subsetKey.length}`;
         const options: OptionsWithCacheSid = {
-          sid: JSON.stringify(subset),
+          sid: subsetKey,
           target: {
             fontName,
             characters: subset.characters,
@@ -223,7 +229,7 @@ export async function transformHook(
           },
           auto: false,
         };
-        ctx.transformMap.set(referenceId, { fontName, options, subset });
+        ctx.transformMap.set(mapKey, { fontName, options, subset, referenceId });
       }
     }
   }

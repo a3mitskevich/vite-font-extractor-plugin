@@ -25,7 +25,7 @@ export interface PluginContext {
   readonly glyphsFindMap: Map<string, string[]>;
   readonly transformMap: Map<
     string,
-    { fontName: string; options: OptionsWithCacheSid; subset?: SubsetOptions }
+    { fontName: string; options: OptionsWithCacheSid; subset?: SubsetOptions; referenceId?: string }
   >;
   readonly fontServeProxy: Map<string, () => Promise<ServeFontStubResponse | null>>;
   readonly progress: Map<string, string>;

@@ -1,0 +1,9 @@
+@font-face {
+    font-family: 'Text Latin';
+    src: url("../fonts/text-font.woff2?subset=ABCabc") format("woff2");
+}
+
+@font-face {
+    font-family: 'Text Digits';
+    src: url("../fonts/text-font.woff2?subset=0123456789") format("woff2");
+}

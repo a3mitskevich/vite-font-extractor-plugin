@@ -1,0 +1,9 @@
+@font-face {
+    font-family: 'Font A';
+    src: url("../fonts/text-font.woff2?subset=ABCabc") format("woff2");
+}
+
+@font-face {
+    font-family: 'Font B';
+    src: url("../fonts/text-font.woff2?subset=ABCabc") format("woff2");
+}

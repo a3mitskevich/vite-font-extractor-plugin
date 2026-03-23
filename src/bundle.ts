@@ -35,17 +35,19 @@ export async function generateBundleHook(
   // Group reference IDs by font name, collecting the original assets
   const fontGroups = new Map<string, { options: OptionsWithCacheSid; assets: OutputAsset[] }>();
 
-  for (const [key, { fontName, options, subset }] of ctx.transformMap) {
+  for (const [mapKey, { fontName, options, subset, referenceId }] of ctx.transformMap) {
+    // Resolve asset: use referenceId for CSS (getFileName), or mapKey for JS (direct fileName)
+    const resolveKey = referenceId ?? mapKey;
     let asset: OutputAsset | undefined;
     try {
-      const fileName = getFileName(key);
+      const fileName = getFileName(resolveKey);
       asset = assetByFileName.get(fileName);
     } catch {
-      asset = assetByFileName.get(key);
+      asset = assetByFileName.get(resolveKey);
     }
 
     if (!asset) {
-      logger.warn(`Asset not found for key ${key}`);
+      logger.warn(`Asset not found for key ${mapKey}`);
       continue;
     }
 
@@ -64,11 +66,14 @@ export async function generateBundleHook(
       mergedOptions = { ...options, target: mergedTarget, sid: JSON.stringify(mergedTarget) };
     }
 
-    const group = fontGroups.get(fontName);
+    // Group by fontName + subset — different subsets of same font → separate groups
+    const subsetKey = subset ? JSON.stringify(subset) : "";
+    const groupKey = `${fontName}::${subsetKey}`;
+    const group = fontGroups.get(groupKey);
     if (group) {
       group.assets.push(asset);
     } else {
-      fontGroups.set(fontName, { options: mergedOptions, assets: [asset] });
+      fontGroups.set(groupKey, { options: mergedOptions, assets: [asset] });
     }
   }
 
@@ -81,7 +86,8 @@ export async function generateBundleHook(
   const stats: MinifyStats = { minified: 0, cached: 0, saved: 0 };
 
   await Promise.all(
-    Array.from(fontGroups.entries()).map(async ([fontName, { options, assets }]) => {
+    Array.from(fontGroups.entries()).map(async ([groupKey, { options, assets }]) => {
+      const fontName = groupKey.split("::")[0];
       try {
         const minifiedBuffer = await processMinify(
           ctx,
