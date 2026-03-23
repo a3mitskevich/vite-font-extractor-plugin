@@ -130,6 +130,14 @@ export const fixtures = {
     fonts: [{ ...DEFAULT_FONT, urls: [] }],
   }),
   auto: createFixture("auto"),
+  "google-font-multi": createFixture("google-font-multi", {
+    fonts: [
+      { name: "Font A", urls: [] },
+      { name: "Font B", urls: [] },
+      { name: "Font C", urls: [] },
+      { name: "Font D", urls: [] },
+    ],
+  }),
   "auto-one-icon": createFixture("auto-one-icon"),
   "auto-two-icons": createFixture("auto-two-icons"),
 } as const;
