@@ -101,19 +101,21 @@
 
 Цель: решить основной технический долг, обеспечить полную поддержку Vite 8 (Rolldown).
 
-### 2.1 Адаптация `generateBundle` для Rolldown (Vite 8)
+### 2.1 Адаптация для Rolldown (Vite 8)
 - **Приоритет:** P0
-- **Проблема:** Vite 8 использует Rolldown вместо Rollup. `generateBundle` hook работает, но asset pipeline отличается:
-  - `this.emitFile` возвращает reference ID, но `this.getFileName(referenceId)` может вернуть другой формат пути
-  - `OutputAsset.name` может быть `undefined` в Rolldown (в Rollup всегда string)
-  - Стабовые файлы `.fef` не заменяются корректно — остаются в финальном бандле
-- **Что нужно сделать:**
-  - Исследовать как Rolldown обрабатывает `emitFile` с `type: 'asset'` и как `getFileName` маппит reference ID
-  - Проверить, находит ли `findAssetByReferenceId` свои ассеты в Rolldown output
-  - Адаптировать логику замены `.fef` стабов на минифицированные шрифты
-  - Убедиться что `stringAssets.forEach` корректно подменяет пути в CSS
-  - Включить тесты Vite 8 в `tests/utils.ts` (раскомментировать `[versionV8]: buildV8`)
-- **Файлы:** `src/extractor.ts` (generateBundle), `tests/utils.ts`, `tests/auto.spec.ts`, `tests/common.spec.ts`
+- **Статус: исследовано, ожидает решения**
+- **Корневая проблема:** не в `generateBundle`, а в `transform` → `changeResource`:
+  - Плагин заменяет `__VITE_ASSET__<oldRefId>__` на `__VITE_ASSET__<newRefId>__` в CSS
+  - В Rollup Vite резолвит оба формата placeholder'ов и включает emitted assets в output
+  - В Rolldown emitted `.fef` stub reference ID **не распознаётся** внутри `__VITE_ASSET__` placeholder — Rolldown его дропает, шрифтовые ассеты пропадают из бандла полностью
+- **Что сделано:**
+  - `generateBundle` адаптирован: delete + re-add вместо мутации Rust-объектов, `name!` → `name ?? fileName`
+  - Исследован asset pipeline Rolldown: `emitFile` работает, `getFileName` работает, но reference ID не подставляются в `__VITE_ASSET__` placeholders
+- **Что нужно для полного решения:**
+  - Рефакторинг `changeResource` — не заменять reference ID в `__VITE_ASSET__`, а использовать другой механизм привязки stub к оригинальному шрифту
+  - Возможный подход: в `transform` сохранять маппинг `originalFileName → stubData`, а в `generateBundle` находить оригинальные ассеты по fileName и заменять их напрямую, без промежуточных `.fef` стабов
+  - Это потребует полного рефакторинга asset pipeline (блок 2.2)
+- **Файлы:** `src/extractor.ts` (changeResource, generateBundle)
 
 ### 2.2 Декомпозиция `extractor.ts`
 - **Приоритет:** P1
@@ -158,10 +160,9 @@
 - Покрыты: `extractFontFaces`, `extractFontName`, `extractFonts`, `findUnicodeGlyphs`, `extractGoogleFontsUrls`, `camelCase`, `groupBy`
 - Найден потенциальный баг: `extractFontName` захватывает trailing whitespace
 
-### 3.2 Предварительная очистка CSS от комментариев
-- **Приоритет:** P2
-- Перед regex-парсингом удалять `/* ... */` блоки — это устранит ложные срабатывания
-- Простая реализация: `/\/\*[\s\S]*?\*\//g`
+### ~~3.2 Предварительная очистка CSS от комментариев~~ DONE
+- ~~Перед regex-парсингом удалять `/* ... */` блоки~~
+- `stripCssComments()` применена в `extractFontFaces`, `extractGoogleFontsUrls`, `findUnicodeGlyphs`
 
 ### 3.3 Оценить переход на PostCSS парсер
 - **Приоритет:** P3
