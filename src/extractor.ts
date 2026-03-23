@@ -1,12 +1,12 @@
 import { type Plugin, send } from "vite";
 import { isAbsolute } from "node:path";
-import type { PluginOption } from "./types";
+import type { PluginOption, ServeFontStubResponse } from "./types";
 import Cache from "./cache";
 import { createResolvers, intersection, mergePath } from "./utils";
 import { PLUGIN_NAME } from "./constants";
 import styler from "./styler";
 import { createInternalLogger } from "./internal-logger";
-import { createPluginContext, getLogger, type ServeFontStubResponse } from "./context";
+import { createPluginContext, getLogger } from "./context";
 import { transformHook } from "./transform";
 import { generateBundleHook } from "./bundle";
 

@@ -1,4 +1,10 @@
 import type { Format, MinifyOption } from "fontext";
+
+export interface ServeFontStubResponse {
+  extension: Format;
+  content: Buffer;
+  id: string;
+}
 import type { InlineConfig, Logger, LogType, ResolveFn, Plugin } from "vite";
 
 export type Target = Omit<MinifyOption, "formats">;
@@ -22,12 +28,6 @@ export interface PluginAutoOption {
 }
 
 export type PluginOption = PluginCommonConfig & (PluginAutoOption | PluginManualOption);
-
-export interface ResourceTransformMeta {
-  alias: string;
-  name: string;
-  sid: string;
-}
 
 export interface ImportResolvers {
   common: ResolveFn;
