@@ -1,7 +1,7 @@
 import type { OutputAsset, RollupError } from "rollup";
 import { basename, dirname } from "node:path";
 import type { MinifyFontOptions, OptionsWithCacheSid } from "./types";
-import { getFontExtension, getHash } from "./utils";
+import { getFontExtension, getHash, toError } from "./utils";
 import styler from "./styler";
 import { type PluginContext, getLogger } from "./context";
 import { processMinify } from "./minify";
@@ -115,7 +115,9 @@ export async function generateBundleHook(
       }),
     );
   } catch (error) {
-    logger.error("Clean up generated bundle has failed", { error: error as RollupError });
+    logger.error("Clean up generated bundle has failed", {
+      error: toError(error) as RollupError,
+    });
     throw error;
   }
 }
