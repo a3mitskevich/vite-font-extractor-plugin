@@ -103,7 +103,6 @@ export async function transformHook(
   id: string,
 ): Promise<string> {
   const logger = getLogger(ctx);
-  logger.fix();
 
   const isCssFile = isCSSRequest(id);
   const isAutoType = ctx.mode === "auto";

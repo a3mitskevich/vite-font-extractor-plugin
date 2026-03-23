@@ -86,7 +86,7 @@ describe.sequential("Dev server", () => {
 
   it("should log plugin start in serve mode", () => {
     const hasPluginStart = logMessages.some(
-      (m) => m.type === "info" && m.message.includes('Plugin starts in "manual" mode'),
+      (m) => m.type === "info" && m.message.includes("vite-font-extractor-plugin"),
     );
     expect(hasPluginStart).toBeTruthy();
   });

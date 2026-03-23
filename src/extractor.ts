@@ -22,17 +22,21 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         config.customLogger,
       );
       const logger = ctx.logger;
-      logger.fix();
-      logger.info(`Plugin starts in "${ctx.mode}" mode`);
+      logger.banner();
+
+      const cacheStatus = pluginOption.cache ? "cache enabled" : "no cache";
+      const targetCount = ctx.targets.length;
+      logger.config(
+        ctx.mode,
+        `${targetCount} target${targetCount !== 1 ? "s" : ""}, ${cacheStatus}`,
+      );
 
       const intersectionIgnoreWithTargets = intersection(
         pluginOption.ignore ?? [],
         ctx.targets.map((target) => target.fontName),
       );
       if (intersectionIgnoreWithTargets.length) {
-        logger.warn(
-          `Ignore option has intersection with targets: ${intersectionIgnoreWithTargets.toString()}`,
-        );
+        logger.warn(`Ignore overlaps with targets: ${intersectionIgnoreWithTargets.toString()}`);
       }
 
       ctx.importResolvers = createResolvers(config);

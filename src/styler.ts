@@ -28,3 +28,28 @@ export default new Proxy(
     },
   },
 ) as StyleMessage<keyof typeof aliases | Exclude<keyof Colors, "isColorSupported"> | "default">;
+
+// Format utilities for the logger
+
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return bytes + " B";
+  return (bytes / 1024).toFixed(1) + " KB";
+}
+
+export function formatReduction(original: number, result: number): string {
+  const pct = Math.round((1 - result / original) * 100);
+  return pct > 0 ? color.green(`-${pct}%`) : color.yellow(`+${Math.abs(pct)}%`);
+}
+
+export function formatBar(ratio: number, width: number = 20): string {
+  const filled = Math.round(ratio * width);
+  const empty = width - filled;
+  return (
+    color.dim("▎") + color.green("█".repeat(filled)) + color.dim("░".repeat(empty)) + color.dim("▎")
+  );
+}
+
+export function formatSizeComparison(original: number, result: number): string {
+  const ratio = 1 - result / original;
+  return `${color.dim(formatSize(original))} → ${color.bold(formatSize(result))}  ${formatBar(ratio)} ${formatReduction(original, result)}`;
+}

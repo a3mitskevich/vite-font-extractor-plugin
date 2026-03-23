@@ -25,26 +25,24 @@ describe("Common", () => {
 
             it("should correct log", async () => {
               const { messages } = await build();
-              const hasCacheMessage = messages.some(
-                ({ message, type }) =>
-                  message.includes("Save a minified buffer for") && type === "info",
+              const hasDoneMessage = messages.some(
+                ({ message, type }) => message.includes("Done") && type === "info",
               );
-              const hasMinifiedFontMessage = messages.some(
-                ({ message, type }) => message.includes("Minified font") && type === "info",
+              const hasMinifyPhase = messages.some(
+                ({ message, type }) => message.includes("Minify") && type === "info",
               );
               const hasErrorMessages = messages.some(({ type }) => type === "error");
               expect(hasErrorMessages).toBeFalsy();
-              expect(hasCacheMessage).toBeTruthy();
-              expect(hasMinifiedFontMessage).toBeTruthy();
+              expect(hasDoneMessage).toBeTruthy();
+              expect(hasMinifyPhase).toBeTruthy();
             });
 
-            it("should not contain cache messages", async () => {
+            it("should not contain cache messages when disabled", async () => {
               const { messages } = await build({ cache: false });
-              const hasCacheMessage = messages.some(
-                ({ message, type }) =>
-                  message.includes("Save a minified buffer for") && type === "info",
+              const hasCachedMessage = messages.some(
+                ({ message, type }) => message.includes("cached") && type === "info",
               );
-              expect(hasCacheMessage).toBeFalsy();
+              expect(hasCachedMessage).toBeFalsy();
             });
           });
         });

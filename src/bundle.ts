@@ -1,8 +1,7 @@
 import type { OutputAsset, RollupError } from "rollup";
 import { basename, dirname } from "node:path";
-import type { MinifyFontOptions, OptionsWithCacheSid } from "./types";
+import type { MinifyFontOptions, MinifyStats, OptionsWithCacheSid } from "./types";
 import { getFontExtension, getHash, toError } from "./utils";
-import styler from "./styler";
 import { type PluginContext, getLogger } from "./context";
 import { processMinify } from "./minify";
 
@@ -37,13 +36,11 @@ export async function generateBundleHook(
   const fontGroups = new Map<string, { options: OptionsWithCacheSid; assets: OutputAsset[] }>();
 
   for (const [key, { fontName, options, subset }] of ctx.transformMap) {
-    // key is either a Vite referenceId (from CSS transform) or a fileName (from JS renderChunk)
     let asset: OutputAsset | undefined;
     try {
       const fileName = getFileName(key);
       asset = assetByFileName.get(fileName);
     } catch {
-      // Not a referenceId — try as direct fileName
       asset = assetByFileName.get(key);
     }
 
@@ -52,7 +49,6 @@ export async function generateBundleHook(
       continue;
     }
 
-    // Merge ?subset= params into target options
     let mergedOptions = options;
     if (subset) {
       const mergedTarget = {
@@ -76,12 +72,14 @@ export async function generateBundleHook(
     }
   }
 
-  // Collect string-source assets (CSS/HTML) for path replacement
   const stringAssets = Object.values(bundle).filter(
     (asset): asset is OutputAsset => asset.type === "asset" && typeof asset.source === "string",
   );
 
-  // Minify each font group: emit new assets with content-based hashes
+  logger.phase("✂ ", "Minify");
+
+  const stats: MinifyStats = { minified: 0, cached: 0, saved: 0 };
+
   await Promise.all(
     Array.from(fontGroups.entries()).map(async ([fontName, { options, assets }]) => {
       try {
@@ -96,15 +94,15 @@ export async function generateBundleHook(
           options,
         );
 
-        assets.forEach((asset) => {
+        logger.found("Font", fontName, `${assets.length} format${assets.length !== 1 ? "s" : ""}`);
+        assets.forEach((asset, idx) => {
           const extension = getFontExtension(asset.fileName);
           const originalBuffer = Buffer.from(asset.source);
           const minified = minifiedBuffer?.[extension];
+          const isLast = idx === assets.length - 1;
 
           if (!minified || minified.length === 0 || minified.length >= originalBuffer.length) {
-            const newLen = minified?.length ?? 0;
-            const comparePreview = styler.red(`[${newLen} < ${originalBuffer.length}]`);
-            logger.warn(`New font no less than original ${comparePreview}. Keeping original font`);
+            logger.skipped(fontName, `${extension} not smaller than original`);
             return;
           }
 
@@ -114,13 +112,9 @@ export async function generateBundleHook(
           const base = basename(asset.name ?? oldFileName, `.${extension}`);
           const newFileName = `${dir}/${base}-${contentHash}.${extension}`;
 
-          // Emit new asset with content-based hash fileName
           emitFile({ type: "asset", fileName: newFileName, source: minified });
-
-          // Delete original asset (Rolldown silently ignores, Rollup removes)
           delete bundle[oldFileName];
 
-          // Update references in CSS/HTML assets
           stringAssets.forEach((strAsset) => {
             const source = strAsset.source as string;
             const candidates = [
@@ -131,22 +125,22 @@ export async function generateBundleHook(
             for (const candidate of candidates) {
               if (source.includes(candidate)) {
                 strAsset.source = source.replace(candidate, newFileName);
-                logger.info(
-                  `Updated path "${styler.green(candidate)}" → "${styler.green(newFileName)}" in ${styler.path(strAsset.fileName)}`,
-                );
                 break;
               }
             }
           });
 
-          logger.info(`Minified font ${styler.green(fontName)}: ${styler.path(newFileName)}`);
+          logger.minified(fontName, extension, originalBuffer.length, minified.length, isLast);
+          stats.minified++;
+          stats.saved += originalBuffer.length - minified.length;
         });
       } catch (error) {
-        // Skip failed font, keep originals in bundle
-        logger.error(`Failed to minify font "${fontName}", keeping original`, {
+        logger.error(`Failed to minify "${fontName}" — keeping original`, {
           error: toError(error) as RollupError,
         });
       }
     }),
   );
+
+  logger.summary(stats);
 }

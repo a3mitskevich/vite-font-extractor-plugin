@@ -58,7 +58,6 @@ export async function processMinify(
 
   if (needExtracting) {
     if (ctx.cache) {
-      logger.info(`Clear cache for ${fontName} because some files have a different content`);
       ctx.cache.clearCache(fontName);
     }
 
@@ -86,13 +85,12 @@ export async function processMinify(
       fonts.forEach((font) => {
         const minifiedBuffer = minifyResult[font.extension];
         if (minifiedBuffer) {
-          logger.info(`Save a minified buffer for ${fontName} to cache`);
           ctx.cache!.set(cacheKey + `.${font.extension}`, minifiedBuffer);
         }
       });
     }
   } else {
-    logger.info(`Get minified fonts from cache for ${fontName}`);
+    logger.cached(fontName);
     const cacheResult = Object.fromEntries(
       fonts.map((font) => [font.extension, ctx.cache!.get(cacheKey + `.${font.extension}`)]),
     );
