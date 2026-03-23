@@ -40,7 +40,9 @@ That's it. The plugin scans your CSS for `content: "..."` declarations, figures 
 | v5   | Stable       |
 | v6   | Stable       |
 | v7   | Stable       |
-| v8   | Stable       |
+| v8   | Experimental |
+
+> **Vite 8 note:** Icon font minification works. `?subset=` feature has known limitations with Rolldown's asset handling — see [ROADMAP](./ROADMAP.md).
 
 ## How It Works
 

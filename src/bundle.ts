@@ -130,7 +130,13 @@ export async function generateBundleHook(
             ];
             for (const candidate of candidates) {
               if (source.includes(candidate)) {
-                strAsset.source = source.replace(candidate, newFileName);
+                // Replace fileName and strip any ?subset= query that follows
+                strAsset.source = source.replace(
+                  new RegExp(
+                    candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\?subset=[^\"'\\)]*)?",
+                  ),
+                  newFileName,
+                );
                 break;
               }
             }
