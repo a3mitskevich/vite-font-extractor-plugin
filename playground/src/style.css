@@ -1,18 +1,335 @@
+/* Material Icons — imported from npm package */
 @import "material-design-icons-iconfont/dist/material-design-icons-no-codepoints.css";
 
-body {
-  font-family: system-ui, sans-serif;
-  max-width: 600px;
-  margin: 2rem auto;
-  padding: 0 1rem;
+/* Roboto Subset — only Latin + digits + basic punctuation */
+@font-face {
+  font-family: "Roboto Subset";
+  src:
+    url("@fontsource/roboto/files/roboto-latin-400-normal.woff2?subset=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?-:;")
+      format("woff2"),
+    url("@fontsource/roboto/files/roboto-latin-400-normal.woff?subset=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?-:;")
+      format("woff");
+  font-weight: 400;
+  font-style: normal;
 }
 
-.icons {
+/* Press Start 2P — pixel font, subset to only H, e, l, o, ! */
+@font-face {
+  font-family: "Pixel Proof";
+  src:
+    url("@fontsource/press-start-2p/files/press-start-2p-latin-400-normal.woff2?subset=Helo!")
+      format("woff2"),
+    url("@fontsource/press-start-2p/files/press-start-2p-latin-400-normal.woff?subset=Helo!")
+      format("woff");
+  font-weight: 400;
+  font-style: normal;
+}
+
+/* Base */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: #1a1a2e;
+  background: #f8f9fa;
+  line-height: 1.6;
+}
+
+/* Hero */
+.hero {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  text-align: center;
+  padding: 3rem 2rem;
+}
+
+.hero h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: monospace;
+}
+
+.subtitle {
+  margin-top: 0.5rem;
+  opacity: 0.9;
+  font-size: 1.1rem;
+}
+
+/* Main */
+main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+section {
+  margin-bottom: 3rem;
+}
+
+h2 {
+  font-size: 1.4rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #667eea;
+}
+
+h3 {
+  font-size: 1rem;
+  margin-bottom: 0.3rem;
+  color: #555;
+}
+
+.mt {
+  margin-top: 2rem;
+}
+
+.description {
+  color: #555;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+
+/* Icon grid */
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 1rem;
+}
+
+.icon-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.icon-card .material-icons {
+  font-size: 36px;
+  color: #667eea;
+}
+
+.icon-card code {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+/* Proof grid */
+.proof-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.proof-column {
+  padding: 1.5rem;
+  border-radius: 8px;
+}
+
+.proof-included {
+  background: #e8f5e9;
+  border: 2px solid #4caf50;
+}
+
+.proof-excluded {
+  background: #ffebee;
+  border: 2px solid #f44336;
+}
+
+.proof-column h3 {
+  margin-bottom: 0.8rem;
+}
+
+.proof-included h3 {
+  color: #2e7d32;
+}
+
+.proof-excluded h3 {
+  color: #c62828;
+}
+
+.icon-row {
   display: flex;
   gap: 1rem;
-  font-size: 2rem;
 }
 
-.material-icons {
-  font-size: 48px;
+.icon-row .material-icons {
+  font-size: 36px;
+}
+
+.proof-included .material-icons {
+  color: #2e7d32;
+}
+
+.proof-excluded .material-icons {
+  color: #c62828;
+}
+
+/* Text subset */
+.text-subset {
+  font-family: "Roboto Subset", serif;
+  font-size: 1.3rem;
+  padding: 0.8rem;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+}
+
+/* Pixel proof */
+.pixel-proof-box {
+  padding: 1.5rem;
+  background: #1a1a2e;
+  border-radius: 8px;
+  margin-top: 1rem;
+}
+
+.pixel-proof-text {
+  font-family: "Pixel Proof", sans-serif;
+  font-size: 1.5rem;
+  color: #e0e0e0;
+  line-height: 2.2;
+  word-spacing: 0.3rem;
+}
+
+.pixel-proof-text .note {
+  display: block;
+  font-family: system-ui, sans-serif;
+  font-size: 0.8rem;
+  color: #888;
+  margin-top: 0.5rem;
+}
+
+/* Glyph checks */
+.glyph-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.glyph-check {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #eee;
+  font-size: 0.95rem;
+}
+
+.glyph-check .status {
+  font-size: 1.2rem;
+  width: 1.5rem;
+  text-align: center;
+}
+
+.glyph-check .text {
+  font-family: "Roboto Subset", monospace;
+  font-size: 1.1rem;
+  flex: 1;
+}
+
+.glyph-check.present {
+  border-color: #4caf50;
+}
+
+.glyph-check.present .status {
+  color: #2e7d32;
+}
+
+.glyph-check.missing {
+  border-color: #f44336;
+}
+
+.glyph-check.missing .status {
+  color: #c62828;
+}
+
+.glyph-check .verdict {
+  font-size: 0.8rem;
+  color: #888;
+  font-family: monospace;
+}
+
+/* Size table */
+.size-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.size-table th,
+.size-table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.size-table th {
+  background: #f5f5f5;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.size-table .highlight {
+  color: #2e7d32;
+  font-weight: 700;
+}
+
+/* Code blocks */
+pre {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  margin-top: 1rem;
+}
+
+code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: #eee;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  padding: 2rem;
+  color: #888;
+  border-top: 1px solid #eee;
+}
+
+footer a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
 }

@@ -3,17 +3,145 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Font Extractor Playground</title>
+    <title>vite-font-extractor-plugin — Playground</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <h1>Font Extractor Playground</h1>
-    <p>Material Icons used in this page (should be minified in build):</p>
-    <div class="icons">
-      <span class="material-icons">close</span>
-      <span class="material-icons">menu</span>
-      <span class="material-icons">search</span>
-      <span class="material-icons">home</span>
-    </div>
+    <!-- Hero -->
+    <header class="hero">
+      <h1>vite-font-extractor-plugin</h1>
+      <p class="subtitle">
+        Extract only the glyphs you use. Drop font sizes by 90%+.
+      </p>
+    </header>
+
+    <main>
+      <!-- Section 1: Proof of Minification -->
+      <section>
+        <h2>Proof: Minification Works</h2>
+        <p class="description">
+          Left column: icons included in config — render correctly.<br />
+          Right column: icons <strong>NOT</strong> in config — render as empty
+          boxes (glyphs were stripped).
+        </p>
+        <div class="proof-grid">
+          <div class="proof-column proof-included">
+            <h3>Included in config</h3>
+            <div class="icon-row">
+              <span class="material-icons">close</span>
+              <span class="material-icons">menu</span>
+              <span class="material-icons">search</span>
+              <span class="material-icons">home</span>
+            </div>
+          </div>
+          <div class="proof-column proof-excluded">
+            <h3>NOT in config</h3>
+            <div class="icon-row">
+              <span class="material-icons">alarm</span>
+              <span class="material-icons">bluetooth</span>
+              <span class="material-icons">camera</span>
+              <span class="material-icons">wifi</span>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="mt">Visual Proof — Pixel Font Subset</h3>
+        <p class="description">
+          Press Start 2P (pixel font) subset to only <strong>5 characters: H, e, l, o, !</strong><br />
+          Pixel characters = present in subset. Normal characters = browser fallback (glyph was stripped).
+        </p>
+        <div class="pixel-proof-box">
+          <p class="pixel-proof-text">
+            Hello! ← all pixel<br />
+            Help me! ← "p", "m", "i" fall back<br />
+            Hello World ← "W", "r", "d" fall back<br />
+            Good morning ← all fall back except "o"
+          </p>
+          <span class="pixel-proof-text note">
+            If you see mixed pixel + normal characters, subsetting works correctly.
+          </span>
+        </div>
+
+        <h3 class="mt">Glyph Presence Check</h3>
+        <p class="description">
+          Programmatic verification via <code>document.fonts.check()</code>
+        </p>
+        <div id="glyph-checks" class="glyph-checks"></div>
+
+        <h3 class="mt">File Size Comparison</h3>
+        <p class="description">
+          Actual sizes fetched at runtime from built assets.
+        </p>
+        <table class="size-table">
+          <thead>
+            <tr>
+              <th>Font</th>
+              <th>Original</th>
+              <th>After plugin</th>
+              <th>Reduction</th>
+            </tr>
+          </thead>
+          <tbody id="size-table-body">
+            <tr><td colspan="4">Loading...</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Section 3: Text Font Subsetting -->
+      <section>
+        <h2>Text Font Subsetting — <code>?subset=</code></h2>
+        <p class="description">
+          Roboto font loaded with
+          <code>?subset=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?</code>
+          — only Latin letters, digits, and basic punctuation are kept.
+        </p>
+        <p class="text-subset">
+          The quick brown fox jumps over the lazy dog. 0123456789
+        </p>
+        <pre><code>@font-face {
+  font-family: 'Roboto Subset';
+  src: url('./roboto.woff2?subset=A-Za-z0-9') format('woff2');
+}</code></pre>
+      </section>
+
+      <!-- Section 4: JS Import Subset -->
+      <section>
+        <h2>JS Import — <code>?subset=</code></h2>
+        <p class="description">
+          Font imported via JavaScript with <code>?subset=</code> query. Useful
+          for runtime font loading (Rive, Canvas, PDF generators).
+        </p>
+        <pre><code>import fontUrl from '@fontsource/roboto/files/roboto-latin-400-normal.woff2?subset=Hello'</code></pre>
+        <p>
+          Resolved URL: <code id="js-font-url">loading...</code>
+        </p>
+      </section>
+
+      <!-- Section 5: Google Fonts -->
+      <section>
+        <h2>Google Fonts Optimization</h2>
+        <p class="description">
+          The plugin automatically appends <code>&text=</code> parameter to
+          Google Font URLs, letting Google's servers do the subsetting.
+        </p>
+        <pre><code>&lt;link href="https://fonts.googleapis.com/icon?family=Material+Icons"&gt;
+// Plugin transforms to:
+// ...?family=Material+Icons&text=close+menu+search+home+...</code></pre>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        <a href="https://github.com/a3mitskevich/vite-font-extractor-plugin"
+          >GitHub</a
+        >
+        ·
+        <a href="https://www.npmjs.com/package/vite-font-extractor-plugin"
+          >npm</a
+        >
+      </p>
+    </footer>
+
+    <script type="module" src="/src/main.js"></script>
   </body>
 </html>
