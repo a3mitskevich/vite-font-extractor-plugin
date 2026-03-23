@@ -1,6 +1,6 @@
 import { isCSSRequest } from "vite";
 import type { TransformPluginContext } from "rollup";
-import type { FontFaceMeta, GoogleFontMeta, ResourceTransformMeta } from "./types";
+import type { FontFaceMeta, GoogleFontMeta } from "./types";
 import {
   exists,
   extractFontFaces,
@@ -8,35 +8,35 @@ import {
   extractFonts,
   extractGoogleFontsUrls,
   findUnicodeGlyphs,
-  getHash,
 } from "./utils";
-import { PROCESS_EXTENSION } from "./constants";
 import styler from "./styler";
 import type { PluginContext } from "./context";
 import { checkFontProcessing } from "./minify";
 import { processServeAutoFontMinify, processServeFontMinify } from "./serve";
 
-function changeResource(
-  rollupCtx: TransformPluginContext,
+const VITE_ASSET_RE = /__VITE_ASSET__([\w$]+)__(?:\$_(.*?)__)?/g;
+
+function collectFontReferences(
   ctx: PluginContext,
   code: string,
-  transform: ResourceTransformMeta,
-): string {
-  const sid = getHash(transform.sid);
-  const assetUrlRE = /__VITE_ASSET__([\w$]+)__(?:\$_(.*?)__)?/g;
-  const oldReferenceId = assetUrlRE.exec(transform.alias)![1];
-  const referenceId = rollupCtx.emitFile({
-    type: "asset",
-    name: transform.name + PROCESS_EXTENSION,
-    source: Buffer.from(sid + oldReferenceId),
-  });
-  ctx.transformMap.set(oldReferenceId, referenceId);
-  // TODO: rework to generate new url strings by config instead replace a old reference id
-  return code.replace(transform.alias, transform.alias.replace(oldReferenceId, referenceId));
+  fontName: string,
+  aliases: string[],
+): void {
+  for (const alias of aliases) {
+    VITE_ASSET_RE.lastIndex = 0;
+    const match = VITE_ASSET_RE.exec(alias);
+    if (match) {
+      const referenceId = match[1];
+      const options = ctx.optionsMap.get(fontName);
+      if (options) {
+        ctx.transformMap.set(referenceId, { fontName, options });
+      }
+    }
+  }
 }
 
 async function processFont(
-  rollupCtx: TransformPluginContext,
+  _rollupCtx: TransformPluginContext,
   ctx: PluginContext,
   code: string,
   id: string,
@@ -63,20 +63,13 @@ async function processFont(
           " If this font is not a target please add it to ignore.",
       );
     }
-    font.aliases.forEach((alias) => {
-      code = changeResource(rollupCtx, ctx, code, {
-        alias,
-        name: font.name,
-        // TODO: recheck it
-        sid: font.options.sid,
-      });
-    });
+    collectFontReferences(ctx, code, font.name, font.aliases);
   }
   return code;
 }
 
 function processGoogleFontUrl(
-  rollupCtx: TransformPluginContext,
+  _rollupCtx: TransformPluginContext,
   ctx: PluginContext,
   code: string,
   id: string,

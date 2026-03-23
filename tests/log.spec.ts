@@ -29,14 +29,13 @@ describe("Common", () => {
                 ({ message, type }) =>
                   message.includes("Save a minified buffer for") && type === "info",
               );
-              const hasDeleteOldFontMessage = messages.some(
-                ({ message, type }) =>
-                  message.includes("Delete old asset from:") && type === "info",
+              const hasMinifiedFontMessage = messages.some(
+                ({ message, type }) => message.includes("Minified font") && type === "info",
               );
               const hasErrorMessages = messages.some(({ type }) => type === "error");
               expect(hasErrorMessages).toBeFalsy();
               expect(hasCacheMessage).toBeTruthy();
-              expect(hasDeleteOldFontMessage).toBeTruthy();
+              expect(hasMinifiedFontMessage).toBeTruthy();
             });
 
             it("should not contain cache messages", async () => {

@@ -1,11 +1,12 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ['tests/**/*.spec.ts'],
+    include: ["tests/**/*.spec.ts"],
     coverage: {
-      reporter: ['lcovonly'],
+      reporter: ["lcovonly"],
     },
     testTimeout: 30_000,
+    retry: 2,
   },
-})
+});

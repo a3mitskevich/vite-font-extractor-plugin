@@ -1,14 +1,21 @@
 import type { OutputAsset, RollupError } from "rollup";
-import { basename } from "node:path";
-import type { MinifyFontOptions } from "./types";
-import { camelCase, getFontExtension, groupBy } from "./utils";
-import { PROCESS_EXTENSION } from "./constants";
+import { basename, dirname } from "node:path";
+import type { MinifyFontOptions, OptionsWithCacheSid } from "./types";
+import { getFontExtension, getHash } from "./utils";
 import styler from "./styler";
 import type { PluginContext } from "./context";
 import { processMinify } from "./minify";
 
+interface EmitAsset {
+  type: "asset";
+  fileName?: string;
+  name?: string;
+  source: string | Uint8Array;
+}
+
 export async function generateBundleHook(
   getFileName: (referenceId: string) => string,
+  emitFile: (file: EmitAsset) => string,
   ctx: PluginContext,
   bundle: Record<string, OutputAsset>,
 ): Promise<void> {
@@ -17,132 +24,97 @@ export async function generateBundleHook(
   }
   ctx.logger.fix();
   try {
-    const findAssetByReferenceId = (referenceId: string): OutputAsset =>
-      Object.values(bundle).find((asset) =>
-        asset.fileName.includes(getFileName(referenceId)),
-      ) as OutputAsset;
+    // Group reference IDs by font name, collecting the original assets
+    const fontGroups = new Map<string, { options: OptionsWithCacheSid; assets: OutputAsset[] }>();
 
-    const resources = Array.from(ctx.transformMap.entries()).map<[OutputAsset, OutputAsset]>(
-      ([oldReferenceId, newReferenceId]) => {
-        return [findAssetByReferenceId(oldReferenceId), findAssetByReferenceId(newReferenceId)];
-      },
-    );
+    for (const [referenceId, { fontName, options }] of ctx.transformMap) {
+      const fileName = getFileName(referenceId);
+      const asset = Object.values(bundle).find((a) => a.fileName === fileName) as
+        | OutputAsset
+        | undefined;
 
-    const unminifiedFonts = groupBy(
-      resources.filter(([_, newFont]) => newFont.fileName.endsWith(PROCESS_EXTENSION)),
-      ([_, newFont]) => basename(newFont.name ?? newFont.fileName).replace(PROCESS_EXTENSION, ""),
-    );
+      if (!asset) {
+        ctx.logger.warn(`Asset not found for reference ${referenceId}: ${fileName}`);
+        continue;
+      }
 
+      const group = fontGroups.get(fontName);
+      if (group) {
+        group.assets.push(asset);
+      } else {
+        fontGroups.set(fontName, { options, assets: [asset] });
+      }
+    }
+
+    // Collect string-source assets (CSS/HTML) for path replacement
     const stringAssets = Object.values(bundle).filter(
       (asset): asset is OutputAsset => asset.type === "asset" && typeof asset.source === "string",
     );
 
-    const fontReplacements = new Map<
-      string,
-      { newFileName: string; newName: string; newSource: Buffer | Uint8Array }
-    >();
-
+    // Minify each font group: emit new assets with content-based hashes
     await Promise.all(
-      Object.entries(unminifiedFonts).map(async ([fontName, transforms]) => {
+      Array.from(fontGroups.entries()).map(async ([fontName, { options, assets }]) => {
         const minifiedBuffer = await processMinify(
           ctx,
           fontName,
-          transforms.map<MinifyFontOptions>(([originalFont, _newFont]) => ({
-            extension: getFontExtension(originalFont.fileName),
-            source: Buffer.from(originalFont.source),
+          assets.map<MinifyFontOptions>((asset) => ({
+            extension: getFontExtension(asset.fileName),
+            source: Buffer.from(asset.source),
             url: "",
           })),
-          ctx.optionsMap.get(fontName)!,
+          options,
         );
 
-        transforms.forEach(([originalFont, newFont]) => {
-          const extension = getFontExtension(originalFont.fileName);
-          const fixedName = originalFont.name
-            ? basename(originalFont.name, `.${extension}`)
-            : camelCase(fontName);
-          const temporalNewFontFilename = newFont.fileName;
-          const fixedBasename = (
-            basename(newFont.fileName, PROCESS_EXTENSION) + `.${extension}`
-          ).replace(fontName, fixedName);
-          const correctName = fixedName + `.${extension}`;
-          const newFileName = newFont.fileName.replace(
-            basename(temporalNewFontFilename),
-            fixedBasename,
-          );
+        assets.forEach((asset) => {
+          const extension = getFontExtension(asset.fileName);
+          const originalBuffer = Buffer.from(asset.source);
+          const minified = minifiedBuffer?.[extension];
 
-          const potentialTemporalNewFontBaseNames = [
-            temporalNewFontFilename.replace(" ", "\\ "),
-            temporalNewFontFilename.replace(" ", "%20"),
-          ];
-
-          stringAssets.forEach((asset) => {
-            const temporalNewFontBasename = potentialTemporalNewFontBaseNames.find((candidate) =>
-              (asset.source as string).includes(candidate),
+          if (!minified || minified.length === 0 || minified.length >= originalBuffer.length) {
+            const newLen = minified?.length ?? 0;
+            const comparePreview = styler.red(`[${newLen} < ${originalBuffer.length}]`);
+            ctx.logger.warn(
+              `New font no less than original ${comparePreview}. Keeping original font`,
             );
-            if (temporalNewFontBasename) {
-              ctx.logger.info(
-                `Change name from "${styler.green(temporalNewFontBasename)}" to "${styler.green(newFileName)}" in ${styler.path(asset.fileName)}`,
-              );
-              asset.source = (asset.source as string).replace(temporalNewFontBasename, newFileName);
+            return;
+          }
+
+          const oldFileName = asset.fileName;
+          const contentHash = getHash(minified);
+          const dir = dirname(oldFileName);
+          const base = basename(asset.name ?? oldFileName, `.${extension}`);
+          const newFileName = `${dir}/${base}-${contentHash}.${extension}`;
+
+          // Emit new asset with content-based hash fileName
+          emitFile({ type: "asset", fileName: newFileName, source: minified });
+
+          // Delete original asset (Rolldown silently ignores, Rollup removes)
+          delete bundle[oldFileName];
+
+          // Update references in CSS/HTML assets
+          stringAssets.forEach((strAsset) => {
+            const source = strAsset.source as string;
+            // Match both raw and encoded versions of the old path
+            const candidates = [
+              oldFileName,
+              oldFileName.replace(" ", "\\ "),
+              oldFileName.replace(" ", "%20"),
+            ];
+            for (const candidate of candidates) {
+              if (source.includes(candidate)) {
+                strAsset.source = source.replace(candidate, newFileName);
+                ctx.logger.info(
+                  `Updated path "${styler.green(candidate)}" → "${styler.green(newFileName)}" in ${styler.path(strAsset.fileName)}`,
+                );
+                break;
+              }
             }
           });
 
-          const newSource = minifiedBuffer?.[extension] ?? Buffer.alloc(0);
-
-          delete bundle[temporalNewFontFilename];
-          bundle[newFileName] = {
-            type: "asset" as const,
-            fileName: newFileName,
-            name: correctName,
-            source: newSource,
-            needsCodeReference: false,
-          } as unknown as OutputAsset;
-
-          fontReplacements.set(temporalNewFontFilename, {
-            newFileName,
-            newName: correctName,
-            newSource,
-          });
+          ctx.logger.info(`Minified font ${styler.green(fontName)}: ${styler.path(newFileName)}`);
         });
       }),
     );
-
-    resources.forEach(([originalFont, newFont]) => {
-      const originalBuffer = Buffer.from(originalFont.source);
-      const replacement = fontReplacements.get(newFont.fileName);
-      const currentAsset = replacement
-        ? (bundle[replacement.newFileName] as OutputAsset | undefined)
-        : newFont;
-
-      if (!currentAsset) {
-        ctx.logger.info(`Delete old asset from: ${styler.path(originalFont.fileName)}`);
-        delete bundle[originalFont.fileName];
-        return;
-      }
-
-      const newSource = Buffer.from(currentAsset.source);
-      const newLength = newSource.length;
-      const originalLength = originalBuffer.length;
-      const resultLessThanOriginal = newLength > 0 && newLength < originalLength;
-
-      if (!resultLessThanOriginal) {
-        const comparePreview = styler.red(`[${newLength} < ${originalLength}]`);
-        ctx.logger.warn(
-          `New font no less than original ${comparePreview}. Revert content to original font`,
-        );
-        const fileName = currentAsset.fileName;
-        delete bundle[fileName];
-        bundle[fileName] = {
-          type: "asset" as const,
-          fileName,
-          name: currentAsset.name,
-          source: originalBuffer,
-          needsCodeReference: false,
-        } as unknown as OutputAsset;
-      }
-      ctx.logger.info(`Delete old asset from: ${styler.path(originalFont.fileName)}`);
-      delete bundle[originalFont.fileName];
-    });
   } catch (error) {
     ctx.logger.error("Clean up generated bundle has failed", { error: error as RollupError });
     throw error;
