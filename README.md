@@ -223,6 +223,11 @@ FontExtractor({
 - Use spaces in `fontName`, not `+` signs: `'Material Icons'`, not `'Material+Icons'`
 - Multi-family URLs (`family=Foo|Bar`) are supported — each family is matched against targets separately
 
+**Warning: "Font has no minify options"?**
+- This warning appears when the plugin finds a `@font-face` declaration but the font is not listed in `targets`
+- If you use `?subset=` in the font URL, the warning is automatically suppressed — the font is processed via the subset pipeline
+- To silence: either add the font to `targets`, use `?subset=`, or add the font name to `ignore`
+
 **Auto mode missing glyphs?**
 - Auto mode only detects glyphs from CSS `content: "..."` properties
 - If you reference icons via class names or JS, switch to `manual` mode and list the ligatures explicitly

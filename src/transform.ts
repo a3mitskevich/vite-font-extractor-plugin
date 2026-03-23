@@ -174,12 +174,16 @@ export async function transformHook(
         }
         const options = ctx.optionsMap.get(name);
 
+        const aliases = extractFonts(face);
+
         if (!options) {
-          logger.warn(`Font "${name}" has no minify options`);
+          // Don't warn if font uses ?subset= — it will be processed via subset pipeline
+          const hasSubset = aliases.some((alias) => alias.includes("?subset="));
+          if (!hasSubset) {
+            logger.warn(`Font "${name}" has no minify options — add to targets or use ?subset=`);
+          }
           return null;
         }
-
-        const aliases = extractFonts(face);
 
         const urlSources = aliases.filter((alias) => alias.startsWith("http"));
         if (urlSources.length) {
