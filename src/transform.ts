@@ -10,7 +10,7 @@ import {
   findUnicodeGlyphs,
 } from "./utils";
 import styler from "./styler";
-import type { PluginContext } from "./context";
+import { type PluginContext, getLogger } from "./context";
 import { checkFontProcessing } from "./minify";
 import { processServeAutoFontMinify, processServeFontMinify } from "./serve";
 
@@ -58,7 +58,7 @@ async function processFont(
     });
   } else {
     if (ctx.mode === "auto") {
-      ctx.logger.warn(
+      getLogger(ctx).warn(
         `"auto" mode detected. "${font.name}" font is stubbed based on auto-detected glyphs.` +
           " If this font is not a target please add it to ignore.",
       );
@@ -74,7 +74,8 @@ export async function transformHook(
   code: string,
   id: string,
 ): Promise<string> {
-  ctx.logger.fix();
+  const logger = getLogger(ctx);
+  logger.fix();
 
   const isCssFile = isCSSRequest(id);
   const isAutoType = ctx.mode === "auto";
@@ -93,7 +94,7 @@ export async function transformHook(
         const url = new URL(raw);
         const familyParam = url.searchParams.get("family");
         if (!familyParam) {
-          ctx.logger.warn(`No specified google font name in ${styler.path(id)}`);
+          logger.warn(`No specified google font name in ${styler.path(id)}`);
           continue;
         }
 
@@ -108,7 +109,7 @@ export async function transformHook(
 
           const options = ctx.optionsMap.get(name);
           if (!options) {
-            ctx.logger.warn(`Font "${name}" has no minify options`);
+            logger.warn(`Font "${name}" has no minify options`);
             continue;
           }
 
@@ -119,7 +120,7 @@ export async function transformHook(
         if (allTexts.length > 0) {
           const oldText = url.searchParams.get("text");
           if (oldText) {
-            ctx.logger.warn(`Font [${familyParam}] in ${id} has duplicated logic for minification`);
+            logger.warn(`Font [${familyParam}] in ${id} has duplicated logic for minification`);
           }
           const text = [oldText, ...allTexts].filter(exists).join(" ");
           const originalUrl = url.toString();
@@ -128,7 +129,7 @@ export async function transformHook(
           code = code.replace(originalUrl, fixedUrl.toString());
         }
       } catch (e) {
-        ctx.logger.error(`Process Google font URL is failed`, { error: e as Error });
+        logger.error(`Process Google font URL is failed`, { error: e as Error });
       }
     }
   }
@@ -142,7 +143,7 @@ export async function transformHook(
         const options = ctx.optionsMap.get(name);
 
         if (!options) {
-          ctx.logger.warn(`Font "${name}" has no minify options`);
+          logger.warn(`Font "${name}" has no minify options`);
           return null;
         }
 
@@ -150,7 +151,7 @@ export async function transformHook(
 
         const urlSources = aliases.filter((alias) => alias.startsWith("http"));
         if (urlSources.length) {
-          ctx.logger.warn(`Font "${name}" has external url sources: ${urlSources.toString()}`);
+          logger.warn(`Font "${name}" has external url sources: ${urlSources.toString()}`);
           return null;
         }
 
@@ -161,7 +162,7 @@ export async function transformHook(
       try {
         code = await processFont(rollupCtx, ctx, code, id, font);
       } catch (e) {
-        ctx.logger.error(`Process ${font.name} local font is failed`, { error: e as Error });
+        logger.error(`Process ${font.name} local font is failed`, { error: e as Error });
       }
     }
   }

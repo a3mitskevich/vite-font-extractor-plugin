@@ -6,7 +6,7 @@ import { createResolvers, intersection, mergePath } from "./utils";
 import { PLUGIN_NAME } from "./constants";
 import styler from "./styler";
 import { createInternalLogger } from "./internal-logger";
-import { createPluginContext, type ServeFontStubResponse } from "./context";
+import { createPluginContext, getLogger, type ServeFontStubResponse } from "./context";
 import { transformHook } from "./transform";
 import { generateBundleHook } from "./bundle";
 
@@ -20,15 +20,16 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         pluginOption.logLevel ?? config.logLevel,
         config.customLogger,
       );
-      ctx.logger.fix();
-      ctx.logger.info(`Plugin starts in "${ctx.mode}" mode`);
+      const logger = ctx.logger;
+      logger.fix();
+      logger.info(`Plugin starts in "${ctx.mode}" mode`);
 
       const intersectionIgnoreWithTargets = intersection(
         pluginOption.ignore ?? [],
         ctx.targets.map((target) => target.fontName),
       );
       if (intersectionIgnoreWithTargets.length) {
-        ctx.logger.warn(
+        logger.warn(
           `Ignore option has intersection with targets: ${intersectionIgnoreWithTargets.toString()}`,
         );
       }
@@ -62,14 +63,15 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
               p.finally(() => inFlightRequests.delete(url));
               return p;
             })();
+          const logger = getLogger(ctx);
           pending
             .then((stub) => {
               if (!stub) {
                 next();
                 return;
               }
-              ctx.logger.fix();
-              ctx.logger.info(`Stub server response for: ${styler.path(url)}`);
+              logger.fix();
+              logger.info(`Stub server response for: ${styler.path(url)}`);
               send(req, res, stub.content, `font/${stub.extension}`, {
                 cacheControl: "no-cache",
                 headers: server.config.server.headers,
@@ -78,7 +80,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
               ctx.loadedAutoFontMap.set(url, true);
             })
             .catch((error) => {
-              ctx.logger.error(`Failed to process font: ${styler.path(url)}`, {
+              logger.error(`Failed to process font: ${styler.path(url)}`, {
                 error: error as Error,
               });
               next(error);

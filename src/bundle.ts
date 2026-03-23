@@ -3,7 +3,7 @@ import { basename, dirname } from "node:path";
 import type { MinifyFontOptions, OptionsWithCacheSid } from "./types";
 import { getFontExtension, getHash } from "./utils";
 import styler from "./styler";
-import type { PluginContext } from "./context";
+import { type PluginContext, getLogger } from "./context";
 import { processMinify } from "./minify";
 
 interface EmitAsset {
@@ -22,7 +22,8 @@ export async function generateBundleHook(
   if (!ctx.transformMap.size) {
     return;
   }
-  ctx.logger.fix();
+  const logger = getLogger(ctx);
+  logger.fix();
   try {
     // Group reference IDs by font name, collecting the original assets
     const fontGroups = new Map<string, { options: OptionsWithCacheSid; assets: OutputAsset[] }>();
@@ -34,7 +35,7 @@ export async function generateBundleHook(
         | undefined;
 
       if (!asset) {
-        ctx.logger.warn(`Asset not found for reference ${referenceId}: ${fileName}`);
+        logger.warn(`Asset not found for reference ${referenceId}: ${fileName}`);
         continue;
       }
 
@@ -73,9 +74,7 @@ export async function generateBundleHook(
           if (!minified || minified.length === 0 || minified.length >= originalBuffer.length) {
             const newLen = minified?.length ?? 0;
             const comparePreview = styler.red(`[${newLen} < ${originalBuffer.length}]`);
-            ctx.logger.warn(
-              `New font no less than original ${comparePreview}. Keeping original font`,
-            );
+            logger.warn(`New font no less than original ${comparePreview}. Keeping original font`);
             return;
           }
 
@@ -103,7 +102,7 @@ export async function generateBundleHook(
             for (const candidate of candidates) {
               if (source.includes(candidate)) {
                 strAsset.source = source.replace(candidate, newFileName);
-                ctx.logger.info(
+                logger.info(
                   `Updated path "${styler.green(candidate)}" → "${styler.green(newFileName)}" in ${styler.path(strAsset.fileName)}`,
                 );
                 break;
@@ -111,12 +110,12 @@ export async function generateBundleHook(
             }
           });
 
-          ctx.logger.info(`Minified font ${styler.green(fontName)}: ${styler.path(newFileName)}`);
+          logger.info(`Minified font ${styler.green(fontName)}: ${styler.path(newFileName)}`);
         });
       }),
     );
   } catch (error) {
-    ctx.logger.error("Clean up generated bundle has failed", { error: error as RollupError });
+    logger.error("Clean up generated bundle has failed", { error: error as RollupError });
     throw error;
   }
 }
