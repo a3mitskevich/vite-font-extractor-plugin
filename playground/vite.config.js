@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import FontExtractor from "vite-font-extractor-plugin";
 
 export default defineConfig({
+  base: "/vite-font-extractor-plugin/",
   plugins: [
     FontExtractor({
       type: "manual",

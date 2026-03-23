@@ -178,9 +178,32 @@ export async function transformHook(
         const aliases = extractFonts(face);
 
         if (!options) {
-          // Don't warn if font uses ?subset= — it will be processed via subset pipeline
+          // Font not in targets — check if it uses ?subset= (handled via subset pipeline)
           const hasSubset = aliases.some((alias) => alias.includes("?subset="));
-          if (!hasSubset) {
+          if (hasSubset) {
+            // Register subset fonts with their CSS font-family name (not cryptic refId)
+            for (const alias of aliases) {
+              VITE_ASSET_RE.lastIndex = 0;
+              const match = VITE_ASSET_RE.exec(alias);
+              if (match) {
+                const referenceId = match[1];
+                const subset = parseSubsetParam(alias);
+                if (subset) {
+                  const subsetKey = JSON.stringify(subset);
+                  const mapKey = `${referenceId}:${subsetKey}`;
+                  if (!ctx.transformMap.has(mapKey)) {
+                    const subsetOptions = createSubsetOptions(name, subset);
+                    ctx.transformMap.set(mapKey, {
+                      fontName: name,
+                      options: subsetOptions,
+                      subset,
+                      referenceId,
+                    });
+                  }
+                }
+              }
+            }
+          } else {
             logger.warn(`Font "${name}" has no minify options — add to targets or use ?subset=`);
           }
           return null;
@@ -223,7 +246,8 @@ export async function transformHook(
       if (ctx.transformMap.has(mapKey)) continue;
 
       {
-        const fontName = `__subset_${referenceId}_${subsetKey.length}`;
+        // Fallback name for subset fonts not caught by @font-face processing above
+        const fontName = `subset (${referenceId.substring(0, 6)})`;
         const options = createSubsetOptions(fontName, subset);
         ctx.transformMap.set(mapKey, { fontName, options, subset, referenceId });
       }
