@@ -149,10 +149,11 @@ export const importTargets = {
   dist: createCachedImport(async () => import("../dist")),
 };
 
+// Returns Plugin compatible with all Vite versions — cross-version types are incompatible in strict mode
 export const plugin = async (...args: Parameters<FontExtractorPlugin>): Promise<Plugin> => {
   const testTarget = process.env.TEST_TARGET as keyof typeof importTargets;
   const { default: index } = await importTargets[testTarget ?? "local"]();
-  return index.apply(null, args);
+  return index.apply(null, args) as Plugin;
 };
 
 export const generateId = (): string => Math.random().toString(32).slice(2, 10);

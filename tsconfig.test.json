@@ -3,7 +3,7 @@
   "include": ["tests/**/*.ts"],
   "compilerOptions": {
     "types": ["node"],
-    "strict": false,
+    "strict": true,
     "module": "ES2022",
     "moduleResolution": "Bundler",
     "esModuleInterop": true
