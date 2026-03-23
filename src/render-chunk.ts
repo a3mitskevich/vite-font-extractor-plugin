@@ -35,10 +35,13 @@ export function renderChunkHook(ctx: PluginContext, code: string): string | null
       // Strip leading / for bundle key matching
       const assetKey = assetPath.startsWith("/") ? assetPath.slice(1) : assetPath;
 
-      if (!ctx.transformMap.has(assetKey)) {
-        const fontName = `__subset_js_${assetKey.replace(/\//g, "-")}`;
+      const subsetJson = JSON.stringify(subset);
+      const mapKey = `${assetKey}:${subsetJson}`;
+
+      if (!ctx.transformMap.has(mapKey)) {
+        const fontName = `__subset_js_${assetKey.replace(/\//g, "-")}_${subsetJson.length}`;
         const options: OptionsWithCacheSid = {
-          sid: JSON.stringify(subset),
+          sid: subsetJson,
           target: {
             fontName,
             characters: subset.characters,
@@ -47,7 +50,7 @@ export function renderChunkHook(ctx: PluginContext, code: string): string | null
           },
           auto: false,
         };
-        ctx.transformMap.set(assetKey, { fontName, options, subset });
+        ctx.transformMap.set(mapKey, { fontName, options, subset, referenceId: assetKey });
       }
 
       // Strip ?subset= from URL so browser gets clean path

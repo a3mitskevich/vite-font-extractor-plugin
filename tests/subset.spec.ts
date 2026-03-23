@@ -84,6 +84,85 @@ describe.sequential("Font subsetting", () => {
         });
       });
 
+      describe("multiple different ?subset= for same file (CSS)", () => {
+        it("should produce different minified assets for different subsets", async () => {
+          const { output } = await buildByVersion(version, {
+            fixture: fixtures["subset-multi-css"].path,
+            pluginOptions: {
+              type: "manual",
+              targets: [{ fontName: "Text Latin" }, { fontName: "Text Digits" }],
+            },
+          });
+
+          const fontAssets = getFontAssets(output as OutputAsset[]);
+          // Should have at least 2 font assets (one per subset)
+          expect(fontAssets.length).toBeGreaterThanOrEqual(2);
+
+          // Assets should have different sizes (different character sets)
+          const sizes = fontAssets.map((a) => Buffer.from(a.source).length);
+          const uniqueSizes = new Set(sizes);
+          expect(uniqueSizes.size).toBeGreaterThanOrEqual(2);
+        });
+      });
+
+      describe("same ?subset= for same file (CSS dedup)", () => {
+        it("should produce one minified asset for identical subsets", async () => {
+          const { output } = await buildByVersion(version, {
+            fixture: fixtures["subset-same-css"].path,
+            pluginOptions: {
+              type: "manual",
+              targets: [{ fontName: "Font A" }, { fontName: "Font B" }],
+            },
+          });
+
+          const fontAssets = getFontAssets(output as OutputAsset[]);
+          expect(fontAssets.length).toBeGreaterThanOrEqual(1);
+
+          // All font assets should have the same size (same subset applied)
+          const sizes = fontAssets.map((a) => Buffer.from(a.source).length);
+          const uniqueSizes = new Set(sizes);
+          expect(uniqueSizes.size).toBe(1);
+        });
+      });
+
+      describe("same ?subset= for same file (JS dedup)", () => {
+        it("should deduplicate identical subsets to one asset", async () => {
+          const { output } = await buildByVersion(version, {
+            fixture: fixtures["subset-same-js"].path,
+            pluginOptions: { type: "manual", targets: [] },
+          });
+
+          const fontAssets = getFontAssets(output as OutputAsset[]);
+          expect(fontAssets.length).toBe(1);
+
+          // JS chunk should reference the same URL for both imports
+          const jsChunk = output.find((a) => a.type === "chunk" && a.fileName.includes("index"));
+          expect(jsChunk).toBeTruthy();
+          if (jsChunk && "code" in jsChunk) {
+            expect(jsChunk.code).not.toContain("?subset=");
+          }
+        });
+      });
+
+      describe("multiple different ?subset= for same file (JS)", () => {
+        it("should strip ?subset= and produce font assets", async () => {
+          const { output } = await buildByVersion(version, {
+            fixture: fixtures["subset-multi-js"].path,
+            pluginOptions: { type: "manual", targets: [] },
+          });
+
+          const fontAssets = getFontAssets(output as OutputAsset[]);
+          expect(fontAssets.length).toBeGreaterThanOrEqual(1);
+
+          // JS chunk should have clean URLs
+          const jsChunk = output.find((a) => a.type === "chunk" && a.fileName.includes("index"));
+          expect(jsChunk).toBeTruthy();
+          if (jsChunk && "code" in jsChunk) {
+            expect(jsChunk.code).not.toContain("?subset=");
+          }
+        });
+      });
+
       describe("JS import with ?subset=", () => {
         it("should strip ?subset= from JS output URL", async () => {
           const { output } = await buildByVersion(version, {
