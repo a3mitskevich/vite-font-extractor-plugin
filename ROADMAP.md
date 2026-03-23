@@ -80,20 +80,15 @@
 - ~~Обновить `peerDependencies`: `"vite": "^4 || ^5 || ^6 || ^7"`~~
 - ~~Добавить в тесты~~ — 152 теста (114 + 38 новых для Vite 7)
 
-### ~~1.3 Добавить поддержку Vite 8~~ PARTIAL
-- **Приоритет:** P1
+### ~~1.3 Добавить поддержку Vite 8~~ DONE
 - ~~Добавить `vite-8` (8.0.1) в devDependencies~~
 - ~~Обновить `peerDependencies`: `"vite": "^4 || ^5 || ^6 || ^7 || ^8"`~~
-- **Статус: Experimental.** Vite 8 (Rolldown) иначе обрабатывает asset pipeline:
-  - `OutputAsset.name` может быть `undefined`
-  - `.fef` стабы не заменяются в `generateBundle` — Rolldown по-другому маппит emitFile/getFileName
-  - Тесты для Vite 8 отключены до адаптации плагина (→ Фаза 2, блок 2.1)
+- Rolldown-совместимость решена в блоке 2.1 — Vite 8 теперь Stable
 
-### 1.4 Оценить удаление поддержки Vite 4
-- **Приоритет:** P2
-- Vite 4 — EOL, последний релиз 4.5.1 (2023)
-- Удаление упростит тесты и снимет ограничения по API
-- Решение: объявить deprecated в 3.x, удалить в 4.0
+### ~~1.4 Оценить удаление поддержки Vite 4~~ DONE
+- Vite 4 помечен Deprecated в README
+- Убран из тестовой матрицы и devDependencies (минус 42 теста)
+- Остаётся в peerDependencies — полное удаление в следующем мажоре
 
 ---
 
@@ -162,25 +157,16 @@
 
 ## Фаза 4 — Документация и Playground
 
-### 4.1 Переписать README.md
-- **Приоритет:** P1
-- Новая структура: hero-секция с визуальным примером экономии размера, quick start, badges (npm, CI, license)
-- Добавить сравнительную таблицу "до/после" по размерам шрифтов
-- Добавить секцию Troubleshooting с типовыми проблемами
+### ~~4.1 Переписать README.md~~ DONE
+- Badges, quick start, compatibility table, How It Works, API tables
+- Troubleshooting секция, Caching секция
 
-### 4.2 Обновить или удалить Playground
-- **Приоритет:** P2
-- Текущий playground сломан (ссылка на несуществующий .tgz, Vue 2 + Vuetify 2)
-- Варианты:
-  - Обновить до Vue 3 + Vuetify 3 + актуальный Vite
-  - Заменить на минимальный vanilla-пример без фреймворка
-- Добавить `.font-extractor-cache/` в `.gitignore`
-- Связать playground с локальным пакетом через `"file:../"` вместо .tgz
+### ~~4.2 Обновить или удалить Playground~~ DONE
+- Заменён на vanilla playground: material-design-icons + 4 иконки + Vite 7
+- `file:..` линк, `.font-extractor-cache` в `.gitignore`
 
-### 4.3 Добавить `package-lock.json` в репозиторий
-- **Приоритет:** P1
-- Сейчас `package-lock.json` отсутствует, хотя CI использует `npm ci` (который требует lock-файл)
-- Обеспечит детерминированные установки
+### ~~4.3 `package-lock.json`~~ DONE
+- Файл уже присутствовал в репозитории
 
 ---
 

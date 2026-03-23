@@ -37,7 +37,7 @@ That's it. The plugin scans your CSS for `content: "..."` declarations, figures 
 
 | Vite | Status       |
 |------|--------------|
-| v4   | Stable       |
+| v4   | Deprecated   |
 | v5   | Stable       |
 | v6   | Stable       |
 | v7   | Stable       |

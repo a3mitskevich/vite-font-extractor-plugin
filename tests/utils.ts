@@ -1,11 +1,4 @@
 import {
-  build as buildV4,
-  type InlineConfig as InlineConfigV4,
-  version as versionV4,
-  type Plugin as PluginV4,
-  type Logger as LoggerV4,
-} from "vite-4";
-import {
   build as buildV5,
   type InlineConfig as InlineConfigV5,
   version as versionV5,
@@ -40,19 +33,14 @@ import { readFileSync, rmSync } from "node:fs";
 import type { FontExtractorPlugin, Target, PluginOption } from "../src";
 import type { RollupOutput } from "rollup";
 
-export type InlineConfig = InlineConfigV4 &
-  InlineConfigV5 &
-  InlineConfigV6 &
-  InlineConfigV7 &
-  InlineConfigV8;
-export type Plugin = PluginV4 & PluginV5 & PluginV6 & PluginV7 & PluginV8;
+export type InlineConfig = InlineConfigV5 & InlineConfigV6 & InlineConfigV7 & InlineConfigV8;
+export type Plugin = PluginV5 & PluginV6 & PluginV7 & PluginV8;
 export type ContainerVersion =
-  | typeof versionV4
   | typeof versionV5
   | typeof versionV6
   | typeof versionV7
   | typeof versionV8;
-export type Logger = LoggerV4 & LoggerV5 & LoggerV6 & LoggerV7 & LoggerV8;
+export type Logger = LoggerV5 & LoggerV6 & LoggerV7 & LoggerV8;
 export interface LoggerMessage {
   type: "error" | "warn" | "info";
   message: string;
@@ -162,7 +150,6 @@ export const plugin = async (...args: Parameters<FontExtractorPlugin>): Promise<
 export const generateId = (): string => Math.random().toString(32).slice(2, 10);
 
 export const viteBuild = {
-  [versionV4]: buildV4,
   [versionV5]: buildV5,
   [versionV6]: buildV6,
   [versionV7]: buildV7,

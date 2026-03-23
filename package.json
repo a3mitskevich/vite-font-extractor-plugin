@@ -76,7 +76,6 @@
     "simple-git-hooks": "^2.13.1",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vite-4": "https://registry.npmjs.org/vite/-/vite-4.5.1.tgz",
     "vite-5": "https://registry.npmjs.org/vite/-/vite-5.4.14.tgz",
     "vite-6": "https://registry.npmjs.org/vite/-/vite-6.0.11.tgz",
     "vite-7": "npm:vite@^7.3.1",
