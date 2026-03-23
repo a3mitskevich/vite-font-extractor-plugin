@@ -1,6 +1,6 @@
 import { isCSSRequest } from "vite";
 import type { TransformPluginContext } from "rollup";
-import type { FontFaceMeta } from "./types";
+import type { FontFaceMeta, OptionsWithCacheSid, SubsetOptions } from "./types";
 import {
   exists,
   extractFontFaces,
@@ -17,10 +17,35 @@ import { checkFontProcessing } from "./minify";
 import { processServeAutoFontMinify, processServeFontMinify } from "./serve";
 
 const VITE_ASSET_RE = /__VITE_ASSET__([\w$]+)__(?:\$_(.*?)__)?/g;
+const SUBSET_RE = /[?&]subset=([^&'")\s]+)/;
+
+function parseSubsetParam(url: string): SubsetOptions | undefined {
+  const match = SUBSET_RE.exec(url);
+  if (!match) return undefined;
+
+  // Strip trailing __ from Vite asset placeholder query
+  const rawValue = match[1].replace(/__+$/, "");
+  const parts = rawValue.split(",");
+  const characters: string[] = [];
+  const unicodeRanges: string[] = [];
+
+  for (const part of parts) {
+    if (part.startsWith("U+") || part.startsWith("u+")) {
+      unicodeRanges.push(part);
+    } else {
+      characters.push(part);
+    }
+  }
+
+  return {
+    characters: characters.length > 0 ? characters.join("") : undefined,
+    unicodeRanges: unicodeRanges.length > 0 ? unicodeRanges : undefined,
+  };
+}
 
 function collectFontReferences(
   ctx: PluginContext,
-  code: string,
+  _code: string,
   fontName: string,
   aliases: string[],
 ): void {
@@ -31,7 +56,8 @@ function collectFontReferences(
       const referenceId = match[1];
       const options = ctx.optionsMap.get(fontName);
       if (options) {
-        ctx.transformMap.set(referenceId, { fontName, options });
+        const subset = parseSubsetParam(alias);
+        ctx.transformMap.set(referenceId, { fontName, options, subset });
       }
     }
   }
@@ -170,5 +196,38 @@ export async function transformHook(
       }
     }
   }
+
+  // Handle ?subset= in any file (JS imports, CSS, HTML)
+  // Vite transforms `import font from './font.woff2?subset=ABC'` into
+  // `export default "__VITE_ASSET__<refId>__$_?subset=ABC__"`
+  if (code.includes("?subset=")) {
+    const globalAssetRe = /__VITE_ASSET__([\w$]+)__(?:\$_(.*?)__)?/g;
+    let assetMatch;
+    while ((assetMatch = globalAssetRe.exec(code))) {
+      const query = assetMatch[2];
+      if (!query || !query.includes("subset=")) continue;
+
+      const referenceId = assetMatch[1];
+      if (ctx.transformMap.has(referenceId)) continue;
+
+      const subset = parseSubsetParam(query);
+      if (subset) {
+        // For JS imports we don't have a fontName from @font-face
+        const fontName = `__subset_${referenceId}`;
+        const options: OptionsWithCacheSid = {
+          sid: JSON.stringify(subset),
+          target: {
+            fontName,
+            characters: subset.characters,
+            unicodeRanges: subset.unicodeRanges,
+            engine: "subset" as const,
+          },
+          auto: false,
+        };
+        ctx.transformMap.set(referenceId, { fontName, options, subset });
+      }
+    }
+  }
+
   return code;
 }

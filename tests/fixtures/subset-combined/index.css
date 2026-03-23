@@ -1,0 +1,9 @@
+@font-face {
+    font-family: 'Text Font';
+    src: url("../fonts/text-font.woff2?subset=ABC,U+0061-007A") format("woff2"),
+         url("../fonts/text-font.woff?subset=ABC,U+0061-007A") format("woff");
+}
+
+.test {
+    font-family: "Text Font", serif;
+}
