@@ -46,7 +46,7 @@
   "author": "Aleksandr Mitskevich",
   "license": "MIT",
   "dependencies": {
-    "fontext": "1.2.0",
+    "fontext": "1.11.0",
     "lodash.camelcase": "4.3.0",
     "lodash.groupby": "4.6.0",
     "picocolors": "1.1.1"
