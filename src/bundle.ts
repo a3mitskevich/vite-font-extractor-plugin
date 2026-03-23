@@ -25,14 +25,20 @@ export async function generateBundleHook(
   const logger = getLogger(ctx);
   logger.fix();
   try {
+    // Build fileName → asset index once for O(1) lookups
+    const assetByFileName = new Map<string, OutputAsset>();
+    for (const asset of Object.values(bundle)) {
+      if (asset.type === "asset") {
+        assetByFileName.set(asset.fileName, asset as OutputAsset);
+      }
+    }
+
     // Group reference IDs by font name, collecting the original assets
     const fontGroups = new Map<string, { options: OptionsWithCacheSid; assets: OutputAsset[] }>();
 
     for (const [referenceId, { fontName, options }] of ctx.transformMap) {
       const fileName = getFileName(referenceId);
-      const asset = Object.values(bundle).find((a) => a.fileName === fileName) as
-        | OutputAsset
-        | undefined;
+      const asset = assetByFileName.get(fileName);
 
       if (!asset) {
         logger.warn(`Asset not found for reference ${referenceId}: ${fileName}`);
