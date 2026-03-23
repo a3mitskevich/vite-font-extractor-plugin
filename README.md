@@ -165,11 +165,15 @@ FontExtractor({
 
 **Google Font URL not transformed?**
 - Use spaces in `fontName`, not `+` signs: `'Material Icons'`, not `'Material+Icons'`
-- URLs with multiple families (`family=Foo|Bar`) are not currently supported
+- Multi-family URLs (`family=Foo|Bar`) are supported — each family is matched against targets separately
 
 **Auto mode missing glyphs?**
 - Auto mode only detects glyphs from CSS `content: "..."` properties
 - If you reference icons via class names or JS, switch to `manual` mode and list the ligatures explicitly
+
+**Using Vite 8 (Rolldown)?**
+- Vite 8 is fully supported — the plugin works with Rolldown's asset pipeline
+- If you see warnings about bundle assignment, they can be safely ignored
 
 ## License
 
