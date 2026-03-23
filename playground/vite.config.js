@@ -5,10 +5,21 @@ export default defineConfig({
   plugins: [
     FontExtractor({
       type: "manual",
-      targets: {
-        fontName: "Material Icons",
-        ligatures: ["close", "menu", "search", "home"],
-      },
+      targets: [
+        {
+          fontName: "Material Icons",
+          ligatures: [
+            "close",
+            "menu",
+            "search",
+            "home",
+            "settings",
+            "delete",
+            "favorite",
+            "star",
+          ],
+        },
+      ],
       cache: true,
     }),
   ],

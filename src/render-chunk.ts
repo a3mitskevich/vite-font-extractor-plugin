@@ -36,7 +36,7 @@ export function renderChunkHook(ctx: PluginContext, code: string): string | null
       const assetKey = assetPath.startsWith("/") ? assetPath.slice(1) : assetPath;
 
       if (!ctx.transformMap.has(assetKey)) {
-        const fontName = `__subset_js_${assetKey}`;
+        const fontName = `__subset_js_${assetKey.replace(/\//g, "-")}`;
         const options: OptionsWithCacheSid = {
           sid: JSON.stringify(subset),
           target: {
