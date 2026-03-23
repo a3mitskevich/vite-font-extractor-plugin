@@ -162,12 +162,10 @@ The cache is automatically cleaned when `cache` is set to `false`.
 
 ## API Reference
 
-```ts
+```typescript
 import FontExtractor from 'vite-font-extractor-plugin'
 
-FontExtractor(options ? : PluginOption)
-:
-Plugin
+FontExtractor(options?: PluginOption): Plugin
 ```
 
 ### PluginOption
