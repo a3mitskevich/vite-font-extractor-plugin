@@ -59,6 +59,18 @@ Development roadmap for `vite-font-extractor-plugin` — v3.0.
 - Tests use `retry: 5` as workaround
 - **Needed:** investigate deterministic font subsetting or alternative hashing approach
 
+### Code Quality (from audit)
+
+#### Type `bundle` parameter properly
+- **Priority:** P2
+- `src/extractor.ts:107` — `bundle as any` bypasses type safety
+- Should use Rollup `OutputBundle` type and handle both assets and chunks
+
+#### Break down large functions
+- **Priority:** P3
+- `src/bundle.ts:15` (144 lines), `src/transform.ts:102` (140 lines), `src/minify.ts:26` (76 lines)
+- Extract sub-functions for Google Font processing, string asset replacement, etc.
+
 ### Features
 
 #### JS import ?subset= in dev server

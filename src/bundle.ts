@@ -43,6 +43,7 @@ export async function generateBundleHook(
       const fileName = getFileName(resolveKey);
       asset = assetByFileName.get(fileName);
     } catch {
+      // getFileName throws for JS subset keys (not Vite reference IDs) — fallback to direct fileName lookup
       asset = assetByFileName.get(resolveKey);
     }
 
@@ -125,8 +126,8 @@ export async function generateBundleHook(
             const source = strAsset.source as string;
             const candidates = [
               oldFileName,
-              oldFileName.replace(" ", "\\ "),
-              oldFileName.replace(" ", "%20"),
+              oldFileName.replaceAll(" ", "\\ "),
+              oldFileName.replaceAll(" ", "%20"),
             ];
             for (const candidate of candidates) {
               if (source.includes(candidate)) {

@@ -1,5 +1,6 @@
-import type { OptionsWithCacheSid, SubsetOptions } from "./types";
+import type { SubsetOptions } from "./types";
 import type { PluginContext } from "./context";
+import { createSubsetOptions } from "./utils";
 
 // Matches resolved font URLs with ?subset= in JS chunks
 // e.g. "/assets/font-abc123.woff2?subset=ABC"
@@ -40,16 +41,7 @@ export function renderChunkHook(ctx: PluginContext, code: string): string | null
 
       if (!ctx.transformMap.has(mapKey)) {
         const fontName = `__subset_js_${assetKey.replace(/\//g, "-")}_${subsetJson.length}`;
-        const options: OptionsWithCacheSid = {
-          sid: subsetJson,
-          target: {
-            fontName,
-            characters: subset.characters,
-            unicodeRanges: subset.unicodeRanges,
-            engine: "subset" as const,
-          },
-          auto: false,
-        };
+        const options = createSubsetOptions(fontName, subset);
         ctx.transformMap.set(mapKey, { fontName, options, subset, referenceId: assetKey });
       }
 

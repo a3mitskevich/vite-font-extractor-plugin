@@ -1,6 +1,6 @@
 import { isCSSRequest } from "vite";
 import type { TransformPluginContext } from "rollup";
-import type { FontFaceMeta, OptionsWithCacheSid, SubsetOptions } from "./types";
+import type { FontFaceMeta, SubsetOptions } from "./types";
 import {
   exists,
   extractFontFaces,
@@ -10,6 +10,7 @@ import {
   findUnicodeGlyphs,
   stripCssComments,
   toError,
+  createSubsetOptions,
 } from "./utils";
 import styler from "./styler";
 import { type PluginContext, getLogger } from "./context";
@@ -223,16 +224,7 @@ export async function transformHook(
 
       {
         const fontName = `__subset_${referenceId}_${subsetKey.length}`;
-        const options: OptionsWithCacheSid = {
-          sid: subsetKey,
-          target: {
-            fontName,
-            characters: subset.characters,
-            unicodeRanges: subset.unicodeRanges,
-            engine: "subset" as const,
-          },
-          auto: false,
-        };
+        const options = createSubsetOptions(fontName, subset);
         ctx.transformMap.set(mapKey, { fontName, options, subset, referenceId });
       }
     }
