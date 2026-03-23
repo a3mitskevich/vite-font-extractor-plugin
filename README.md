@@ -28,6 +28,7 @@ After:   Material Icons    12 KB (only 3 icons you need)   → 97% smaller
 - **Works in build and dev** — minifies fonts on-the-fly during development
 - **Vite 5–8 support** — compatible with both Rollup and Rolldown bundlers
 - **Content-based hashing** — output filenames change when config changes (cache-safe)
+- **[Live playground](https://a3mitskevich.github.io/vite-font-extractor-plugin/)** — see the plugin in action
 - **Disk cache** — skip re-minification on repeated builds
 
 ## Quick Start

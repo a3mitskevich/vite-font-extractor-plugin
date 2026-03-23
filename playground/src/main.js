@@ -1,10 +1,5 @@
 import "./style.css";
 
-// JS import with ?subset= — demonstrates runtime font URL for Rive/Canvas use cases
-import subsetFontUrl from "@fontsource/roboto/files/roboto-latin-400-normal.woff2?subset=Hello";
-
-document.getElementById("js-font-url").textContent = subsetFontUrl;
-
 // Known original sizes from npm packages (before any processing)
 const FONT_COMPARISONS = [
   {
@@ -108,42 +103,7 @@ function formatBytes(bytes) {
   return (bytes / 1024).toFixed(1) + " KB";
 }
 
-// Glyph check: verify which characters are present in the subset font
-const glyphTests = [
-  { text: "Hello World", description: "Latin text", expectPresent: true },
-  { text: "ABCDEFGHIJ", description: "Uppercase Latin", expectPresent: true },
-  { text: "0123456789", description: "Digits", expectPresent: true },
-  { text: "Привет Мир", description: "Cyrillic text", expectPresent: false },
-  { text: "你好世界", description: "Chinese text", expectPresent: false },
-  { text: "مرحبا", description: "Arabic text", expectPresent: false },
-];
-
-async function runGlyphChecks() {
-  await document.fonts.ready;
-
-  const container = document.getElementById("glyph-checks");
-  if (!container) return;
-
-  const fontSpec = '24px "Roboto Subset"';
-
-  for (const test of glyphTests) {
-    const isPresent = document.fonts.check(fontSpec, test.text);
-
-    const row = document.createElement("div");
-    row.className = `glyph-check ${isPresent ? "present" : "missing"}`;
-    row.innerHTML = `
-      <span class="status">${isPresent ? "✓" : "✗"}</span>
-      <span class="text">${test.text}</span>
-      <span class="verdict">
-        ${test.description} — ${isPresent ? "glyphs present" : "glyphs stripped"}
-      </span>
-    `;
-    container.appendChild(row);
-  }
-}
-
 async function runAllChecks() {
-  await runGlyphChecks();
   await measureFontSizes();
 }
 

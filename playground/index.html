@@ -62,12 +62,6 @@
           </span>
         </div>
 
-        <h3 class="mt">Glyph Presence Check</h3>
-        <p class="description">
-          Programmatic verification via <code>document.fonts.check()</code>
-        </p>
-        <div id="glyph-checks" class="glyph-checks"></div>
-
         <h3 class="mt">File Size Comparison</h3>
         <p class="description">
           Actual sizes fetched at runtime from built assets.
@@ -86,48 +80,6 @@
           </tbody>
         </table>
       </section>
-
-      <!-- Section 3: Text Font Subsetting -->
-      <section>
-        <h2>Text Font Subsetting — <code>?subset=</code></h2>
-        <p class="description">
-          Roboto font loaded with
-          <code>?subset=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?</code>
-          — only Latin letters, digits, and basic punctuation are kept.
-        </p>
-        <p class="text-subset">
-          The quick brown fox jumps over the lazy dog. 0123456789
-        </p>
-        <pre><code>@font-face {
-  font-family: 'Roboto Subset';
-  src: url('./roboto.woff2?subset=A-Za-z0-9') format('woff2');
-}</code></pre>
-      </section>
-
-      <!-- Section 4: JS Import Subset -->
-      <section>
-        <h2>JS Import — <code>?subset=</code></h2>
-        <p class="description">
-          Font imported via JavaScript with <code>?subset=</code> query. Useful
-          for runtime font loading (Rive, Canvas, PDF generators).
-        </p>
-        <pre><code>import fontUrl from '@fontsource/roboto/files/roboto-latin-400-normal.woff2?subset=Hello'</code></pre>
-        <p>
-          Resolved URL: <code id="js-font-url">loading...</code>
-        </p>
-      </section>
-
-      <!-- Section 5: Google Fonts -->
-      <section>
-        <h2>Google Fonts Optimization</h2>
-        <p class="description">
-          The plugin automatically appends <code>&text=</code> parameter to
-          Google Font URLs, letting Google's servers do the subsetting.
-        </p>
-        <pre><code>&lt;link href="https://fonts.googleapis.com/icon?family=Material+Icons"&gt;
-// Plugin transforms to:
-// ...?family=Material+Icons&text=close+menu+search+home+...</code></pre>
-      </section>
     </main>
 
     <footer>
@@ -138,6 +90,10 @@
         ·
         <a href="https://www.npmjs.com/package/vite-font-extractor-plugin"
           >npm</a
+        >
+        ·
+        <a href="https://github.com/a3mitskevich/vite-font-extractor-plugin#readme"
+          >README</a
         >
       </p>
     </footer>

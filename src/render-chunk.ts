@@ -40,7 +40,13 @@ export function renderChunkHook(ctx: PluginContext, code: string): string | null
       const mapKey = `${assetKey}:${subsetJson}`;
 
       if (!ctx.transformMap.has(mapKey)) {
-        const fontName = `__subset_js_${assetKey.replace(/\//g, "-")}_${subsetJson.length}`;
+        // Extract readable name from asset path: "assets/roboto-latin-400-normal-xxx.woff2" → "roboto-latin-400-normal"
+        const baseName =
+          assetPath
+            .split("/")
+            .pop()
+            ?.replace(/-[\w]{8}\.[\w]+$/, "") ?? assetKey;
+        const fontName = `${baseName} (JS)`;
         const options = createSubsetOptions(fontName, subset);
         ctx.transformMap.set(mapKey, { fontName, options, subset, referenceId: assetKey });
       }

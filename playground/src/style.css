@@ -210,59 +210,6 @@ h3 {
   margin-top: 0.5rem;
 }
 
-/* Glyph checks */
-.glyph-checks {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.glyph-check {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 1rem;
-  background: white;
-  border-radius: 6px;
-  border: 1px solid #eee;
-  font-size: 0.95rem;
-}
-
-.glyph-check .status {
-  font-size: 1.2rem;
-  width: 1.5rem;
-  text-align: center;
-}
-
-.glyph-check .text {
-  font-family: "Roboto Subset", monospace;
-  font-size: 1.1rem;
-  flex: 1;
-}
-
-.glyph-check.present {
-  border-color: #4caf50;
-}
-
-.glyph-check.present .status {
-  color: #2e7d32;
-}
-
-.glyph-check.missing {
-  border-color: #f44336;
-}
-
-.glyph-check.missing .status {
-  color: #c62828;
-}
-
-.glyph-check .verdict {
-  font-size: 0.8rem;
-  color: #888;
-  font-family: monospace;
-}
-
 /* Size table */
 .size-table {
   width: 100%;
