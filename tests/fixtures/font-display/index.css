@@ -1,0 +1,11 @@
+@font-face {
+    font-family: 'Font Name';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153;
+    src: url("../fonts/icon-font.eot");
+    src: url("../fonts/icon-font.woff2") format("woff2"),
+         url("../fonts/icon-font.woff") format("woff"),
+         url("../fonts/icon-font.ttf") format("truetype");
+}

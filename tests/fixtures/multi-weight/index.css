@@ -1,0 +1,13 @@
+@font-face {
+    font-family: 'Font Name';
+    font-weight: 400;
+    src: url("../fonts/icon-font.woff2") format("woff2"),
+         url("../fonts/icon-font.woff") format("woff");
+}
+
+@font-face {
+    font-family: 'Font Name';
+    font-weight: 700;
+    src: url("../fonts/icon-font.ttf") format("truetype"),
+         url("../fonts/icon-font.eot");
+}
