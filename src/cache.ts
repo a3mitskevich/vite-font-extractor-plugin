@@ -1,6 +1,6 @@
-import { mkdirSync, existsSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, existsSync, writeFileSync, readFileSync, rmSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { mergePath } from "./utils";
-import glob from "fast-glob";
 
 export default class Cache {
   static removeIfExists(parentDir: string): void {
@@ -41,24 +41,20 @@ export default class Cache {
   }
 
   clearCache(pattern?: string): void {
-    const remove = (target: string, recursive: boolean = false): void => {
-      rmSync(target, { recursive });
-      this.createDir();
-    };
-
     if (pattern) {
-      glob
-        .sync(pattern + "/**", {
-          absolute: true,
-          onlyFiles: true,
-          cwd: this.path,
-        })
-        .forEach((target) => {
-          remove(target);
-        });
+      const targetDir = join(this.path, pattern);
+      if (existsSync(targetDir)) {
+        const files = readdirSync(targetDir, { recursive: true, withFileTypes: true });
+        for (const entry of files) {
+          if (entry.isFile()) {
+            rmSync(join(entry.parentPath ?? entry.path, entry.name));
+          }
+        }
+      }
     } else {
-      remove(this.path, true);
+      rmSync(this.path, { recursive: true });
     }
+    this.createDir();
   }
 
   getPathTo(...to: string[]): string {

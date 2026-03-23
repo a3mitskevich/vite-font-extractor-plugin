@@ -1,10 +1,10 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ["src/index.ts"],
   dts: true,
-  format: ['cjs', 'esm'],
+  format: ["cjs", "esm"],
   clean: true,
-  external: ['picocolors', 'fast-glob'],
-  tsconfig: 'tsconfig.lib.json',
-})
+  external: ["picocolors"],
+  tsconfig: "tsconfig.lib.json",
+});
