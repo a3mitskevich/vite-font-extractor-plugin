@@ -554,12 +554,22 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
 
         const unminifiedFonts = groupBy(
           resources.filter(([_, newFont]) => newFont.fileName.endsWith(PROCESS_EXTENSION)),
-          ([_, newFont]) => newFont.name!.replace(PROCESS_EXTENSION, ""),
+          ([_, newFont]) =>
+            basename(newFont.name ?? newFont.fileName).replace(PROCESS_EXTENSION, ""),
         );
 
-        const stringAssets: Array<{ source: string; fileName: string }> = Object.values(
-          bundle,
-        ).filter((asset) => asset.type === "asset" && typeof asset.source === "string") as any;
+        // Collect string-source assets (CSS/HTML) for path replacement.
+        // Use toString() to handle both string and Uint8Array sources (Rolldown).
+        const stringAssets = Object.values(bundle).filter(
+          (asset): asset is OutputAsset =>
+            asset.type === "asset" && typeof asset.source === "string",
+        );
+
+        // Track new font file names for the size-check phase
+        const fontReplacements = new Map<
+          string,
+          { newFileName: string; newName: string; newSource: Buffer | Uint8Array }
+        >();
 
         await Promise.all(
           Object.entries(unminifiedFonts).map(async ([fontName, transforms]) => {
@@ -583,13 +593,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
                 basename(newFont.fileName, PROCESS_EXTENSION) + `.${extension}`
               ).replace(fontName, fixedName);
               const correctName = fixedName + `.${extension}`;
-              Object.defineProperty(newFont, "name", {
-                get(): any {
-                  return correctName;
-                },
-              });
-
-              newFont.fileName = newFont.fileName.replace(
+              const newFileName = newFont.fileName.replace(
                 basename(temporalNewFontFilename),
                 fixedBasename,
               );
@@ -599,26 +603,58 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
                 temporalNewFontFilename.replace(" ", "%20"),
               ];
 
+              // Replace stub paths in CSS/HTML assets
               stringAssets.forEach((asset) => {
                 const temporalNewFontBasename = potentialTemporalNewFontBaseNames.find(
-                  (candidate) => asset.source.includes(candidate),
+                  (candidate) => (asset.source as string).includes(candidate),
                 );
                 if (temporalNewFontBasename) {
                   logger.info(
-                    `Change name from "${styler.green(temporalNewFontBasename)}" to "${styler.green(newFont.fileName)}" in ${styler.path(asset.fileName)}`,
+                    `Change name from "${styler.green(temporalNewFontBasename)}" to "${styler.green(newFileName)}" in ${styler.path(asset.fileName)}`,
                   );
-                  asset.source = asset.source.replace(temporalNewFontBasename, newFont.fileName);
+                  asset.source = (asset.source as string).replace(
+                    temporalNewFontBasename,
+                    newFileName,
+                  );
                 }
               });
 
-              newFont.source = minifiedBuffer?.[extension] ?? Buffer.alloc(0);
+              const newSource = minifiedBuffer?.[extension] ?? Buffer.alloc(0);
+
+              // Delete old stub and create new asset (works with both Rollup and Rolldown)
+              delete bundle[temporalNewFontFilename];
+              bundle[newFileName] = {
+                type: "asset" as const,
+                fileName: newFileName,
+                name: correctName,
+                source: newSource,
+                needsCodeReference: false,
+              } as unknown as OutputAsset;
+
+              fontReplacements.set(temporalNewFontFilename, {
+                newFileName,
+                newName: correctName,
+                newSource,
+              });
             });
           }),
         );
 
         resources.forEach(([originalFont, newFont]) => {
           const originalBuffer = Buffer.from(originalFont.source);
-          const newLength = newFont.source.length;
+          const replacement = fontReplacements.get(newFont.fileName);
+          const currentAsset = replacement
+            ? (bundle[replacement.newFileName] as OutputAsset | undefined)
+            : newFont;
+
+          if (!currentAsset) {
+            logger.info(`Delete old asset from: ${styler.path(originalFont.fileName)}`);
+            delete bundle[originalFont.fileName];
+            return;
+          }
+
+          const newSource = Buffer.from(currentAsset.source);
+          const newLength = newSource.length;
           const originalLength = originalBuffer.length;
           const resultLessThanOriginal = newLength > 0 && newLength < originalLength;
 
@@ -627,7 +663,16 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
             logger.warn(
               `New font no less than original ${comparePreview}. Revert content to original font`,
             );
-            newFont.source = originalBuffer;
+            // Re-create the asset with original content
+            const fileName = currentAsset.fileName;
+            delete bundle[fileName];
+            bundle[fileName] = {
+              type: "asset" as const,
+              fileName,
+              name: currentAsset.name,
+              source: originalBuffer,
+              needsCodeReference: false,
+            } as unknown as OutputAsset;
           }
           logger.info(`Delete old asset from: ${styler.path(originalFont.fileName)}`);
           delete bundle[originalFont.fileName];

@@ -164,8 +164,10 @@ export const viteBuild = {
   [versionV5]: buildV5,
   [versionV6]: buildV6,
   [versionV7]: buildV7,
-  // TODO: Vite 8 uses Rolldown which handles emitFile/getFileName differently in generateBundle.
-  // Plugin needs adaptation for Rolldown's asset pipeline before enabling tests.
+  // TODO: Vite 8 (Rolldown) uses different __VITE_ASSET__ placeholder resolution.
+  // The transform hook replaces oldRefId with newRefId in the placeholder, but Rolldown
+  // doesn't resolve emitFile reference IDs embedded in __VITE_ASSET__ placeholders —
+  // emitted .fef stubs are dropped from the output entirely. Needs rework of changeResource.
   // [_versionV8]: _buildV8,
 };
 
