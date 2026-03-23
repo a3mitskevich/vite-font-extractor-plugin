@@ -81,11 +81,10 @@ export function createResolvers(config: ResolvedConfig): ImportResolvers {
 }
 
 export const extractFontFaces = (code: string): string[] => {
-  const cleaned = stripCssComments(code);
   const faces = [];
   let match = null;
   FONT_FACE_BLOCK_REGEX.lastIndex = 0;
-  while ((match = FONT_FACE_BLOCK_REGEX.exec(cleaned))) {
+  while ((match = FONT_FACE_BLOCK_REGEX.exec(code))) {
     const face = match[0];
     if (face) {
       faces.push(face);
@@ -108,11 +107,10 @@ export const extractFonts = (fontFaceString: string): string[] => {
 };
 
 export const extractGoogleFontsUrls = (code: string): string[] => {
-  const cleaned = stripCssComments(code);
   const urls = [];
   let match = null;
   GOOGLE_FONT_URL_RE.lastIndex = 0;
-  while ((match = GOOGLE_FONT_URL_RE.exec(cleaned))) {
+  while ((match = GOOGLE_FONT_URL_RE.exec(code))) {
     const url = match[1];
     if (url) {
       urls.push(url);
@@ -142,7 +140,7 @@ export function groupBy<T>(array: T[], key: (item: T) => string): Record<string,
 }
 
 export const findUnicodeGlyphs = (code: string): string[] => {
-  const matches = stripCssComments(code).match(GLYPH_REGEX) || [];
+  const matches = code.match(GLYPH_REGEX) || [];
   return matches
     .map((match) => {
       const [, unicodeMatch] = match.match(UNICODE_REGEX) || [];

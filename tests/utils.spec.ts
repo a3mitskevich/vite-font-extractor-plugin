@@ -46,12 +46,12 @@ describe("extractFontFaces", () => {
     expect(result[0]).toContain("MaterialIcons-Regular.woff2");
   });
 
-  it("should ignore @font-face inside CSS comments", () => {
+  it("should ignore @font-face inside CSS comments when pre-stripped", () => {
     const css = `
       /* @font-face { font-family: 'Commented'; src: url("no.woff2"); } */
       @font-face { font-family: 'Real'; src: url("yes.woff2"); }
     `;
-    const result = extractFontFaces(css);
+    const result = extractFontFaces(stripCssComments(css));
     expect(result).toHaveLength(1);
     expect(result[0]).toContain("'Real'");
   });
@@ -165,12 +165,12 @@ describe("extractGoogleFontsUrls", () => {
     expect(extractGoogleFontsUrls(`@import "https://example.com/font.css";`)).toEqual([]);
   });
 
-  it("should ignore Google Font urls inside CSS comments", () => {
+  it("should ignore Google Font urls inside CSS comments when pre-stripped", () => {
     const css = `
       /* @import "https://fonts.googleapis.com/css?family=Commented"; */
       @import "https://fonts.googleapis.com/css?family=Real";
     `;
-    const result = extractGoogleFontsUrls(css);
+    const result = extractGoogleFontsUrls(stripCssComments(css));
     expect(result).toHaveLength(1);
     expect(result[0]).toContain("family=Real");
   });
@@ -210,12 +210,12 @@ describe("findUnicodeGlyphs", () => {
     expect(result).toHaveLength(1);
   });
 
-  it("should ignore glyphs inside CSS comments", () => {
+  it("should ignore glyphs inside CSS comments when pre-stripped", () => {
     const css = `
       /* .commented { content: "\\e001"; } */
       .real { content: "\\e002"; }
     `;
-    const result = findUnicodeGlyphs(css);
+    const result = findUnicodeGlyphs(stripCssComments(css));
     expect(result).toHaveLength(1);
     expect(result[0]).toBe(String.fromCharCode(0xe002));
   });

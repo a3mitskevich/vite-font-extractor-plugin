@@ -8,6 +8,7 @@ import {
   extractFonts,
   extractGoogleFontsUrls,
   findUnicodeGlyphs,
+  stripCssComments,
   toError,
 } from "./utils";
 import styler from "./styler";
@@ -80,17 +81,19 @@ export async function transformHook(
 
   const isCssFile = isCSSRequest(id);
   const isAutoType = ctx.mode === "auto";
-  const isCssFileWithFontFaces = isCssFile && code.includes("@font-face");
+  // Strip CSS comments once for all regex-based parsing
+  const cleanedCode = isCssFile || id.endsWith(".html") ? stripCssComments(code) : code;
+  const isCssFileWithFontFaces = isCssFile && cleanedCode.includes("@font-face");
 
   if (isAutoType && isCssFile) {
-    const glyphs = findUnicodeGlyphs(code);
+    const glyphs = findUnicodeGlyphs(cleanedCode);
     ctx.glyphsFindMap.set(id, glyphs);
   }
   if (
-    (id.endsWith(".html") || (isCssFile && code.includes("@import"))) &&
-    code.includes("fonts.googleapis.com")
+    (id.endsWith(".html") || (isCssFile && cleanedCode.includes("@import"))) &&
+    cleanedCode.includes("fonts.googleapis.com")
   ) {
-    for (const raw of extractGoogleFontsUrls(code)) {
+    for (const raw of extractGoogleFontsUrls(cleanedCode)) {
       try {
         const url = new URL(raw);
         const familyParam = url.searchParams.get("family");
@@ -135,7 +138,7 @@ export async function transformHook(
     }
   }
   if (isCssFileWithFontFaces) {
-    const fonts = extractFontFaces(code)
+    const fonts = extractFontFaces(cleanedCode)
       .map<FontFaceMeta | null>((face) => {
         const name = extractFontName(face);
         if (ctx.pluginOption.ignore?.includes(name)) {
