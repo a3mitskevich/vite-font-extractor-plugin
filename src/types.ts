@@ -66,7 +66,23 @@ export interface MinifyFontOptions {
   extension: Format;
 }
 
-export type InternalLogger = Pick<Logger, LogType> & { fix: () => void };
+export interface MinifyStats {
+  minified: number;
+  cached: number;
+  saved: number;
+}
+
+export interface InternalLogger extends Pick<Logger, LogType> {
+  fix(): void;
+  banner(): void;
+  config(mode: string, details: string): void;
+  phase(icon: string, name: string): void;
+  found(type: string, name: string, detail?: string): void;
+  minified(fontName: string, ext: string, original: number, result: number, isLast?: boolean): void;
+  cached(fontName: string): void;
+  skipped(fontName: string, reason: string): void;
+  summary(stats: MinifyStats): void;
+}
 
 export type StyledFn = (message: string) => string;
 export type StyleMessage<K extends string> = { [key in K | string]: StyledFn };

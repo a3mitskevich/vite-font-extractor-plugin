@@ -66,7 +66,7 @@ describe.sequential("Error handling", () => {
         });
 
         const hasIntersectionWarn = messages.some(
-          (m) => m.type === "warn" && m.message.includes("intersection with targets"),
+          (m) => m.type === "warn" && m.message.includes("Ignore overlaps"),
         );
         expect(hasIntersectionWarn).toBeTruthy();
       });
