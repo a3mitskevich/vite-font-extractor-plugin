@@ -101,32 +101,20 @@
 
 Цель: решить основной технический долг, обеспечить полную поддержку Vite 8 (Rolldown).
 
-### 2.1 Адаптация для Rolldown (Vite 8)
-- **Приоритет:** P0
-- **Статус: исследовано, ожидает решения**
-- **Корневая проблема:** не в `generateBundle`, а в `transform` → `changeResource`:
-  - Плагин заменяет `__VITE_ASSET__<oldRefId>__` на `__VITE_ASSET__<newRefId>__` в CSS
-  - В Rollup Vite резолвит оба формата placeholder'ов и включает emitted assets в output
-  - В Rolldown emitted `.fef` stub reference ID **не распознаётся** внутри `__VITE_ASSET__` placeholder — Rolldown его дропает, шрифтовые ассеты пропадают из бандла полностью
-- **Что сделано:**
-  - `generateBundle` адаптирован: delete + re-add вместо мутации Rust-объектов, `name!` → `name ?? fileName`
-  - Исследован asset pipeline Rolldown: `emitFile` работает, `getFileName` работает, но reference ID не подставляются в `__VITE_ASSET__` placeholders
-- **Что нужно для полного решения:**
-  - Рефакторинг `changeResource` — не заменять reference ID в `__VITE_ASSET__`, а использовать другой механизм привязки stub к оригинальному шрифту
-  - Возможный подход: в `transform` сохранять маппинг `originalFileName → stubData`, а в `generateBundle` находить оригинальные ассеты по fileName и заменять их напрямую, без промежуточных `.fef` стабов
-  - Это потребует полного рефакторинга asset pipeline (блок 2.2)
-- **Файлы:** `src/extractor.ts` (changeResource, generateBundle)
+### ~~2.1 Адаптация для Rolldown (Vite 8)~~ DONE
+- Удалён `.fef` stub механизм и `changeResource`
+- Transform: собирает маппинг `referenceId → { fontName, options }`, CSS не модифицирует
+- GenerateBundle: находит ассеты по referenceId, минифицирует, emitFile с content-based хешем
+- Хеши детерминированы по минифицированному контенту (config change → hash change)
+- Vite 8 полностью поддержан: 247 тестов (Vite 4/5/6/7/8)
 
-### 2.2 Декомпозиция `extractor.ts`
-- **Приоритет:** P1
-- Разделить на модули:
-  - `src/transform.ts` — логика `transform` хука (CSS-парсинг, asset emission)
-  - `src/serve.ts` — dev-server middleware и font proxying
-  - `src/bundle.ts` — логика `generateBundle` (минификация, замена стабов)
-  - `src/google-fonts.ts` — обработка Google Font URL
-  - `src/extractor.ts` — остаётся как фасад, собирающий Plugin из модулей
-- Вынести замыкания (`glyphsFindMap`, `transformMap`, `fontServeProxy`, `progress`) в отдельное хранилище состояния
-- Декомпозиция облегчит адаптацию под Rolldown — логика `generateBundle` изолирована и тестируема
+### ~~2.2 Декомпозиция `extractor.ts`~~ DONE
+- `context.ts` — PluginContext + factory
+- `minify.ts` — processMinify, getSourceByUrl, checkFontProcessing
+- `serve.ts` — dev-server font processing
+- `transform.ts` — transform hook + collectFontReferences
+- `bundle.ts` — generateBundle с content-based hashing
+- `extractor.ts` — фасад (93 строки)
 
 ### ~~2.3 Исправить `Math.random()` в auto-режиме~~ DONE
 - ~~`Math.random().toString()` → `font.options.sid`~~ (детерминированный хеш из собранных глифов)
