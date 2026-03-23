@@ -23,8 +23,8 @@ export interface PluginContext {
   readonly autoProxyOption: OptionsWithCacheSid;
 
   cache: Cache | null;
-  importResolvers: ImportResolvers;
-  logger: InternalLogger;
+  importResolvers: ImportResolvers | null;
+  logger: InternalLogger | null;
 
   isServe: boolean;
   readonly glyphsFindMap: Map<string, string[]>;
@@ -32,6 +32,24 @@ export interface PluginContext {
   readonly fontServeProxy: Map<string, () => Promise<ServeFontStubResponse | null>>;
   readonly progress: Map<string, string>;
   readonly loadedAutoFontMap: Map<string, boolean>;
+}
+
+export function getLogger(ctx: PluginContext): InternalLogger {
+  if (!ctx.logger) {
+    throw new Error(
+      "[vite-font-extractor-plugin] Logger not initialized. configResolved not called yet.",
+    );
+  }
+  return ctx.logger;
+}
+
+export function getResolvers(ctx: PluginContext): ImportResolvers {
+  if (!ctx.importResolvers) {
+    throw new Error(
+      "[vite-font-extractor-plugin] Import resolvers not initialized. configResolved not called yet.",
+    );
+  }
+  return ctx.importResolvers;
 }
 
 function createAutoTarget(glyphsFindMap: Map<string, string[]>): Target {
@@ -91,9 +109,9 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     targets,
     optionsMap,
     autoProxyOption,
-    cache: null as any,
-    importResolvers: null as any,
-    logger: null as any,
+    cache: null,
+    importResolvers: null,
+    logger: null,
     isServe: false,
     glyphsFindMap,
     transformMap: new Map(),
