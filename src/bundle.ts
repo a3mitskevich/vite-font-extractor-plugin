@@ -24,43 +24,44 @@ export async function generateBundleHook(
   }
   const logger = getLogger(ctx);
   logger.fix();
-  try {
-    // Build fileName → asset index once for O(1) lookups
-    const assetByFileName = new Map<string, OutputAsset>();
-    for (const asset of Object.values(bundle)) {
-      if (asset.type === "asset") {
-        assetByFileName.set(asset.fileName, asset as OutputAsset);
-      }
+
+  // Build fileName → asset index once for O(1) lookups
+  const assetByFileName = new Map<string, OutputAsset>();
+  for (const asset of Object.values(bundle)) {
+    if (asset.type === "asset") {
+      assetByFileName.set(asset.fileName, asset as OutputAsset);
+    }
+  }
+
+  // Group reference IDs by font name, collecting the original assets
+  const fontGroups = new Map<string, { options: OptionsWithCacheSid; assets: OutputAsset[] }>();
+
+  for (const [referenceId, { fontName, options }] of ctx.transformMap) {
+    const fileName = getFileName(referenceId);
+    const asset = assetByFileName.get(fileName);
+
+    if (!asset) {
+      logger.warn(`Asset not found for reference ${referenceId}: ${fileName}`);
+      continue;
     }
 
-    // Group reference IDs by font name, collecting the original assets
-    const fontGroups = new Map<string, { options: OptionsWithCacheSid; assets: OutputAsset[] }>();
-
-    for (const [referenceId, { fontName, options }] of ctx.transformMap) {
-      const fileName = getFileName(referenceId);
-      const asset = assetByFileName.get(fileName);
-
-      if (!asset) {
-        logger.warn(`Asset not found for reference ${referenceId}: ${fileName}`);
-        continue;
-      }
-
-      const group = fontGroups.get(fontName);
-      if (group) {
-        group.assets.push(asset);
-      } else {
-        fontGroups.set(fontName, { options, assets: [asset] });
-      }
+    const group = fontGroups.get(fontName);
+    if (group) {
+      group.assets.push(asset);
+    } else {
+      fontGroups.set(fontName, { options, assets: [asset] });
     }
+  }
 
-    // Collect string-source assets (CSS/HTML) for path replacement
-    const stringAssets = Object.values(bundle).filter(
-      (asset): asset is OutputAsset => asset.type === "asset" && typeof asset.source === "string",
-    );
+  // Collect string-source assets (CSS/HTML) for path replacement
+  const stringAssets = Object.values(bundle).filter(
+    (asset): asset is OutputAsset => asset.type === "asset" && typeof asset.source === "string",
+  );
 
-    // Minify each font group: emit new assets with content-based hashes
-    await Promise.all(
-      Array.from(fontGroups.entries()).map(async ([fontName, { options, assets }]) => {
+  // Minify each font group: emit new assets with content-based hashes
+  await Promise.all(
+    Array.from(fontGroups.entries()).map(async ([fontName, { options, assets }]) => {
+      try {
         const minifiedBuffer = await processMinify(
           ctx,
           fontName,
@@ -99,7 +100,6 @@ export async function generateBundleHook(
           // Update references in CSS/HTML assets
           stringAssets.forEach((strAsset) => {
             const source = strAsset.source as string;
-            // Match both raw and encoded versions of the old path
             const candidates = [
               oldFileName,
               oldFileName.replace(" ", "\\ "),
@@ -118,12 +118,12 @@ export async function generateBundleHook(
 
           logger.info(`Minified font ${styler.green(fontName)}: ${styler.path(newFileName)}`);
         });
-      }),
-    );
-  } catch (error) {
-    logger.error("Clean up generated bundle has failed", {
-      error: toError(error) as RollupError,
-    });
-    throw error;
-  }
+      } catch (error) {
+        // Skip failed font, keep originals in bundle
+        logger.error(`Failed to minify font "${fontName}", keeping original`, {
+          error: toError(error) as RollupError,
+        });
+      }
+    }),
+  );
 }
