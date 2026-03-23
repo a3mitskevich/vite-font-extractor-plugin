@@ -8,6 +8,7 @@ import {
   extractFonts,
   extractGoogleFontsUrls,
   findUnicodeGlyphs,
+  toError,
 } from "./utils";
 import styler from "./styler";
 import { type PluginContext, getLogger } from "./context";
@@ -129,7 +130,7 @@ export async function transformHook(
           code = code.replace(originalUrl, fixedUrl.toString());
         }
       } catch (e) {
-        logger.error(`Process Google font URL is failed`, { error: e as Error });
+        logger.error(`Process Google font URL is failed`, { error: toError(e) });
       }
     }
   }
@@ -162,7 +163,7 @@ export async function transformHook(
       try {
         code = await processFont(rollupCtx, ctx, code, id, font);
       } catch (e) {
-        logger.error(`Process ${font.name} local font is failed`, { error: e as Error });
+        logger.error(`Process ${font.name} local font is failed`, { error: toError(e) });
       }
     }
   }

@@ -2,7 +2,7 @@ import { type Plugin, send } from "vite";
 import { isAbsolute } from "node:path";
 import type { PluginOption, ServeFontStubResponse } from "./types";
 import Cache from "./cache";
-import { createResolvers, intersection, mergePath } from "./utils";
+import { createResolvers, intersection, mergePath, toError } from "./utils";
 import { PLUGIN_NAME } from "./constants";
 import styler from "./styler";
 import { createInternalLogger } from "./internal-logger";
@@ -81,7 +81,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
             })
             .catch((error) => {
               logger.error(`Failed to process font: ${styler.path(url)}`, {
-                error: error as Error,
+                error: toError(error),
               });
               next(error);
             });
