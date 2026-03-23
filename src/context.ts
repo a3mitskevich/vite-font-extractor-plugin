@@ -1,19 +1,13 @@
-import type { Format } from "fontext";
 import type Cache from "./cache";
 import type {
   ImportResolvers,
   InternalLogger,
   OptionsWithCacheSid,
   PluginOption,
+  ServeFontStubResponse,
   Target,
   TargetOptionsMap,
 } from "./types";
-
-export interface ServeFontStubResponse {
-  extension: Format;
-  content: Buffer;
-  id: string;
-}
 
 export interface PluginContext {
   readonly mode: PluginOption["type"];

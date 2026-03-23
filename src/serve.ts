@@ -1,5 +1,6 @@
 import { getFontExtension, hasDifferent } from "./utils";
-import type { PluginContext, ServeFontStubResponse } from "./context";
+import type { PluginContext } from "./context";
+import type { ServeFontStubResponse } from "./types";
 import { processMinify } from "./minify";
 
 export function processServeFontMinify(
