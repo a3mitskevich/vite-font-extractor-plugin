@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="./assets/logo.png" alt="vite-font-extractor-plugin" width="500" />
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/npm/v/vite-font-extractor-plugin?color=blue&label=npm" alt="npm version" />
   <img src="https://img.shields.io/npm/l/vite-font-extractor-plugin" alt="license" />
   <img src="https://img.shields.io/github/actions/workflow/status/a3mitskevich/vite-font-extractor-plugin/node.js.yml?branch=master&label=tests" alt="CI" />
