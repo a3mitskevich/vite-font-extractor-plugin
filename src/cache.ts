@@ -2,8 +2,13 @@ import { mkdirSync, existsSync, writeFileSync, readFileSync, rmSync } from "node
 import { mergePath } from "./utils";
 import glob from "fast-glob";
 
-// TODO: add mechanism for auto deleting old cache if `cache` props changes to false
 export default class Cache {
+  static removeIfExists(parentDir: string): void {
+    const cachePath = mergePath(parentDir, ".font-extractor-cache");
+    if (existsSync(cachePath)) {
+      rmSync(cachePath, { recursive: true });
+    }
+  }
   public readonly path: string;
 
   constructor(to: string) {
