@@ -47,12 +47,20 @@ export function getResolvers(ctx: PluginContext): ImportResolvers {
 }
 
 function createAutoTarget(glyphsFindMap: Map<string, string[]>): Target {
+  let cachedRaws: string[] | null = null;
+  let cachedSize = 0;
+
   return {
     get fontName(): string {
       throw new Error("Illegal access. Font name must be provided from another place");
     },
     get raws(): string[] {
-      return Array.from(glyphsFindMap.values()).flat();
+      // Invalidate cache when glyphsFindMap changes
+      if (!cachedRaws || cachedSize !== glyphsFindMap.size) {
+        cachedSize = glyphsFindMap.size;
+        cachedRaws = Array.from(glyphsFindMap.values()).flat();
+      }
+      return cachedRaws;
     },
     withWhitespace: true,
     ligatures: [],
