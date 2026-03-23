@@ -121,7 +121,7 @@ export const extractGoogleFontsUrls = (code: string): string[] => {
 
 export const extractFontName = (fontFaceString: string): string => {
   const fontName = FONT_FAMILY_RE.exec(fontFaceString)?.[1];
-  return fontName?.replace(/["']/g, "") ?? "";
+  return fontName?.replace(/["']/g, "").trim() ?? "";
 };
 
 export function camelCase(str: string): string {

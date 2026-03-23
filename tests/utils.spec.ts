@@ -104,8 +104,7 @@ describe("extractFontName", () => {
   });
 
   it("should handle extra whitespace around value", () => {
-    // Note: regex captures trailing spaces before semicolon, quotes are stripped
-    expect(extractFontName("font-family:   'Noto Sans'  ;")).toBe("Noto Sans  ");
+    expect(extractFontName("font-family:   'Noto Sans'  ;")).toBe("Noto Sans");
   });
 });
 
