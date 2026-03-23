@@ -175,10 +175,10 @@
 - throw → warn при дубликате fontName из разных файлов
 - Оба файла обрабатываются, reference ID собираются в transformMap
 
-### 5.2 Поддержка Google Fonts с несколькими семействами
-- **Приоритет:** P3
-- `TODO` в коде: `'Google font url includes multiple families. Not supported'`
-- URL вида `?family=Material+Icons|Roboto` — нужно парсить `|`-разделитель
+### ~~5.2 Поддержка Google Fonts с несколькими семействами~~ DONE
+- Парсинг `|`-разделителя в `?family=Font+A|Font+B`
+- Ligatures от всех matched families объединяются в один `&text=`
+- Покрыто тестами: фикстура `google-font-multi`
 
 ### 5.3 Автоочистка кэша при отключении
 - **Приоритет:** P3

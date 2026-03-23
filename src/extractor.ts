@@ -40,6 +40,9 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
           (typeof pluginOption.cache === "string" && pluginOption.cache) || "node_modules";
         const resolvedPath = isAbsolute(cachePath) ? cachePath : mergePath(config.root, cachePath);
         ctx.cache = new Cache(resolvedPath);
+      } else {
+        // Clean up stale cache directory when cache is disabled
+        Cache.removeIfExists(mergePath(config.root, "node_modules"));
       }
     },
     configureServer(server) {
