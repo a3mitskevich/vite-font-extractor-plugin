@@ -132,12 +132,11 @@
 - ~~`Math.random().toString()` → `font.options.sid`~~ (детерминированный хеш из собранных глифов)
 - Старый вызов оставлен закомментированным с `TODO: recheck it`
 
-### 2.4 Заменить Proxy на явные абстракции
-- **Приоритет:** P2
-- `autoTarget` (Proxy с throw при чтении fontName) → класс `AutoTarget` с методом `getRaws()`
-- `autoProxyOption` (Proxy с lazy SID) → getter-метод
-- `optionsMap` (кастомный satisfies) → обычный класс с `get`/`has`
-- `styler.ts` (Proxy к picocolors) — оставить, это единственное место где Proxy оправдан
+### ~~2.4 Заменить Proxy на явные абстракции~~ DONE
+- ~~`autoTarget` Proxy~~ → объект с `get fontName()` / `get raws()`
+- ~~`autoProxyOption` Proxy~~ → объект с `get sid()`
+- ~~`optionsMap` satisfies~~ → явная типизация `: TargetOptionsMap`
+- `styler.ts` Proxy — оставлен (оправданный use case)
 
 ### ~~2.5 Улучшить обработку ошибок~~ DONE
 - ~~`generateBundle` catch-блок: пробрасывать ошибку~~ → `throw error` после логирования

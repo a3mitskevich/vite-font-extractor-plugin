@@ -10,8 +10,6 @@ export const SUPPORT_START_FONT_REGEX = /otf|ttf|woff|woff2|ttc|dfont/;
 export const FONT_FACE_BLOCK_REGEX = /@font-face\s*{([\s\S]*?)}/g;
 export const SUPPORTED_RESULTS_FORMATS: Format[] = ["woff2", "woff", "svg", "eot", "ttf"];
 
-export const PROCESS_EXTENSION = ".fef";
-
 export const GLYPH_REGEX = /content\s*:[^};]*?('|")(.*?)\s*('|"|;)/g;
 export const UNICODE_REGEX = /\\(\w{4})/;
 export const SYMBOL_REGEX = /"(.)"/;
