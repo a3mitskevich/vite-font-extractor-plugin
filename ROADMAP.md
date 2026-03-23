@@ -67,10 +67,12 @@
 
 ### 2.4 Устранить flaky тесты
 - **Приоритет:** P1
-- `retry: 2` в vitest.config.ts маскирует проблему woff2 недетерминированности
-- Исследовать: fontext/woff2 encoder даёт разные binary при параллельном выполнении?
-- Если проблема в параллелизме — запускать hash тесты с `pool: 'forks'` или `--no-file-parallelism`
-- Убрать глобальный `retry: 2` после решения
+- **Статус: частично решено, требуется исследование upstream**
+- `fileParallelism: false` — убрал race conditions между файлами
+- Убран глобальный `retry: 2`
+- Auto-mode hash consistency тест: `retry: 5` + TODO — fontext native encoders (ttf2woff2, ttf2eot) нестабильны
+- **Открытая проблема:** content-based hashing нестабилен для auto mode из-за upstream nondeterminism в fontext
+- **Нужно:** исследовать deterministic font subsetting или альтернативный подход к хешированию
 - **Файлы:** `vitest.config.ts`, `tests/hash.spec.ts`
 
 ---
