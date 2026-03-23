@@ -51,7 +51,7 @@ describe.sequential("Dev server", () => {
 
   it("should serve minified fonts via middleware", async () => {
     // In dev mode, font URLs are served relative to root
-    const fontPath = join(fixturesDir, "fonts", "font.woff2");
+    const fontPath = join(fixturesDir, "fonts", "icon-font.woff2");
     const originalSize = readFileSync(fontPath).length;
 
     // Request font through Vite's /@fs/ prefix
@@ -66,7 +66,7 @@ describe.sequential("Dev server", () => {
 
   it("should serve all font formats", async () => {
     for (const ext of ["woff2", "woff", "ttf", "eot"] as const) {
-      const fontPath = join(fixturesDir, "fonts", `font.${ext}`);
+      const fontPath = join(fixturesDir, "fonts", `icon-font.${ext}`);
       const response = await fetch(`${baseUrl}/@fs${fontPath}`);
       expect(response.ok).toBeTruthy();
 
@@ -92,7 +92,7 @@ describe.sequential("Dev server", () => {
   });
 
   it("should cache minification result between requests", async () => {
-    const fontPath = join(fixturesDir, "fonts", "font.woff2");
+    const fontPath = join(fixturesDir, "fonts", "icon-font.woff2");
 
     const response1 = await fetch(`${baseUrl}/@fs${fontPath}`);
     const body1 = await response1.arrayBuffer();

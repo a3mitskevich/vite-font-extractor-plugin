@@ -76,6 +76,9 @@ export async function processMinify(
       raws: options.target.raws,
       ligatures: options.target.ligatures,
       withWhitespace: options.target.withWhitespace,
+      characters: options.target.characters,
+      unicodeRanges: options.target.unicodeRanges,
+      engine: options.target.engine,
     });
     Object.assign(minifiedBuffers, minifyResult);
 

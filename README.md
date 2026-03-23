@@ -142,7 +142,57 @@ FontExtractor(options?: PluginOption): Plugin
 | `fontName`      | `string`   | Font family name (must match `@font-face` declaration) |
 | `ligatures`     | `string[]` | Ligature names to preserve                        |
 | `raws`          | `string[]` | Raw unicode characters / symbols to preserve      |
+| `characters`    | `string`   | Characters to keep for text font subsetting       |
+| `unicodeRanges` | `string[]` | Unicode ranges to keep (e.g. `['U+0400-04FF']`)  |
+| `engine`        | `'icon' \| 'subset'` | `icon` for icon fonts, `subset` for text fonts |
 | `withWhitespace`| `boolean`  | Include whitespace glyphs. Default: `false`       |
+
+## Font Subsetting
+
+Subset regular (non-icon) fonts by adding `?subset=` to the font URL in CSS:
+
+```css
+/* Keep only specific characters */
+@font-face {
+  font-family: 'Roboto';
+  src: url('./fonts/Roboto.woff2?subset=ABCabc0123456789') format('woff2');
+}
+
+/* Keep a unicode range (e.g. Cyrillic) */
+@font-face {
+  font-family: 'Roboto';
+  src: url('./fonts/Roboto.woff2?subset=U+0400-04FF') format('woff2');
+}
+
+/* Combine characters and unicode ranges */
+@font-face {
+  font-family: 'Roboto';
+  src: url('./fonts/Roboto.woff2?subset=ABC,U+0400-04FF') format('woff2');
+}
+```
+
+Also works with JS imports — useful for runtime font loading (e.g. Rive, Canvas):
+
+```js
+import robotoBold from './fonts/Roboto-Bold.woff2?subset=ABCabc'
+
+// robotoBold is a URL to the subsetted font asset
+rive.load({ fonts: [robotoBold] })
+```
+
+Or via plugin config:
+
+```js
+FontExtractor({
+  type: 'manual',
+  targets: {
+    fontName: 'Roboto',
+    characters: 'ABCabc0123456789',
+    unicodeRanges: ['U+0400-04FF'],
+    engine: 'subset',
+  },
+})
+```
 
 ## Caching
 

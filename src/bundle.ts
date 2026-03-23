@@ -36,20 +36,43 @@ export async function generateBundleHook(
   // Group reference IDs by font name, collecting the original assets
   const fontGroups = new Map<string, { options: OptionsWithCacheSid; assets: OutputAsset[] }>();
 
-  for (const [referenceId, { fontName, options }] of ctx.transformMap) {
-    const fileName = getFileName(referenceId);
-    const asset = assetByFileName.get(fileName);
+  for (const [key, { fontName, options, subset }] of ctx.transformMap) {
+    // key is either a Vite referenceId (from CSS transform) or a fileName (from JS renderChunk)
+    let asset: OutputAsset | undefined;
+    try {
+      const fileName = getFileName(key);
+      asset = assetByFileName.get(fileName);
+    } catch {
+      // Not a referenceId — try as direct fileName
+      asset = assetByFileName.get(key);
+    }
 
     if (!asset) {
-      logger.warn(`Asset not found for reference ${referenceId}: ${fileName}`);
+      logger.warn(`Asset not found for key ${key}`);
       continue;
+    }
+
+    // Merge ?subset= params into target options
+    let mergedOptions = options;
+    if (subset) {
+      const mergedTarget = {
+        ...options.target,
+        characters:
+          [options.target.characters, subset.characters].filter(Boolean).join("") || undefined,
+        unicodeRanges: [...(options.target.unicodeRanges ?? []), ...(subset.unicodeRanges ?? [])]
+          .length
+          ? [...(options.target.unicodeRanges ?? []), ...(subset.unicodeRanges ?? [])]
+          : undefined,
+        engine: "subset" as const,
+      };
+      mergedOptions = { ...options, target: mergedTarget, sid: JSON.stringify(mergedTarget) };
     }
 
     const group = fontGroups.get(fontName);
     if (group) {
       group.assets.push(asset);
     } else {
-      fontGroups.set(fontName, { options, assets: [asset] });
+      fontGroups.set(fontName, { options: mergedOptions, assets: [asset] });
     }
   }
 

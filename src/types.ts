@@ -29,6 +29,11 @@ export interface PluginAutoOption {
 
 export type PluginOption = PluginCommonConfig & (PluginAutoOption | PluginManualOption);
 
+export interface SubsetOptions {
+  characters?: string;
+  unicodeRanges?: string[];
+}
+
 export interface ImportResolvers {
   common: ResolveFn;
   font: ResolveFn;

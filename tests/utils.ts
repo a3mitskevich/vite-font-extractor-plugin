@@ -84,21 +84,34 @@ export interface Fixture {
 export const dir = dirname(fileURLToPath(import.meta.url));
 export const fixturesDir = join(dir, "fixtures");
 
-export const getFontSize = (ext: string): number =>
-  readFileSync(join(fixturesDir, "fonts", `font.${ext}`)).length;
+export const getIconFontSize = (ext: string): number =>
+  readFileSync(join(fixturesDir, "fonts", `icon-font.${ext}`)).length;
+
+export const getTextFontSize = (ext: string): number =>
+  readFileSync(join(fixturesDir, "fonts", `text-font.${ext}`)).length;
 
 export const fontsLength = {
-  eot: getFontSize("eot"),
-  ttf: getFontSize("ttf"),
-  woff: getFontSize("woff"),
-  woff2: getFontSize("woff2"),
+  eot: getIconFontSize("eot"),
+  ttf: getIconFontSize("ttf"),
+  woff: getIconFontSize("woff"),
+  woff2: getIconFontSize("woff2"),
+};
+
+export const textFontsLength = {
+  woff: getTextFontSize("woff"),
+  woff2: getTextFontSize("woff2"),
 };
 
 export const outDir = join(dir, "dist");
 
 export const DEFAULT_FONT: Font = {
   name: "Font Name",
-  urls: ["../fonts/font.eot", "../fonts/font.ttf", "../fonts/font.woff", "../fonts/font.woff2"],
+  urls: [
+    "../fonts/icon-font.eot",
+    "../fonts/icon-font.ttf",
+    "../fonts/icon-font.woff",
+    "../fonts/icon-font.woff2",
+  ],
 };
 
 export const createFixture = (
@@ -121,7 +134,9 @@ export const DEFAULT_GOOGLE_FONT = {
 export const fixtures = {
   "import-css": createFixture("import-css"),
   "import-js": createFixture("import-js"),
-  mixins: createFixture("mixins", { fonts: [{ ...DEFAULT_FONT, urls: ["../fonts/font.woff"] }] }),
+  mixins: createFixture("mixins", {
+    fonts: [{ ...DEFAULT_FONT, urls: ["../fonts/icon-font.woff"] }],
+  }),
   plain: createFixture("plain"),
   "plain-html": createFixture("plain-html"),
   "google-font": createFixture("google-font", DEFAULT_GOOGLE_FONT),
@@ -138,6 +153,10 @@ export const fixtures = {
       { name: "Font D", urls: [] },
     ],
   }),
+  "subset-js": createFixture("subset-js", { fonts: [{ name: "Font", urls: [] }] }),
+  "subset-chars": createFixture("subset-chars"),
+  "subset-range": createFixture("subset-range"),
+  "subset-combined": createFixture("subset-combined"),
   "auto-one-icon": createFixture("auto-one-icon"),
   "auto-two-icons": createFixture("auto-two-icons"),
 } as const;
