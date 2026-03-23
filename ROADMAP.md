@@ -1,198 +1,162 @@
 # ROADMAP
 
-Дорожная карта развития `vite-font-extractor-plugin`.
+Дорожная карта развития `vite-font-extractor-plugin` — v3.0.
 
 > Приоритеты: **P0** — блокирует релиз, **P1** — следующий релиз, **P2** — планируется, **P3** — backlog.
 
 ---
 
-## Фаза 0 — Инфраструктура и DX
+## Фаза 1 — Типобезопасность и качество кода
 
-Цель: привести в порядок tooling, CI и developer experience до начала работы над функциональностью.
+Цель: устранить `as any`, мёртвый код и type safety проблемы, выявленные аудитом.
 
-### ~~0.1 Добавить `.nvmrc`~~ DONE
+### 1.1 Исправить `null as any` в PluginContext
 - **Приоритет:** P0
-- ~~Зафиксировать версию Node.js (22 LTS) для всех контрибьюторов~~ → зафиксировано Node 24
-- ~~CI должен использовать `.nvmrc` как source of truth~~ → CI обновлен на [20.x, 22.x, 24.x]
+- `context.ts:94-96` — `cache`, `importResolvers`, `logger` инициализируются как `null as any`
+- Проблема: TypeScript не предупредит при обращении до `configResolved`
+- **Решение:** объявить типы как `Cache | null`, `ImportResolvers | null`, `InternalLogger | null` в интерфейсе. Добавить null-checks или assertion-helper `getLogger(): InternalLogger` с понятной ошибкой
+- **Файлы:** `src/context.ts`, `src/types.ts`, все потребители ctx.logger/ctx.cache/ctx.importResolvers
 
-### ~~0.2 Переход с Jest на Vitest~~ DONE
+### 1.2 Удалить мёртвый код
+- **Приоритет:** P1
+- `ResourceTransformMeta` в `types.ts` — не используется после удаления `changeResource`
+- Закомментированный `sid: mode === "auto" ? Math.random()...` в `transform.ts` — удалить вместе с TODO-комментарием
+- `ServeFontStubResponse` — перенести из `context.ts` в `types.ts` (convention проекта)
+- **Файлы:** `src/types.ts`, `src/context.ts`, `src/transform.ts`
+
+### 1.3 Улучшить type safety в catch-блоках
+- **Приоритет:** P2
+- `as Error` cast в `transform.ts:131`, `bundle.ts:119` — предполагает что ошибка всегда Error
+- **Решение:** использовать `error instanceof Error ? error : new Error(String(error))`
+- **Файлы:** `src/transform.ts`, `src/bundle.ts`, `src/extractor.ts`
+
+### 1.4 Включить `strict: true` в тестах
+- **Приоритет:** P2
+- `tsconfig.test.json` — `strict: false` снижает надёжность тестов
+- Включить strict, исправить возникшие ошибки типизации
+- **Файлы:** `tsconfig.test.json`, все файлы в `tests/`
+
+---
+
+## Фаза 2 — Покрытие тестами
+
+Цель: покрыть непротестированные пути — dev-server, error paths, опции плагина.
+
+### 2.1 Тесты dev-сервера
 - **Приоритет:** P0
-- ~~Удалить `jest`, `ts-jest`, `@types/jest`~~ + удалён `ts-node`
-- ~~Настроить `vitest` с поддержкой TypeScript из коробки~~
-- ~~Убрать `NODE_OPTIONS="--experimental-vm-modules"`~~
-- ~~Переписать `jest.config.ts` → `vitest.config.ts`~~
-- ~~Обновить `tsconfig.test.json` — убрать `"types": ["jest"]`~~
-- ~~Адаптировать тесты~~ — добавлены явные импорты из `vitest` во все 5 файлов
+- ~130 строк кода без тестов: `configureServer` middleware, `processServeFontMinify`, `processServeAutoFontMinify`, in-flight deduplication
+- Использовать `createServer()` из Vite для запуска dev-сервера в тесте, сделать HTTP-запросы к font URL, проверить что ответ минифицирован
+- Проверить что in-flight deduplication не создаёт двойных минификаций
+- **Файлы:** создать `tests/serve.spec.ts`
 
-### ~~0.3 Переход с ESLint на oxlint + oxfmt (Oxc toolchain)~~ DONE
+### 2.2 Тесты error paths
 - **Приоритет:** P1
-- ~~Удалить `eslint`, `@typescript-eslint/eslint-plugin`, `eslint-config-standard-with-typescript`, `.eslintrc.json`, `.eslintcache`, `.eslintignore`~~
-- ~~Установить `oxlint` — линтинг (замена ESLint)~~
-- ~~Установить `oxfmt` — форматирование~~
-- ~~Создать `oxlintrc.json`~~ — с TypeScript, import, promise правилами + категория correctness
-- ~~Обновить npm-скрипты~~
-- Дополнительно: `fast-glob` перенесён в прямые зависимости
+- Что происходит при: невалидном font file, отсутствующем файле, timeout fontext, сломанном CSS
+- `generateBundle` при ошибке fontext — должен пропустить шрифт и сохранить оригинал, а не ронять сборку
+- Тесты для Google Font URL с невалидным форматом
+- **Файлы:** создать `tests/errors.spec.ts`
 
-### ~~0.4 Git-хуки (pre-commit, commit-msg)~~ DONE
+### 2.3 Тесты опций плагина
 - **Приоритет:** P1
-- ~~Установить `simple-git-hooks`~~ + `lint-staged`
-- ~~Pre-commit hook~~ → `npx lint-staged` (oxlint + oxfmt --check на staged .ts)
-- ~~Commit-msg hook~~ → `scripts/verify-commit-msg.mjs` (Conventional Commits)
-- Весь кодбейз отформатирован oxfmt
+- `ignore: ['Font Name']` — проверить что шрифт не обрабатывается
+- `cache: './custom-path'` — проверить что кэш создаётся по указанному пути
+- `cache: false` → `Cache.removeIfExists()` — проверить удаление стейла
+- `withWhitespace: true` — проверить что whitespace glyphs включены
+- `apply: 'serve' | 'build'` — проверить что плагин применяется только в указанном режиме
+- **Файлы:** создать `tests/options.spec.ts`
 
-### ~~0.5 `.gitmessage` — шаблон коммитов~~ DONE
+### 2.4 Устранить flaky тесты
 - **Приоритет:** P1
-- ~~Создать `.gitmessage` с шаблоном Conventional Commits~~
-- Настройка: `git config commit.template .gitmessage`
-
-### ~~0.6 Автоматический CHANGELOG~~ DONE
-- **Приоритет:** P1
-- ~~Внедрить `changesets` (`@changesets/cli`)~~
-- ~~Удалить ручные npm-скрипты `versioning:*`~~
-- Скрипты: `changeset`, `version`, `release`
-- ~~GitHub Action для автоматического релиза~~ → `.github/workflows/release.yml`
-
-### ~~0.7 Обновить CI pipeline~~ DONE
-- **Приоритет:** P1
-- ~~Добавить шаг `lint` (`oxlint`) в CI~~
-- ~~Добавить шаг `fmt:check` (`oxfmt --check`) в CI~~
-- ~~Обновить матрицу Node.js~~ (сделано в 0.1)
-- Lint и test — параллельные job'ы, lint использует `.nvmrc`
+- `retry: 2` в vitest.config.ts маскирует проблему woff2 недетерминированности
+- Исследовать: fontext/woff2 encoder даёт разные binary при параллельном выполнении?
+- Если проблема в параллелизме — запускать hash тесты с `pool: 'forks'` или `--no-file-parallelism`
+- Убрать глобальный `retry: 2` после решения
+- **Файлы:** `vitest.config.ts`, `tests/hash.spec.ts`
 
 ---
 
-## Фаза 1 — Обновление зависимостей и совместимость
+## Фаза 3 — Оптимизация
 
-Цель: поддержать актуальные версии экосистемы.
+Цель: убрать неэффективности в runtime и уменьшить зависимости.
 
-### ~~1.1 Обновить все зависимости~~ DONE
-- **Приоритет:** P0
-- ~~`fontext` 1.2.0 → 1.10.0~~ (адаптированы типы Target, ExtractedResult)
-- ~~Заменить `lodash.camelcase` и `lodash.groupby` нативными реализациями~~
-- ~~`typescript`, `tsup`, `lightningcss`, `sass`, `@types/node` → latest~~
-- ~~`@tsconfig/node20` → `@tsconfig/node22`~~
-- ~~Удалить `@types/jest`, `ts-jest`, `ts-node`~~ (сделано в 0.2)
-- ~~Удалить `@types/lodash.*`~~
+### 3.1 Убрать зависимость `fast-glob`
+- **Приоритет:** P1
+- Используется только в `cache.ts:clearCache()` для одного `glob.sync()` вызова
+- Заменить на `node:fs.readdirSync()` + `node:path.join()` — убрать production-зависимость
+- **Файлы:** `src/cache.ts`, `package.json`
 
-### ~~1.2 Добавить поддержку Vite 7~~ DONE
-- **Приоритет:** P0
-- ~~Добавить `vite-7` (7.3.1) в devDependencies~~
-- ~~Обновить `peerDependencies`: `"vite": "^4 || ^5 || ^6 || ^7"`~~
-- ~~Добавить в тесты~~ — 152 теста (114 + 38 новых для Vite 7)
+### 3.2 Оптимизировать `stripCssComments`
+- **Приоритет:** P2
+- Сейчас вызывается 3 раза на один CSS-файл (`extractFontFaces`, `extractGoogleFontsUrls`, `findUnicodeGlyphs`)
+- Вызвать один раз в `transformHook` и передать очищенный код в функции
+- **Файлы:** `src/transform.ts`, `src/utils.ts`
 
-### ~~1.3 Добавить поддержку Vite 8~~ DONE
-- ~~Добавить `vite-8` (8.0.1) в devDependencies~~
-- ~~Обновить `peerDependencies`: `"vite": "^4 || ^5 || ^6 || ^7 || ^8"`~~
-- Rolldown-совместимость решена в блоке 2.1 — Vite 8 теперь Stable
+### 3.3 Оптимизировать поиск ассетов в bundle
+- **Приоритет:** P2
+- `bundle.ts:28` — `Object.values(bundle).find()` для каждого referenceId (O(n*m))
+- Построить `Map<fileName, OutputAsset>` один раз перед циклом
+- **Файлы:** `src/bundle.ts`
 
-### ~~1.4 Оценить удаление поддержки Vite 4~~ DONE
-- Vite 4 помечен Deprecated в README
-- Убран из тестовой матрицы и devDependencies (минус 42 теста)
-- Остаётся в peerDependencies — полное удаление в следующем мажоре
-
----
-
-## Фаза 2 — Архитектурный рефакторинг
-
-Цель: решить основной технический долг, обеспечить полную поддержку Vite 8 (Rolldown).
-
-### ~~2.1 Адаптация для Rolldown (Vite 8)~~ DONE
-- Удалён `.fef` stub механизм и `changeResource`
-- Transform: собирает маппинг `referenceId → { fontName, options }`, CSS не модифицирует
-- GenerateBundle: находит ассеты по referenceId, минифицирует, emitFile с content-based хешем
-- Хеши детерминированы по минифицированному контенту (config change → hash change)
-- Vite 8 полностью поддержан: 247 тестов (Vite 4/5/6/7/8)
-
-### ~~2.2 Декомпозиция `extractor.ts`~~ DONE
-- `context.ts` — PluginContext + factory
-- `minify.ts` — processMinify, getSourceByUrl, checkFontProcessing
-- `serve.ts` — dev-server font processing
-- `transform.ts` — transform hook + collectFontReferences
-- `bundle.ts` — generateBundle с content-based hashing
-- `extractor.ts` — фасад (93 строки)
-
-### ~~2.3 Исправить `Math.random()` в auto-режиме~~ DONE
-- ~~`Math.random().toString()` → `font.options.sid`~~ (детерминированный хеш из собранных глифов)
-- Старый вызов оставлен закомментированным с `TODO: recheck it`
-
-### ~~2.4 Заменить Proxy на явные абстракции~~ DONE
-- ~~`autoTarget` Proxy~~ → объект с `get fontName()` / `get raws()`
-- ~~`autoProxyOption` Proxy~~ → объект с `get sid()`
-- ~~`optionsMap` satisfies~~ → явная типизация `: TargetOptionsMap`
-- `styler.ts` Proxy — оставлен (оправданный use case)
-
-### ~~2.5 Улучшить обработку ошибок~~ DONE
-- ~~`generateBundle` catch-блок: пробрасывать ошибку~~ → `throw error` после логирования
-- ~~`configureServer` middleware~~ → `.then().catch()` с `next(error)`
-- ~~Дедупликация одновременных запросов~~ → `inFlightRequests` Map
-
-### ~~2.6 Исправить опечатки~~ DONE
-- ~~`src/internal-loger.ts` → `src/internal-logger.ts`~~
-- ~~`'Clean up generated bundle is filed'` → `'Clean up generated bundle has failed'`~~
-- ~~Удалить устаревшие `eslint-disable` комментарии~~
-
----
-
-## Фаза 3 — Улучшение парсинга CSS
-
-Цель: сделать обработку CSS надёжнее.
-
-### ~~3.1 Добавить unit-тесты для regex-парсинга~~ DONE
-- 30 unit-тестов в `tests/utils.spec.ts`
-- Покрыты: `extractFontFaces`, `extractFontName`, `extractFonts`, `findUnicodeGlyphs`, `extractGoogleFontsUrls`, `camelCase`, `groupBy`
-- Найден потенциальный баг: `extractFontName` захватывает trailing whitespace
-
-### ~~3.2 Предварительная очистка CSS от комментариев~~ DONE
-- ~~Перед regex-парсингом удалять `/* ... */` блоки~~
-- `stripCssComments()` применена в `extractFontFaces`, `extractGoogleFontsUrls`, `findUnicodeGlyphs`
-
-### ~~3.3 Оценить переход на PostCSS парсер~~ EVALUATED — отложено
-- **Решение:** не переходить сейчас
-- Текущие regex'ы покрыты 30+ unit-тестами, CSS-комментарии очищаются
-- PostCSS добавит сложность без реальных багов от пользователей
-- Вернуться при появлении edge-case багов в парсинге
-
----
-
-## Фаза 4 — Документация и Playground
-
-### ~~4.1 Переписать README.md~~ DONE
-- Badges, quick start, compatibility table, How It Works, API tables
-- Troubleshooting секция, Caching секция
-
-### ~~4.2 Обновить или удалить Playground~~ DONE
-- Заменён на vanilla playground: material-design-icons + 4 иконки + Vite 7
-- `file:..` линк, `.font-extractor-cache` в `.gitignore`
-
-### ~~4.3 `package-lock.json`~~ DONE
-- Файл уже присутствовал в репозитории
-
----
-
-## Фаза 5 — Новая функциональность
-
-### ~~5.1 Поддержка нескольких `@font-face` с одним именем~~ DONE
-- throw → warn при дубликате fontName из разных файлов
-- Оба файла обрабатываются, reference ID собираются в transformMap
-
-### ~~5.2 Поддержка Google Fonts с несколькими семействами~~ DONE
-- Парсинг `|`-разделителя в `?family=Font+A|Font+B`
-- Ligatures от всех matched families объединяются в один `&text=`
-- Покрыто тестами: фикстура `google-font-multi`
-
-### 5.3 Автоочистка кэша при отключении
+### 3.4 Мемоизация `autoTarget.raws`
 - **Приоритет:** P3
-- `TODO` в `cache.ts`: удалять `.font-extractor-cache/` когда `cache` опция меняется на `false`
+- `context.ts` — `Array.from(glyphsFindMap.values()).flat()` при каждом обращении к `raws`
+- При 100 CSS-файлах — flat() каждый раз без кэширования
+- Добавить invalidation flag: пересчитывать только если `glyphsFindMap` изменился
+- **Файлы:** `src/context.ts`
+
+---
+
+## Фаза 4 — Graceful degradation
+
+Цель: плагин не должен ронять сборку при проблемах с отдельным шрифтом.
+
+### 4.1 Безопасная обработка ошибок минификации
+- **Приоритет:** P1
+- Сейчас: если `fontext.extract()` падает → весь `generateBundle` падает через `throw`
+- Нужно: пропустить проблемный шрифт, сохранить оригинал, выдать warning
+- **Файлы:** `src/bundle.ts`
+
+### 4.2 Защита от невалидного CSS
+- **Приоритет:** P2
+- `FONT_FACE_BLOCK_REGEX` — `([\s\S]*?)}` сломается при `}` внутри `url("data:...{...}")`
+- `extractFontName` захватывает trailing whitespace — добавить `.trim()`
+- `GLYPH_REGEX` может давать false positives на `content: ""` (пустая строка)
+- **Файлы:** `src/constants.ts`, `src/utils.ts`
+
+---
+
+## Фаза 5 — Подготовка к релизу v3.0
+
+Цель: финализировать изменения для мажорного релиза.
+
+### 5.1 Удалить Vite 4 из peerDependencies
+- **Приоритет:** P1
+- Vite 4 уже deprecated, не тестируется
+- Убрать `^4` из peerDependencies в мажорном релизе
+- Обновить README — удалить строку Vite 4
+- **Файлы:** `package.json`, `README.md`
+
+### 5.2 Обновить CHANGELOG через changeset
+- **Приоритет:** P0
+- Создать changeset, описывающий все изменения v3.0
+- `npx changeset version` → обновит CHANGELOG.md и бампнет версию
+- **Файлы:** `.changeset/`, `CHANGELOG.md`, `package.json`
+
+### 5.3 Обновить README
+- **Приоритет:** P1
+- Добавить в Troubleshooting: Vite 8 / Rolldown специфику
+- Обновить таблицу совместимости (убрать Vite 4)
+- Добавить секцию Migration Guide (v2 → v3)
+- **Файлы:** `README.md`
 
 ---
 
 ## Порядок выполнения
 
 ```
-Фаза 0 (infra)         ███████████░░░░░░░░░░░░░░  v3.0.0-alpha
-Фаза 1 (deps + vite)   ░░░░░░░████████░░░░░░░░░░  v3.0.0-beta
-Фаза 2 (refactor)      ░░░░░░░░░░░░░░██████░░░░░  v3.0.0
-Фаза 3 (CSS parsing)   ░░░░░░░░░░░░░░░░░░░████░░  v3.1.0
-Фаза 4 (docs)          ░░░░░░░░░░░░░░░░░░░░░░███  v3.1.0
-Фаза 5 (features)      ░░░░░░░░░░░░░░░░░░░░░░░░░  v3.2.0+
+Фаза 1 (type safety)      ██████░░░░░░░░░░░░░░  v3.0.0-alpha
+Фаза 2 (тесты)            ░░░░░██████░░░░░░░░░  v3.0.0-beta
+Фаза 3 (оптимизация)      ░░░░░░░░░░░████░░░░░  v3.0.0-beta
+Фаза 4 (degradation)      ░░░░░░░░░░░░░░░███░░  v3.0.0-rc
+Фаза 5 (релиз)            ░░░░░░░░░░░░░░░░░░██  v3.0.0
 ```
