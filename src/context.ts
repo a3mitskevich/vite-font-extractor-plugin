@@ -34,46 +34,35 @@ export interface PluginContext {
   readonly loadedAutoFontMap: Map<string, boolean>;
 }
 
+function createAutoTarget(glyphsFindMap: Map<string, string[]>): Target {
+  return {
+    get fontName(): string {
+      throw new Error("Illegal access. Font name must be provided from another place");
+    },
+    get raws(): string[] {
+      return Array.from(glyphsFindMap.values()).flat();
+    },
+    withWhitespace: true,
+    ligatures: [],
+  };
+}
+
+function createAutoOption(autoTarget: Target): OptionsWithCacheSid {
+  return {
+    get sid(): string {
+      return JSON.stringify(autoTarget.raws);
+    },
+    target: autoTarget,
+    auto: true,
+  };
+}
+
 export function createPluginContext(pluginOption: PluginOption): PluginContext {
   const mode: PluginOption["type"] = pluginOption.type ?? "manual";
 
   const glyphsFindMap = new Map<string, string[]>();
-
-  const autoTarget = new Proxy<Target>(
-    {
-      fontName: "ERROR: Illegal access. Font name must be provided from another place instead it",
-      raws: [],
-      withWhitespace: true,
-      ligatures: [],
-    },
-    {
-      get(target: Target, key: keyof Target): any {
-        if (key === "fontName") {
-          throw Error(target[key]);
-        }
-        if (key === "raws") {
-          return Array.from(glyphsFindMap.values()).flat();
-        }
-        return target[key];
-      },
-    },
-  );
-
-  const autoProxyOption = new Proxy<OptionsWithCacheSid>(
-    {
-      sid: "[calculating...]",
-      target: autoTarget,
-      auto: true,
-    },
-    {
-      get(target: OptionsWithCacheSid, key: keyof OptionsWithCacheSid): any {
-        if (key === "sid") {
-          return JSON.stringify(autoTarget.raws);
-        }
-        return target[key];
-      },
-    },
-  );
+  const autoTarget = createAutoTarget(glyphsFindMap);
+  const autoProxyOption = createAutoOption(autoTarget);
 
   const targets = pluginOption.targets
     ? Array.isArray(pluginOption.targets)
@@ -88,13 +77,13 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     ]),
   );
 
-  const optionsMap = {
+  const optionsMap: TargetOptionsMap = {
     get: (key: string) => {
       const option = casualOptionsMap.get(key);
       return mode === "auto" ? (option ?? autoProxyOption) : option;
     },
     has: (key: string) => mode === "auto" || casualOptionsMap.has(key),
-  } satisfies TargetOptionsMap;
+  };
 
   return {
     mode,
