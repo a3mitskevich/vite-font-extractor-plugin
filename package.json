@@ -28,6 +28,7 @@
     "test": "vitest run",
     "test:local": "TEST_TARGET=local npm run test",
     "test:dist": "TEST_TARGET=dist npm run test",
+    "test:coverage": "vitest run --coverage",
     "lint": "oxlint -c oxlintrc.json",
     "fmt": "oxfmt --write src tests/*.ts tests/utils.ts",
     "fmt:check": "oxfmt --check src tests/*.ts tests/utils.ts",

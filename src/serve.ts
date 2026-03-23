@@ -41,7 +41,7 @@ export function processServeAutoFontMinify(
   fontName: string,
 ): () => Promise<ServeFontStubResponse | null> {
   let previousRaws = ctx.autoProxyOption.target.raws ?? [];
-  let result: ServeFontStubResponse | null;
+  let result: ServeFontStubResponse | null = null;
 
   return async (): Promise<ServeFontStubResponse | null> => {
     const currentRaws = ctx.autoProxyOption.target.raws ?? [];

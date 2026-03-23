@@ -18,7 +18,9 @@ import type { ImportResolvers } from "./types";
 export const mergePath = (...paths: string[]): string =>
   normalizePath(join(...paths.filter(Boolean)));
 
-export const getHash = (text: Buffer | string, length = 8): string =>
+const DEFAULT_HASH_LENGTH = 8;
+
+export const getHash = (text: Buffer | string, length = DEFAULT_HASH_LENGTH): string =>
   createHash("sha256").update(text).digest("hex").substring(0, length);
 
 export const getExtension = <T extends string>(filename: string): T =>
@@ -32,6 +34,26 @@ export function exists<T>(value: T): value is NonNullable<T> {
 
 export function toError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value));
+}
+
+export function createSubsetOptions(
+  fontName: string,
+  subset: { characters?: string; unicodeRanges?: string[] },
+): {
+  sid: string;
+  target: { fontName: string; characters?: string; unicodeRanges?: string[]; engine: "subset" };
+  auto: false;
+} {
+  return {
+    sid: JSON.stringify(subset),
+    target: {
+      fontName,
+      characters: subset.characters,
+      unicodeRanges: subset.unicodeRanges,
+      engine: "subset" as const,
+    },
+    auto: false,
+  };
 }
 
 export function intersection<T>(array1: T[], array2: T[]): T[] {

@@ -85,14 +85,14 @@ export async function processMinify(
       fonts.forEach((font) => {
         const minifiedBuffer = minifyResult[font.extension];
         if (minifiedBuffer) {
-          ctx.cache!.set(cacheKey + `.${font.extension}`, minifiedBuffer);
+          ctx.cache?.set(cacheKey + `.${font.extension}`, minifiedBuffer);
         }
       });
     }
   } else {
     logger.cached(fontName);
     const cacheResult = Object.fromEntries(
-      fonts.map((font) => [font.extension, ctx.cache!.get(cacheKey + `.${font.extension}`)]),
+      fonts.map((font) => [font.extension, ctx.cache?.get(cacheKey + `.${font.extension}`)]),
     );
     Object.assign(minifiedBuffers, cacheResult);
   }

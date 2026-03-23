@@ -31,9 +31,12 @@ export default new Proxy(
 
 // Format utilities for the logger
 
+const BYTES_PER_KB = 1024;
+const DEFAULT_BAR_WIDTH = 20;
+
 export function formatSize(bytes: number): string {
-  if (bytes < 1024) return bytes + " B";
-  return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < BYTES_PER_KB) return bytes + " B";
+  return (bytes / BYTES_PER_KB).toFixed(1) + " KB";
 }
 
 export function formatReduction(original: number, result: number): string {
@@ -41,7 +44,7 @@ export function formatReduction(original: number, result: number): string {
   return pct > 0 ? color.green(`-${pct}%`) : color.yellow(`+${Math.abs(pct)}%`);
 }
 
-export function formatBar(ratio: number, width: number = 20): string {
+export function formatBar(ratio: number, width: number = DEFAULT_BAR_WIDTH): string {
   const filled = Math.round(ratio * width);
   const empty = width - filled;
   return (
