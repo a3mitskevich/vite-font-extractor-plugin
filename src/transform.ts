@@ -98,11 +98,7 @@ async function processFont(
   return code;
 }
 
-export async function transformHook(
-  ctx: PluginContext,
-  code: string,
-  id: string,
-): Promise<string> {
+export async function transformHook(ctx: PluginContext, code: string, id: string): Promise<string> {
   const logger = getLogger(ctx);
 
   const isCssFile = isCSSRequest(id);
