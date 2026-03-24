@@ -6,6 +6,7 @@ import type {
   PluginOption,
   ServeFontStubResponse,
   SubsetOptions,
+  IconTarget,
   Target,
   TargetOptionsMap,
 } from "./types";
@@ -15,7 +16,7 @@ export interface PluginContext {
   readonly pluginOption: PluginOption;
   readonly targets: Target[];
   readonly optionsMap: TargetOptionsMap;
-  readonly autoProxyOption: OptionsWithCacheSid;
+  readonly autoProxyOption: OptionsWithCacheSid<IconTarget>;
 
   cache: Cache | null;
   importResolvers: ImportResolvers | null;
@@ -50,7 +51,7 @@ export function getResolvers(ctx: PluginContext): ImportResolvers {
   return ctx.importResolvers;
 }
 
-function createAutoTarget(glyphsFindMap: Map<string, string[]>): Target {
+function createAutoTarget(glyphsFindMap: Map<string, string[]>): IconTarget {
   return {
     get fontName(): string {
       throw new Error("Illegal access. Font name must be provided from another place");
@@ -63,7 +64,7 @@ function createAutoTarget(glyphsFindMap: Map<string, string[]>): Target {
   };
 }
 
-function createAutoOption(autoTarget: Target): OptionsWithCacheSid {
+function createAutoOption(autoTarget: IconTarget): OptionsWithCacheSid<IconTarget> {
   return {
     get sid(): string {
       return JSON.stringify(autoTarget.raws);

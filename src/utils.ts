@@ -1,7 +1,7 @@
 import { normalizePath, type ResolvedConfig, type ResolveFn } from "vite";
 import { extname, join } from "node:path";
 import { createHash } from "node:crypto";
-import type { Format } from "fontext";
+import type { Formats } from "fontext";
 import {
   FONT_FACE_BLOCK_REGEX,
   FONT_FAMILY_RE,
@@ -26,8 +26,8 @@ export const getHash = (text: Buffer | string, length = DEFAULT_HASH_LENGTH): st
 export const getExtension = <T extends string>(filename: string): T =>
   extname(filename).slice(1) as T;
 
-export const getFontExtension = (fontFileName: string): Format =>
-  getExtension<Format>(fontFileName);
+export const getFontExtension = (fontFileName: string): Formats =>
+  getExtension<Formats>(fontFileName);
 export function exists<T>(value: T): value is NonNullable<T> {
   return value !== null && value !== undefined;
 }

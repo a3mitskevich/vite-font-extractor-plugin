@@ -61,7 +61,7 @@
     "access": "public"
   },
   "dependencies": {
-    "fontext": "^1.10.0",
+    "fontext": "^1.11.0",
     "picocolors": "1.1.1"
   },
   "peerDependencies": {

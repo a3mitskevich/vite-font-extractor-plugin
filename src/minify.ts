@@ -1,4 +1,4 @@
-import { extract, type ExtractedResult } from "fontext";
+import { extract, type ExtractedResult, type MinifyOption } from "fontext";
 import type { MinifyFontOptions, OptionsWithCacheSid } from "./types";
 import { camelCase, getHash } from "./utils";
 import { readFileSync } from "node:fs";
@@ -69,16 +69,30 @@ export async function processMinify(
       return null;
     }
 
-    const minifyResult = await extract(Buffer.from(source), {
-      fontName,
-      formats: fonts.map((font) => font.extension),
-      raws: options.target.raws,
-      ligatures: options.target.ligatures,
-      withWhitespace: options.target.withWhitespace,
-      characters: options.target.characters,
-      unicodeRanges: options.target.unicodeRanges,
-      engine: options.target.engine,
-    });
+    const target = options.target;
+    const formats = fonts.map((font) => font.extension);
+    const base = { fontName, formats, safariFix: target.safariFix, silent: target.silent };
+
+    const extractOption: MinifyOption =
+      target.engine === "subset"
+        ? {
+            ...base,
+            engine: "subset",
+            characters: target.characters,
+            ligatures: target.ligatures,
+            unicodeRanges: target.unicodeRanges,
+            withWhitespace: target.withWhitespace,
+          }
+        : {
+            ...base,
+            engine: target.engine,
+            raws: target.raws,
+            ligatures: target.ligatures,
+            unicodeRanges: target.unicodeRanges,
+            withWhitespace: target.withWhitespace,
+          };
+
+    const minifyResult = await extract(Buffer.from(source), extractOption);
     Object.assign(minifiedBuffers, minifyResult);
 
     if (ctx.cache) {
