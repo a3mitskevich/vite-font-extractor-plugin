@@ -94,7 +94,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       });
     },
     async transform(code, id) {
-      return transformHook(this, ctx, code, id);
+      return transformHook(ctx, code, id);
     },
     renderChunk(code) {
       return renderChunkHook(ctx, code);

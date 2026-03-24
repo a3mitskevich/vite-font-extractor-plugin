@@ -1,5 +1,4 @@
 import { isCSSRequest } from "vite";
-import type { TransformPluginContext } from "rollup";
 import type { FontFaceMeta, SubsetOptions } from "./types";
 import {
   exists,
@@ -68,7 +67,6 @@ function collectFontReferences(
 }
 
 async function processFont(
-  _rollupCtx: TransformPluginContext,
   ctx: PluginContext,
   code: string,
   id: string,
@@ -101,7 +99,6 @@ async function processFont(
 }
 
 export async function transformHook(
-  rollupCtx: TransformPluginContext,
   ctx: PluginContext,
   code: string,
   id: string,
@@ -220,7 +217,7 @@ export async function transformHook(
       .filter(exists);
     for (const font of fonts) {
       try {
-        code = await processFont(rollupCtx, ctx, code, id, font);
+        code = await processFont(ctx, code, id, font);
       } catch (e) {
         logger.error(`Process ${font.name} local font is failed`, { error: toError(e) });
       }
