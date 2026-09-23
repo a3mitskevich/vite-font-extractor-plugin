@@ -230,10 +230,18 @@ describe.sequential("Target and plugin options", () => {
           const first = await buildAt(FIRST_BUILD_TIME);
           const second = await buildAt(FIRST_BUILD_TIME + CLOCK_STEP_MS);
 
+          // Per-font "cached" lines; the build summary also mentions "N cached"
           const cachedLog = (messages: LoggerMessage[]) =>
-            messages.filter((m) => m.type === "info" && m.message.includes("cached"));
+            messages.filter(
+              (m) =>
+                m.type === "info" && m.message.includes("cached") && !m.message.includes("Done"),
+            );
+          const summary = (messages: LoggerMessage[]) =>
+            messages.find((m) => m.type === "info" && m.message.includes("Done"))?.message ?? "";
           expect(cachedLog(first.messages)).toEqual([]);
           expect(cachedLog(second.messages)).toHaveLength(1);
+          expect(summary(first.messages)).not.toContain("cached");
+          expect(summary(second.messages)).toContain("1 cached");
 
           const fonts = (output: unknown[]) =>
             getFontAssets(output as OutputItem[])

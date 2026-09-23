@@ -17,10 +17,6 @@ import {
   viteBuild,
 } from "./utils";
 
-// blocked: inline <style> in HTML is injected by vite:build-html after generateBundle of the
-// plugin, so the HTML keeps pointing at the original (deleted) font files — see the report
-const FIXTURES_WITH_STALE_REFERENCES = new Set<string>(["plain-html"]);
-
 describe("Common", () => {
   const runCommonTest = (version: ContainerVersion, fixturesNames: FixturesNames) => {
     describe(`Common test for vite@${version}`, () => {
@@ -76,16 +72,12 @@ describe("Common", () => {
               });
             });
 
-            // blocked for "plain-html": inline <style> keeps urls of the deleted original fonts
-            it.skipIf(FIXTURES_WITH_STALE_REFERENCES.has(fixtureName))(
-              "should reference only emitted fonts and leave no orphans",
-              async () => {
-                const { output } = await build();
-                const items = output as OutputItem[];
-                expect(findBrokenFontReferences(items)).toEqual([]);
-                expect(findOrphanFontAssets(items)).toEqual([]);
-              },
-            );
+            it("should reference only emitted fonts and leave no orphans", async () => {
+              const { output } = await build();
+              const items = output as OutputItem[];
+              expect(findBrokenFontReferences(items)).toEqual([]);
+              expect(findOrphanFontAssets(items)).toEqual([]);
+            });
           });
         });
       });

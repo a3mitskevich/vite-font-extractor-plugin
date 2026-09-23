@@ -79,7 +79,7 @@ const scenarios: Record<string, Scenario> = {
     config: { base: "./" },
     check: ([output]) => {
       // CSS in assets/ points at its sibling fonts
-      expect(cssOf(output)).toMatch(/url\(\.\/icon-font-\w+\.woff2\)/);
+      expect(cssOf(output)).toMatch(/url\(\.\/icon-font-[\w-]+\.woff2\)/);
       expect(cssOf(output)).not.toContain("/assets/icon-font");
     },
   },
@@ -88,7 +88,7 @@ const scenarios: Record<string, Scenario> = {
     config: { base: `${CDN}/app/` },
     check: ([output]) => {
       expect(cssOf(output)).toMatch(
-        new RegExp(`url\\(${CDN}/app/assets/icon-font-\\w+\\.woff2\\)`),
+        new RegExp(`url\\(${CDN}/app/assets/icon-font-[\\w-]+\\.woff2\\)`),
       );
     },
   },
@@ -103,8 +103,8 @@ const scenarios: Record<string, Scenario> = {
       },
     },
     check: ([output]) => {
-      expect(cssOf(output)).toMatch(new RegExp(`url\\(${CDN}/assets/icon-font-\\w+\\.woff2\\)`));
-      expect(jsOf(output)).toMatch(/window\.__cdn\(["`]assets\/icon-font-\w+\.woff2["`]\)/);
+      expect(cssOf(output)).toMatch(new RegExp(`url\\(${CDN}/assets/icon-font-[\\w-]+\\.woff2\\)`));
+      expect(jsOf(output)).toMatch(/window\.__cdn\(["`]assets\/icon-font-[\w-]+\.woff2["`]\)/);
     },
   },
   "build.sourcemap: true": {
