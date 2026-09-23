@@ -145,10 +145,7 @@ export const extractGoogleFontsUrls = (code: string): string[] => {
   let match = null;
   GOOGLE_FONT_URL_RE.lastIndex = 0;
   while ((match = GOOGLE_FONT_URL_RE.exec(code))) {
-    const url = match[1];
-    if (url) {
-      urls.push(url);
-    }
+    urls.push(match[0]);
   }
   return urls;
 };

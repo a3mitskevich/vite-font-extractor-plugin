@@ -14,6 +14,8 @@ import {
   createSubsetOptions,
 } from "./utils";
 import styler from "./styler";
+import { GOOGLE_FONT_URL_RE } from "./constants";
+import { getGoogleFontFamilies, getGoogleFontText, setGoogleFontText } from "./google-fonts";
 import { type PluginContext, getLogger } from "./context";
 import { checkFontProcessing } from "./minify";
 import { createServeFontLoader, type ServeFontRequest } from "./serve";
@@ -154,6 +156,56 @@ function registerStandaloneSubsets(ctx: PluginContext, code: string): void {
   }
 }
 
+function getGoogleFontTexts(ctx: PluginContext, name: string, id: string): string[] {
+  if (ctx.pluginOption.ignore?.includes(name)) {
+    return [];
+  }
+  const options = ctx.optionsMap.get(name);
+  if (!options) {
+    getLogger(ctx).warn(`Font "${name}" has no minify options`);
+    return [];
+  }
+  checkFontProcessing(ctx, name, id);
+  return options.target.ligatures ?? [];
+}
+
+// Adds `text=` with the target glyphs to a Google Fonts stylesheet url
+function processGoogleFontUrl(ctx: PluginContext, raw: string, id: string): string {
+  const logger = getLogger(ctx);
+  try {
+    const families = getGoogleFontFamilies(raw);
+    if (!families.length) {
+      logger.warn(`No specified google font name in ${styler.path(id)}`);
+      return raw;
+    }
+    const texts = [...new Set(families.flatMap((name) => getGoogleFontTexts(ctx, name, id)))];
+    if (!texts.length) {
+      return raw;
+    }
+    const oldText = getGoogleFontText(raw);
+    if (oldText) {
+      logger.warn(`Font [${families.join("|")}] in ${id} has duplicated logic for minification`);
+    }
+    return setGoogleFontText(raw, [oldText, ...texts].filter(exists).join(" "));
+  } catch (e) {
+    logger.error(`Process Google font URL is failed`, { error: toError(e) });
+    return raw;
+  }
+}
+
+function rewriteGoogleFontUrls(
+  ctx: PluginContext,
+  code: string,
+  cleanedCode: string,
+  id: string,
+): string {
+  // Urls inside comments are left as is
+  const urls = new Set(extractGoogleFontsUrls(cleanedCode));
+  return code.replace(GOOGLE_FONT_URL_RE, (raw) =>
+    urls.has(raw) ? processGoogleFontUrl(ctx, raw, id) : raw,
+  );
+}
+
 export async function transformHook(ctx: PluginContext, code: string, id: string): Promise<string> {
   const logger = getLogger(ctx);
 
@@ -171,49 +223,7 @@ export async function transformHook(ctx: PluginContext, code: string, id: string
     (id.endsWith(".html") || (isCssFile && cleanedCode.includes("@import"))) &&
     cleanedCode.includes("fonts.googleapis.com")
   ) {
-    for (const raw of extractGoogleFontsUrls(cleanedCode)) {
-      try {
-        const url = new URL(raw);
-        const familyParam = url.searchParams.get("family");
-        if (!familyParam) {
-          logger.warn(`No specified google font name in ${styler.path(id)}`);
-          continue;
-        }
-
-        // Support multiple families separated by "|"
-        const families = familyParam.split("|").map((f) => f.replace(/\+/g, " ").trim());
-        const allTexts: string[] = [];
-
-        for (const name of families) {
-          if (ctx.pluginOption.ignore?.includes(name)) {
-            continue;
-          }
-
-          const options = ctx.optionsMap.get(name);
-          if (!options) {
-            logger.warn(`Font "${name}" has no minify options`);
-            continue;
-          }
-
-          checkFontProcessing(ctx, name, id);
-          allTexts.push(...(options.target.ligatures ?? []));
-        }
-
-        if (allTexts.length > 0) {
-          const oldText = url.searchParams.get("text");
-          if (oldText) {
-            logger.warn(`Font [${familyParam}] in ${id} has duplicated logic for minification`);
-          }
-          const text = [oldText, ...allTexts].filter(exists).join(" ");
-          const originalUrl = url.toString();
-          const fixedUrl = new URL(originalUrl);
-          fixedUrl.searchParams.set("text", text);
-          code = code.replace(originalUrl, fixedUrl.toString());
-        }
-      } catch (e) {
-        logger.error(`Process Google font URL is failed`, { error: toError(e) });
-      }
-    }
+    code = rewriteGoogleFontUrls(ctx, code, cleanedCode, id);
   }
   if (isCssFileWithFontFaces) {
     const fonts = extractFontFaces(cleanedCode)

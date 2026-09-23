@@ -4,7 +4,9 @@ export const PLUGIN_NAME = "vite-font-extractor-plugin";
 export const CSS_LANGS_RE = /\.(css|less|sass|scss|styl|stylus|pcss|postcss|sss)(?:$|\?)/;
 // Modules the transform hook cares about: styles, html and asset imports with `?subset=`
 export const TRANSFORM_ID_INCLUDE = [CSS_LANGS_RE, /\.html$/, /[?&]subset=/];
-export const GOOGLE_FONT_URL_RE = /["'](.+fonts.googleapis.com.+)["']/g;
+// Stops at quotes, whitespace, parens and tag brackets: works for attributes in any order,
+// minified HTML and CSS url() without quotes
+export const GOOGLE_FONT_URL_RE = /(?:https?:)?\/\/fonts\.googleapis\.com\/[^\s"'`()<>]+/g;
 export const POSTFIX_URL_RE = /[?#].*$/s;
 export const FONT_URL_REGEX = /url\(['"]?(.*?)['"]?\)/g;
 export const FONT_FAMILY_RE = /font-family:\s*(.*?);/;
