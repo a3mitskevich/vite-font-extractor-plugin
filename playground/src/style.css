@@ -25,6 +25,21 @@
   font-style: normal;
 }
 
+/* Safari Fix Demo — same font, different processing */
+@font-face {
+  font-family: "Icons Normal";
+  src: url("material-design-icons-iconfont/dist/fonts/MaterialIcons-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Icons SafariFix";
+  src: url("material-design-icons-iconfont/dist/fonts/MaterialIcons-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+}
+
 /* Base */
 * {
   margin: 0;
@@ -238,6 +253,64 @@ h3 {
 .size-table .highlight {
   color: #2e7d32;
   font-weight: 700;
+}
+
+/* Safari warning */
+.safari-warning {
+  background: #fff8e1;
+  border: 2px solid #ffc107;
+  border-radius: 8px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: #6d4c00;
+  line-height: 1.5;
+}
+
+.safari-warning strong {
+  color: #e65100;
+}
+
+/* Safari demo icons */
+.safari-demo-icon {
+  font-size: 36px;
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "liga";
+}
+
+.safari-demo-normal {
+  font-family: "Icons Normal", sans-serif;
+}
+
+.safari-demo-fixed {
+  font-family: "Icons SafariFix", sans-serif;
+}
+
+.proof-neutral {
+  background: #f5f5f5;
+  border: 2px solid #bdbdbd;
+}
+
+.proof-neutral h3 {
+  color: #555;
+}
+
+.proof-fixed {
+  background: #e3f2fd;
+  border: 2px solid #2196f3;
+}
+
+.proof-fixed h3 {
+  color: #1565c0;
 }
 
 /* Code blocks */

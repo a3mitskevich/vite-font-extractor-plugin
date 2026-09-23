@@ -1,21 +1,27 @@
-import { type Plugin, send } from "vite";
+import type { Plugin } from "vite";
 import { isAbsolute } from "node:path";
-import type { PluginOption, ServeFontStubResponse } from "./types";
+import type { PluginOption } from "./types";
 import Cache from "./cache";
-import { createResolvers, intersection, mergePath, toError } from "./utils";
-import { PLUGIN_NAME } from "./constants";
-import styler from "./styler";
+import { createResolvers, intersection, mergePath } from "./utils";
+import { PLUGIN_NAME, TRANSFORM_ID_INCLUDE } from "./constants";
 import { createInternalLogger } from "./internal-logger";
-import { createPluginContext, getLogger } from "./context";
+import {
+  createPluginContext,
+  pruneBuildState,
+  replaceModuleReferences,
+  resetBuildState,
+} from "./context";
 import { transformHook } from "./transform";
-import { renderChunkHook } from "./render-chunk";
 import { generateBundleHook } from "./bundle";
+import { createServeMiddleware } from "./serve";
+import { extractAssetReferences } from "./asset-refs";
 
 export default function FontExtractor(pluginOption: PluginOption = { type: "auto" }): Plugin {
   const ctx = createPluginContext(pluginOption);
 
   return {
     name: PLUGIN_NAME,
+    apply: pluginOption.apply,
     configResolved(config) {
       ctx.logger = createInternalLogger(
         pluginOption.logLevel ?? config.logLevel,
@@ -23,6 +29,9 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       );
       const logger = ctx.logger;
       logger.banner();
+      if (!pluginOption.type) {
+        logger.warn(`type is not set, falling back to "manual"`);
+      }
 
       const cacheStatus = pluginOption.cache ? "cache enabled" : "no cache";
       const targetCount = ctx.targets.length;
@@ -40,6 +49,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       }
 
       ctx.importResolvers = createResolvers(config);
+      ctx.base = config.base;
 
       if (pluginOption.cache) {
         const cachePath =
@@ -53,59 +63,47 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
     configureServer(server) {
       ctx.isServe = true;
-      const inFlightRequests = new Map<string, Promise<ServeFontStubResponse | null>>();
-      server.middlewares.use((req, res, next) => {
-        const url = req.url!;
-        const processFn = ctx.fontServeProxy.get(url);
-        if (!processFn) {
-          next();
-        } else {
-          const pending =
-            inFlightRequests.get(url) ??
-            (() => {
-              const p = processFn();
-              inFlightRequests.set(url, p);
-              p.finally(() => inFlightRequests.delete(url));
-              return p;
-            })();
-          const logger = getLogger(ctx);
-          pending
-            .then((stub) => {
-              if (!stub) {
-                next();
-                return;
-              }
-              logger.fix();
-              logger.info(`Stub server response for: ${styler.path(url)}`);
-              send(req, res, stub.content, `font/${stub.extension}`, {
-                cacheControl: "no-cache",
-                headers: server.config.server.headers,
-                etag: "",
-              });
-              ctx.loadedAutoFontMap.set(url, true);
-            })
-            .catch((error) => {
-              logger.error(`Failed to process font: ${styler.path(url)}`, {
-                error: toError(error),
-              });
-              next(error);
-            });
+      server.middlewares.use(createServeMiddleware(ctx, server));
+    },
+    // Vite 6+: fonts are emitted by the client build only
+    applyToEnvironment(environment) {
+      return environment.config.consumer === "client";
+    },
+    buildStart() {
+      resetBuildState(ctx);
+    },
+    transform: {
+      filter: { id: { include: TRANSFORM_ID_INCLUDE } },
+      async handler(code, id, options) {
+        // Filters are ignored before Vite 6.3, and applyToEnvironment before Vite 6
+        if (options?.ssr || !TRANSFORM_ID_INCLUDE.some((re) => re.test(id))) {
+          return null;
         }
-      });
+        if (!ctx.isServe) {
+          const references = extractAssetReferences(code).map((ref) => ref.referenceId);
+          replaceModuleReferences(ctx, id, new Set(references));
+        }
+        const result = await transformHook(ctx, code, id);
+        return result === code ? null : result;
+      },
     },
-    async transform(code, id) {
-      return transformHook(ctx, code, id);
+    buildEnd() {
+      if (!ctx.isServe) {
+        pruneBuildState(ctx, this.getModuleIds());
+      }
     },
-    renderChunk(code) {
-      return renderChunkHook(ctx, code);
-    },
-    async generateBundle(_, bundle) {
-      return generateBundleHook(
-        this.getFileName.bind(this),
-        this.emitFile.bind(this),
-        ctx,
-        bundle as any,
-      );
+    generateBundle: {
+      // After Vite's own generateBundle hooks: the single CSS of `cssCodeSplit: false`,
+      // HTML (font preloads) and the manifest are emitted there
+      order: "post",
+      async handler(_, bundle) {
+        return generateBundleHook(
+          this.getFileName.bind(this),
+          this.emitFile.bind(this),
+          ctx,
+          bundle,
+        );
+      },
     },
   };
 }

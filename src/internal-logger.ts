@@ -38,6 +38,7 @@ export const createInternalLogger = (
   });
 
   let needFix = false;
+  let cachedFonts = 0;
 
   const raw = (level: LogType, message: string, options?: LogOptions | LogErrorOptions): void => {
     if (needFix) {
@@ -89,11 +90,14 @@ export const createInternalLogger = (
     },
 
     cached(fontName: string) {
+      cachedFonts++;
       raw(
         "info",
         `${TREE.item}${ICONS.cache} ${color.dim("cached")} ${color.green(`"${fontName}"`)}`,
       );
     },
+
+    cachedCount: () => cachedFonts,
 
     skipped(fontName: string, reason: string) {
       raw(

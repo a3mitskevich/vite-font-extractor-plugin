@@ -1,0 +1,29 @@
+@font-face {
+    font-family: "Icons";
+    src: url("../fonts/icon-font.woff2") format("woff2"),
+         url("../fonts/icon-font.woff") format("woff");
+}
+
+.icon {
+    font-family: "Icons";
+}
+
+.icon.home::before {
+    content: '';
+}
+
+.icon.menu::before {
+    content: "\0e5d2";
+}
+
+.icon.pair::before {
+    content: "\e5cd\e838";
+}
+
+.icon.play::before {
+    content: "play_arrow";
+}
+
+.icon.counter::before {
+    content: counter(item) "\1F600" attr(data-label);
+}

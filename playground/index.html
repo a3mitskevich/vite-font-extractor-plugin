@@ -80,6 +80,41 @@
           </tbody>
         </table>
       </section>
+      <!-- Section 2: Safari Fix -->
+      <section>
+        <h2>Safari Fix</h2>
+        <div class="safari-warning">
+          <strong>Safari only:</strong> This feature fixes a Safari-specific rendering bug
+          where minified icon fonts may display incorrectly. The visual difference is
+          <strong>only visible in Safari</strong> browser. In other browsers, both columns
+          will look identical.
+        </div>
+        <div class="proof-grid">
+          <div class="proof-column proof-neutral">
+            <h3>Without safariFix</h3>
+            <div class="icon-row">
+              <span class="safari-demo-icon safari-demo-normal">star</span>
+              <span class="safari-demo-icon safari-demo-normal">favorite</span>
+              <span class="safari-demo-icon safari-demo-normal">home</span>
+              <span class="safari-demo-icon safari-demo-normal">search</span>
+            </div>
+          </div>
+          <div class="proof-column proof-fixed">
+            <h3>With safariFix: true</h3>
+            <div class="icon-row">
+              <span class="safari-demo-icon safari-demo-fixed">star</span>
+              <span class="safari-demo-icon safari-demo-fixed">favorite</span>
+              <span class="safari-demo-icon safari-demo-fixed">home</span>
+              <span class="safari-demo-icon safari-demo-fixed">search</span>
+            </div>
+          </div>
+        </div>
+        <pre><code>// vite.config.js
+targets: [
+  { fontName: "Icons Normal",    ligatures: ["star", "favorite", "home", "search"] },
+  { fontName: "Icons SafariFix", ligatures: ["star", "favorite", "home", "search"], safariFix: true },
+]</code></pre>
+      </section>
     </main>
 
     <footer>

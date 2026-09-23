@@ -1,11 +1,12 @@
 import type Cache from "./cache";
 import type {
+  FontReference,
   ImportResolvers,
   InternalLogger,
   OptionsWithCacheSid,
   PluginOption,
   ServeFontStubResponse,
-  SubsetOptions,
+  IconTarget,
   Target,
   TargetOptionsMap,
 } from "./types";
@@ -15,18 +16,21 @@ export interface PluginContext {
   readonly pluginOption: PluginOption;
   readonly targets: Target[];
   readonly optionsMap: TargetOptionsMap;
-  readonly autoProxyOption: OptionsWithCacheSid;
+  readonly autoProxyOption: OptionsWithCacheSid<IconTarget>;
 
   cache: Cache | null;
   importResolvers: ImportResolvers | null;
   logger: InternalLogger | null;
 
   isServe: boolean;
+  // Resolved `config.base`; dev urls carry it and must be stripped before resolving files
+  base: string;
   readonly glyphsFindMap: Map<string, string[]>;
-  readonly transformMap: Map<
-    string,
-    { fontName: string; options: OptionsWithCacheSid; subset?: SubsetOptions; referenceId?: string }
-  >;
+  // Keyed by `${referenceId}:${subsetKey}:${fontName}`
+  readonly transformMap: Map<string, FontReference>;
+  // Build: asset reference ids of each transformed module. `vite build --watch` re-transforms
+  // only changed modules, so entries of transformMap are replaced per module
+  readonly moduleReferences: Map<string, ReadonlySet<string>>;
   readonly fontServeProxy: Map<string, () => Promise<ServeFontStubResponse | null>>;
   readonly progress: Map<string, string>;
   readonly loadedAutoFontMap: Map<string, boolean>;
@@ -50,7 +54,7 @@ export function getResolvers(ctx: PluginContext): ImportResolvers {
   return ctx.importResolvers;
 }
 
-function createAutoTarget(glyphsFindMap: Map<string, string[]>): Target {
+function createAutoTarget(glyphsFindMap: Map<string, string[]>): IconTarget {
   return {
     get fontName(): string {
       throw new Error("Illegal access. Font name must be provided from another place");
@@ -63,7 +67,7 @@ function createAutoTarget(glyphsFindMap: Map<string, string[]>): Target {
   };
 }
 
-function createAutoOption(autoTarget: Target): OptionsWithCacheSid {
+function createAutoOption(autoTarget: IconTarget): OptionsWithCacheSid<IconTarget> {
   return {
     get sid(): string {
       return JSON.stringify(autoTarget.raws);
@@ -111,10 +115,62 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     importResolvers: null,
     logger: null,
     isServe: false,
+    base: "/",
     glyphsFindMap,
     transformMap: new Map(),
+    moduleReferences: new Map(),
     fontServeProxy: new Map(),
     progress: new Map(),
     loadedAutoFontMap: new Map(),
   };
+}
+
+// Called on every (re)build start. Dev keeps its state: there buildStart runs once
+export function resetBuildState(ctx: PluginContext): void {
+  ctx.cache?.resetUsage();
+  if (!ctx.isServe) {
+    ctx.progress.clear();
+  }
+}
+
+const isHeldByOtherModule = (ctx: PluginContext, referenceId: string, id: string): boolean =>
+  [...ctx.moduleReferences].some(([moduleId, refs]) => moduleId !== id && refs.has(referenceId));
+
+function deleteReferences(ctx: PluginContext, referenceIds: ReadonlySet<string>): void {
+  for (const [key, reference] of ctx.transformMap) {
+    if (referenceIds.has(reference.referenceId)) {
+      ctx.transformMap.delete(key);
+    }
+  }
+}
+
+// Before a module is (re)transformed: drops the entries it registered last time.
+// References shared with other modules stay — those modules may be served from cache
+export function replaceModuleReferences(
+  ctx: PluginContext,
+  id: string,
+  referenceIds: ReadonlySet<string>,
+): void {
+  const previous = ctx.moduleReferences.get(id) ?? new Set<string>();
+  ctx.moduleReferences.set(id, referenceIds);
+  const owned = [...previous, ...referenceIds].filter((ref) => !isHeldByOtherModule(ctx, ref, id));
+  deleteReferences(ctx, new Set(owned));
+}
+
+// After all modules are transformed: forgets modules that left the build
+export function pruneBuildState(ctx: PluginContext, moduleIds: Iterable<string>): void {
+  const live = new Set(moduleIds);
+  const released = new Set<string>();
+  for (const [id, refs] of ctx.moduleReferences) {
+    if (live.has(id)) continue;
+    ctx.moduleReferences.delete(id);
+    refs.forEach((ref) => released.add(ref));
+  }
+  const unheld = [...released].filter((ref) => !isHeldByOtherModule(ctx, ref, ""));
+  deleteReferences(ctx, new Set(unheld));
+  for (const id of ctx.glyphsFindMap.keys()) {
+    if (!live.has(id)) {
+      ctx.glyphsFindMap.delete(id);
+    }
+  }
 }

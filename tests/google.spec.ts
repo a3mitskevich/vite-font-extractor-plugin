@@ -19,6 +19,7 @@ describe("Google", () => {
             const build = async (options?: BuildOptions) =>
               buildByVersion(version, {
                 ...options,
+                cssMinify,
                 fixture: fixture.path,
                 targets: fixture.fonts.map((font) => font.name),
               });
@@ -46,6 +47,7 @@ describe("Google", () => {
             const build = async (options?: BuildOptions) =>
               buildByVersion(version, {
                 ...options,
+                cssMinify,
                 fixture: fixture.path,
                 pluginOptions: {
                   type: "manual",
@@ -79,6 +81,7 @@ describe("Google", () => {
             const build = async (options?: BuildOptions) =>
               buildByVersion(version, {
                 ...options,
+                cssMinify,
                 fixture: fixture.path,
                 targets: fixture.fonts.map((font) => font.name),
               });

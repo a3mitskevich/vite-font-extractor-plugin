@@ -1,6 +1,6 @@
 # ROADMAP
 
-Development roadmap for `vite-font-extractor-plugin` — v3.0.
+Development roadmap for `vite-font-extractor-plugin` — v3.1.
 
 > Priorities: **P0** — blocks release, **P1** — next release, **P2** — planned, **P3** — backlog.
 
@@ -8,34 +8,15 @@ Development roadmap for `vite-font-extractor-plugin` — v3.0.
 
 ## Open tasks
 
-### Vite 8 (Rolldown) — Full Support
-- **Priority:** P0
-- **Status:** Experimental for `?subset=` feature. Icon font minification works. Subset has known issues.
-
-**What works on Vite 8:**
-- Icon font minification (ligatures, raws) — fully functional
-- Content-based font hashing — generates correct hashed file names
-- `generateBundle` asset replacement — compatible with Rolldown's API
-- Dev server font minification — middleware works
-
-**What doesn't work on Vite 8:**
-1. **CSS `?subset=` query stripping** — `bundle.ts` regex replacement doesn't match Rolldown's CSS output format. `?subset=` remains in final CSS URLs.
-   - Root cause: Rolldown generates CSS differently than Rollup — URL encoding, whitespace, or quote handling differs
-   - Fix needed: investigate Rolldown's CSS output format and adapt regex in `bundle.ts` string asset replacement
-2. **JS `?subset=` via renderChunk** — Rolldown inlines asset URLs as variable names (`text_font_default`) instead of string literals. `renderChunk` regex can't find URL patterns to strip `?subset=`.
-   - Root cause: Rolldown's module linking resolves asset imports differently — uses variable references rather than string URLs in chunk code
-   - Fix needed: investigate Rolldown's asset import transformation. May need `resolveId` or `load` hook instead of `renderChunk` for Rolldown
-3. **JS asset deduplication** — same file with same `?subset=` may not deduplicate identically across Rollup and Rolldown
-   - Fix needed: test and adapt composite key logic for Rolldown's reference ID format
-
-**Steps to achieve full Vite 8 support:**
-1. Build with Vite 8 and inspect raw CSS/JS output to understand Rolldown's exact format differences
-2. Adapt `bundle.ts` CSS path replacement to handle Rolldown's output
-3. Investigate alternative to `renderChunk` for JS subset stripping on Rolldown (possibly `resolveId` with `enforce: 'pre'`)
-4. Add Vite 8-specific assertions in subset tests (not weaker — different)
-5. Remove "Experimental" label from README
-
-**Files:** `src/bundle.ts`, `src/render-chunk.ts`, `tests/subset.spec.ts`, `README.md`
+### v4.0 — Vite 8 only
+- **Priority:** P1
+- **Status:** Planned. 3.x is the last line supporting Vite 5–7.
+- `peerDependencies.vite` → `^8.0.0`, `engines.node` aligned with Vite 8
+- Remove `vite-5/6/7` aliases and the per-version test loops
+- Drop compatibility guards duplicated from hook filters, use Rolldown types directly
+- Move the disk cache to `config.cacheDir`
+- Toolchain majors: vitest 5, TypeScript 6, tsup → tsdown, changesets 3, lint-staged 17
+- Dev server: invalidate auto-mode fonts on HMR (`?v=` and non-root `base` are handled since 3.1)
 
 ---
 
@@ -54,32 +35,61 @@ Development roadmap for `vite-font-extractor-plugin` — v3.0.
 
 #### Deterministic font hashing
 - **Priority:** P1
-- **Status:** Open issue
-- fontext native encoders (ttf2woff2, ttf2eot) produce nondeterministic output — content-based hashing may differ between runs
-- Tests use `retry: 5` as workaround
-- **Needed:** investigate deterministic font subsetting or alternative hashing approach
+- **Status:** Root cause found, fix belongs to `fontext`
+- svg2ttf writes the current time (second precision) into `head.created`/`head.modified` and `checkSumAdjustment`, so builds in different seconds produce different bytes and file hashes (woff2 660/664/672/676 B)
+- **Needed:** pass svg2ttf's `ts` option in fontext (0 or `SOURCE_DATE_EPOCH`), then drop `retry` in `tests/hash.spec.ts` — `hash.spec.ts` already proves stability with a frozen `Date`
+- `vitest.config.ts` blames parallel execution for nondeterminism — that comment is wrong, re-check whether `fileParallelism: false` is still needed
+
+#### fontext security update
+- **Priority:** P1
+- `@xmldom/xmldom@0.7` (high severity advisories) comes via `svg2ttf@6.0.3`; `svg2ttf@6.1.0` uses the fixed `^0.9` — release a fontext patch, then bump it here
 
 ### Code Quality (from audit)
 
-#### Type `bundle` parameter properly
-- **Priority:** P2
-- `src/extractor.ts:107` — `bundle as any` bypasses type safety
-- Should use Rollup `OutputBundle` type and handle both assets and chunks
-
 #### Break down large functions
 - **Priority:** P3
-- `src/bundle.ts:15` (144 lines), `src/transform.ts:102` (140 lines), `src/minify.ts:26` (76 lines)
-- Extract sub-functions for Google Font processing, string asset replacement, etc.
+- `transformHook` in `src/transform.ts` — still long, split the @font-face branch
+
+#### Deduplicate test helpers
+- **Priority:** P3
+- `tests/references.spec.ts` and `tests/serve.spec.ts` define their own `rendersLigature`/font-by-family helpers — use the shared ones from `tests/utils.ts`
+
+#### `new URL('…?subset=', import.meta.url)`
+- **Priority:** P3
+- Not supported (documented). Could be handled in `generateBundle` by finding `<font>?subset=X` in chunks and registering standalone groups by file name
 
 ### Features
 
 #### JS import ?subset= in dev server
 - **Priority:** P3
-- Currently `renderChunk` only processes build mode
+- `?subset=` in CSS works in dev since 3.1; JS imports with `?subset=` are still build only
 - Dev server doesn't intercept `import font from './font.woff2?subset=ABC'`
 - Needed: add handling in `configureServer` middleware
 
 ---
+
+## Completed (v3.1)
+
+- ~~Vite 8 (Rolldown) — full support, including `?subset=` in CSS and JS imports~~
+- ~~JS `?subset=` import no longer breaks Vite 8 bundles (undeclared identifier)~~
+- ~~Font references rewritten in CSS/HTML assets and JS chunks, per subset, every occurrence~~
+- ~~Manifest points at minified fonts (`viteMetadata.importedAssets`)~~
+- ~~@font-face of one family backed by different files minified separately~~
+- ~~Disk cache keyed by font content, unused entries pruned~~
+- ~~`transform` hook filter, SSR environment skipped, async cache I/O~~
+- ~~`bundle` typed as `OutputBundle`, `renderChunk` hook removed~~
+- ~~Dev dependencies updated (Vite 8.3, vitest 4.1, oxlint 1.85, oxfmt 0.70)~~
+- ~~Coverage audit (76 scenarios, 19 defects) — all defects fixed except `new URL(…?subset=)` (documented)~~
+- ~~Dev server never crashes on minification errors; `apply` implemented; warning when `type` is missing~~
+- ~~`cssCodeSplit: false`, inline `<style>`, HTML preloads — `generateBundle` runs with `order: "post"`~~
+- ~~`assetFileNames` honored (string and function)~~
+- ~~Auto mode: CSS `content` parsed per spec, glyphs missing from a font skipped; `?subset=` in auto mode no longer crashes the build~~
+- ~~Google Fonts: one-line / minified markup, css2 multi-family and axes~~
+- ~~`?subset=`: percent-decoding, `%2C`, lower-case `u+`, spaces; `ignore` applies to `?subset=` faces~~
+- ~~`build --watch` rebuilds keep references consistent~~
+- ~~Dev: `?subset=` in CSS, `?v=`, EOT minified, per-family urls, non-root `base`~~
+- ~~Logs: reason of a failed minification, warning for fonts inlined as `data:`, cached fonts in the summary; `.otf`/eot-only kept with a warning~~
+- ~~Tests: 386 → 734, content checked with fontkit, build-config regressions on Vite 5–8, CJS dist~~
 
 ## Completed (v3.0)
 

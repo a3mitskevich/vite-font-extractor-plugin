@@ -1,15 +1,16 @@
-import type { Format } from "fontext";
+import type { Formats } from "fontext";
 
 export const PLUGIN_NAME = "vite-font-extractor-plugin";
 export const CSS_LANGS_RE = /\.(css|less|sass|scss|styl|stylus|pcss|postcss|sss)(?:$|\?)/;
-export const GOOGLE_FONT_URL_RE = /["'](.+fonts.googleapis.com.+)["']/g;
+// Modules the transform hook cares about: styles, html and asset imports with `?subset=`
+export const TRANSFORM_ID_INCLUDE = [CSS_LANGS_RE, /\.html$/, /[?&]subset=/];
+// Stops at quotes, whitespace, parens and tag brackets: works for attributes in any order,
+// minified HTML and CSS url() without quotes
+export const GOOGLE_FONT_URL_RE = /(?:https?:)?\/\/fonts\.googleapis\.com\/[^\s"'`()<>]+/g;
 export const POSTFIX_URL_RE = /[?#].*$/s;
 export const FONT_URL_REGEX = /url\(['"]?(.*?)['"]?\)/g;
 export const FONT_FAMILY_RE = /font-family:\s*(.*?);/;
-export const SUPPORT_START_FONT_REGEX = /otf|ttf|woff|woff2|ttc|dfont/;
+// Formats fontext can read a font from (eot and svg are output only)
+export const SUPPORT_START_FONT_REGEX = /^(?:otf|ttf|woff2?|ttc|dfont)$/;
 export const FONT_FACE_BLOCK_REGEX = /@font-face\s*{([\s\S]*?)}/g;
-export const SUPPORTED_RESULTS_FORMATS: Format[] = ["woff2", "woff", "svg", "eot", "ttf"];
-
-export const GLYPH_REGEX = /content\s*:[^};]*?('|")(.*?)\s*('|"|;)/g;
-export const UNICODE_REGEX = /\\(\w{4})/;
-export const SYMBOL_REGEX = /"(.)"/;
+export const SUPPORTED_RESULTS_FORMATS: Formats[] = ["woff2", "woff", "svg", "eot", "ttf"];

@@ -1,19 +1,16 @@
 import { normalizePath, type ResolvedConfig, type ResolveFn } from "vite";
 import { extname, join } from "node:path";
 import { createHash } from "node:crypto";
-import type { Format } from "fontext";
+import type { Formats } from "fontext";
 import {
   FONT_FACE_BLOCK_REGEX,
   FONT_FAMILY_RE,
   FONT_URL_REGEX,
-  GLYPH_REGEX,
   GOOGLE_FONT_URL_RE,
   POSTFIX_URL_RE,
   SUPPORTED_RESULTS_FORMATS,
-  SYMBOL_REGEX,
-  UNICODE_REGEX,
 } from "./constants";
-import type { ImportResolvers } from "./types";
+import type { ImportResolvers, SubsetOptions } from "./types";
 
 export const mergePath = (...paths: string[]): string =>
   normalizePath(join(...paths.filter(Boolean)));
@@ -26,8 +23,8 @@ export const getHash = (text: Buffer | string, length = DEFAULT_HASH_LENGTH): st
 export const getExtension = <T extends string>(filename: string): T =>
   extname(filename).slice(1) as T;
 
-export const getFontExtension = (fontFileName: string): Format =>
-  getExtension<Format>(fontFileName);
+export const getFontExtension = (fontFileName: string): Formats =>
+  getExtension<Formats>(fontFileName);
 export function exists<T>(value: T): value is NonNullable<T> {
   return value !== null && value !== undefined;
 }
@@ -35,6 +32,44 @@ export function exists<T>(value: T): value is NonNullable<T> {
 export function toError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value));
 }
+
+const UNICODE_RANGE_RE = /^u\+[0-9a-f]+(?:-(?:u\+)?[0-9a-f]+)?$/i;
+// `A\ B`: CSS minifiers escape spaces in unquoted urls
+const CSS_CHAR_ESCAPE_RE = /\\([^0-9a-fA-F\r\n])/gu;
+
+function decodeSubsetPart(part: string): string {
+  const unescaped = part.replace(CSS_CHAR_ESCAPE_RE, "$1");
+  try {
+    return decodeURIComponent(unescaped);
+  } catch {
+    return unescaped;
+  }
+}
+
+/**
+ * Parses the value of `?subset=` — comma separated characters and/or U+ ranges.
+ * Parts are decoded after splitting, so `%2C` requests a literal comma.
+ */
+export function parseSubsetQuery(value: string): SubsetOptions {
+  const characters: string[] = [];
+  const unicodeRanges: string[] = [];
+  for (const part of value.split(",").map(decodeSubsetPart).filter(Boolean)) {
+    if (UNICODE_RANGE_RE.test(part)) {
+      // fontext accepts only the upper-case `U+` prefix
+      unicodeRanges.push(part.toUpperCase());
+    } else {
+      characters.push(part);
+    }
+  }
+  return {
+    characters: characters.length > 0 ? characters.join("") : undefined,
+    unicodeRanges: unicodeRanges.length > 0 ? unicodeRanges : undefined,
+  };
+}
+
+// Stable identity of a subset, "" when the font is used without `?subset=`
+export const getSubsetKey = (subset?: SubsetOptions): string =>
+  subset ? JSON.stringify(subset) : "";
 
 export function createSubsetOptions(
   fontName: string,
@@ -60,17 +95,13 @@ export function intersection<T>(array1: T[], array2: T[]): T[] {
   return array1.filter((item) => array2.includes(item));
 }
 
-export function hasDifferent<T>(array1: T[], array2: T[]): boolean {
-  if (array1.length !== array2.length) {
-    return true;
-  }
-  const [biggest, lowest] = array1.length > array2.length ? [array1, array2] : [array2, array1];
-  return biggest.some((item) => !lowest.includes(item));
-}
-
 export const escapeComments = (str: string): string => str.replaceAll(/\/\/.+\s/g, "");
 
 export const stripCssComments = (code: string): string => code.replace(/\/\*[\s\S]*?\*\//g, "");
+
+// "/app/fonts/a.woff2" with base "/app/" → "/fonts/a.woff2"
+export const stripBase = (url: string, base: string): string =>
+  base !== "/" && base.startsWith("/") && url.startsWith(base) ? url.slice(base.length - 1) : url;
 
 export function cleanUrl(url: string): string {
   return url.replace(POSTFIX_URL_RE, "");
@@ -79,16 +110,6 @@ export function cleanUrl(url: string): string {
 export function createResolvers(config: ResolvedConfig): ImportResolvers {
   let fontResolve: ResolveFn | undefined;
   return {
-    get common() {
-      return (
-        fontResolve ??
-        (fontResolve = config.createResolver({
-          extensions: [],
-          tryIndex: false,
-          preferRelative: false,
-        }))
-      );
-    },
     get font() {
       return (
         fontResolve ??
@@ -133,10 +154,7 @@ export const extractGoogleFontsUrls = (code: string): string[] => {
   let match = null;
   GOOGLE_FONT_URL_RE.lastIndex = 0;
   while ((match = GOOGLE_FONT_URL_RE.exec(code))) {
-    const url = match[1];
-    if (url) {
-      urls.push(url);
-    }
+    urls.push(match[0]);
   }
   return urls;
 };
@@ -161,19 +179,4 @@ export function groupBy<T>(array: T[], key: (item: T) => string): Record<string,
   return result;
 }
 
-export const findUnicodeGlyphs = (code: string): string[] => {
-  const matches = code.match(GLYPH_REGEX) || [];
-  return matches
-    .map((match) => {
-      const [, unicodeMatch] = match.match(UNICODE_REGEX) || [];
-      if (unicodeMatch) {
-        return String.fromCharCode(parseInt(unicodeMatch, 16));
-      }
-      const [, symbolMatch] = match.match(SYMBOL_REGEX) || [];
-      if (symbolMatch) {
-        return symbolMatch;
-      }
-      return "";
-    })
-    .filter(Boolean);
-};
+export { findUnicodeGlyphs } from "./content-glyphs";

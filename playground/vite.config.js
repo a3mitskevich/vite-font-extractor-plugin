@@ -20,6 +20,15 @@ export default defineConfig({
             "star",
           ],
         },
+        {
+          fontName: "Icons Normal",
+          ligatures: ["star", "favorite", "home", "search"],
+        },
+        {
+          fontName: "Icons SafariFix",
+          ligatures: ["star", "favorite", "home", "search"],
+          safariFix: true,
+        },
       ],
       cache: true,
     }),
