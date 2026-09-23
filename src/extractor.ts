@@ -15,6 +15,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
 
   return {
     name: PLUGIN_NAME,
+    apply: pluginOption.apply,
     configResolved(config) {
       ctx.logger = createInternalLogger(
         pluginOption.logLevel ?? config.logLevel,
@@ -22,6 +23,9 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       );
       const logger = ctx.logger;
       logger.banner();
+      if (!pluginOption.type) {
+        logger.warn(`type is not set, falling back to "manual"`);
+      }
 
       const cacheStatus = pluginOption.cache ? "cache enabled" : "no cache";
       const targetCount = ctx.targets.length;
