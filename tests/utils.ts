@@ -26,7 +26,7 @@ import {
   type Plugin as PluginV8,
   type Logger as LoggerV8,
 } from "vite-8";
-import type { ResolvedConfig } from "vite";
+import { mergeConfig, type ResolvedConfig } from "vite";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync, rmSync } from "node:fs";
@@ -73,6 +73,8 @@ export interface BuildOptions {
   cssMinify?: CssMinify;
   manifest?: boolean;
   ssr?: string;
+  // Extra Vite config deep-merged over the defaults below
+  config?: InlineConfig;
 }
 
 export interface Font {
@@ -177,6 +179,11 @@ export const fixtures = {
   "duplicate-url": createFixture("duplicate-url"),
   "shared-file-families": createFixture("shared-file-families"),
   "subset-target-chars": createFixture("subset-target-chars"),
+  configs: createFixture("configs"),
+  "configs-css-modules": createFixture("configs-css-modules"),
+  "configs-css-inline": createFixture("configs-css-inline"),
+  "configs-lazy-css": createFixture("configs-lazy-css"),
+  "configs-two-entries": createFixture("configs-two-entries"),
 } as const;
 
 export type FixturesNames = Array<keyof typeof fixtures>;
@@ -273,12 +280,16 @@ export const buildByVersion = async (
       },
     },
   };
-  const bundle = (await viteBuild[version](inlineConfig)) as RollupOutput;
+  const config = options.config ? mergeConfig(inlineConfig, options.config) : inlineConfig;
+  const result = (await viteBuild[version](config)) as RollupOutput | RollupOutput[];
+  // Several `output` options produce one bundle each
+  const bundles = Array.isArray(result) ? result : [result];
 
   rmSync(out, { recursive: true, force: true });
 
   return {
-    output: bundle.output,
+    output: bundles[0].output,
+    outputs: bundles.map((bundle) => bundle.output),
     out,
     messages: customLogger.messages,
   };
@@ -300,6 +311,8 @@ const PATH_TOKEN_RE = /(?:[\w\-.~@+%/:]|\\ )+/g;
 
 const SOURCE_MAP_RE = /\.map$/;
 const MANIFEST_RE = /manifest\.json$/;
+// Unminified Rolldown output names source modules in `//#region <path>` comments
+const REGION_COMMENT_RE = /^\s*\/\/#(?:end)?region\b.*$/gm;
 
 interface ManifestChunk {
   file?: string;
@@ -324,7 +337,8 @@ const getReferenceText = (item: OutputItem): string | null => {
   if (SOURCE_MAP_RE.test(item.fileName)) return null;
   const text = getOutputText(item);
   if (text == null) return null;
-  return MANIFEST_RE.test(item.fileName) ? getManifestText(text) : text;
+  if (MANIFEST_RE.test(item.fileName)) return getManifestText(text);
+  return item.type === "chunk" ? text.replace(REGION_COMMENT_RE, "") : text;
 };
 
 const decodePath = (token: string): string =>
