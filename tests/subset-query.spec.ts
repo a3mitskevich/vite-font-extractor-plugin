@@ -168,3 +168,27 @@ describe("?subset= encoding in builds", () => {
     });
   });
 });
+
+const ignoreFixture = createFixture("subset-query-ignore", { fonts: [] });
+
+describe("ignore with ?subset=", () => {
+  Object.keys(viteBuild).forEach((version) => {
+    it(`keeps an ignored family original on vite@${version}`, async () => {
+      const { output, messages } = await buildByVersion(version, {
+        fixture: ignoreFixture.path,
+        pluginOptions: { type: "manual", targets: [], ignore: ["Ignored"], cache: false },
+      });
+      const faces = getFaceFiles(output);
+
+      expect(findBrokenFontReferences(output)).toEqual([]);
+      expect(messages.filter(({ type }) => type !== "info")).toEqual([]);
+      const ignored = getAsset(output, faces.get("Ignored")!.split("?")[0]);
+      expect(Buffer.from(ignored.source).length).toBe(textFontsLength.woff2);
+      const kept = Buffer.from(getAsset(output, faces.get("Kept")!).source);
+      expect(kept.length).toBeLessThan(textFontsLength.woff);
+      const font = fontkit.create(kept) as fontkit.Font;
+      expect(font.hasGlyphForCodePoint("X".codePointAt(0)!)).toBe(true);
+      expect(font.hasGlyphForCodePoint("A".codePointAt(0)!)).toBe(false);
+    });
+  });
+});

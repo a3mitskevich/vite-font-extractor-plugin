@@ -14,7 +14,7 @@ import {
   createSubsetOptions,
 } from "./utils";
 import styler from "./styler";
-import { GOOGLE_FONT_URL_RE } from "./constants";
+import { FONT_FACE_BLOCK_REGEX, GOOGLE_FONT_URL_RE } from "./constants";
 import { getGoogleFontFamilies, getGoogleFontText, setGoogleFontText } from "./google-fonts";
 import { type PluginContext, getLogger } from "./context";
 import { checkFontProcessing } from "./minify";
@@ -142,9 +142,10 @@ function registerSubsetFace(ctx: PluginContext, name: string, aliases: string[])
   });
 }
 
-// `?subset=` anywhere else, e.g. `import font from './font.woff2?subset=ABC'` in JS
+// `?subset=` anywhere else, e.g. `import font from './font.woff2?subset=ABC'` in JS.
+// @font-face sources belong to their family (targets, `ignore`) and are skipped here
 function registerStandaloneSubsets(ctx: PluginContext, code: string): void {
-  for (const reference of extractAssetReferences(code)) {
+  for (const reference of extractAssetReferences(code.replace(FONT_FACE_BLOCK_REGEX, ""))) {
     if (!reference.subset) continue;
     const fontName = `subset (${reference.referenceId.substring(0, 6)})`;
     registerReferences(ctx, [reference], {
