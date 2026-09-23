@@ -326,6 +326,24 @@ describe.sequential("Dev server: Vite 5–8 matrix", () => {
       });
     });
 
+    it(`${label}: should minify a ?subset= face without a target like build`, async () => {
+      const options: PluginOption = { type: "manual", cache: false, targets: [] };
+      await withDevServer(createServer, fixtures["subset-chars"].path, options, async (dev) => {
+        const urls = fontUrlsOf(await fetchCss(dev.origin, "/index.css"));
+        const woff2 = urls.find((url) => url.includes(".woff2"))!;
+
+        const { status, body } = await fetchFont(dev.origin, woff2);
+        expect(status).toBe(200);
+        expect(body.byteLength).toBeLessThan(textFontSource.byteLength);
+        const font = openFont(body);
+        for (const char of "ABC") {
+          expect(font.hasGlyphForCodePoint(char.codePointAt(0)!), char).toBe(true);
+        }
+        expect(font.hasGlyphForCodePoint("q".codePointAt(0)!)).toBe(false);
+        expect(problemsOf(dev.messages)).toEqual([]);
+      });
+    });
+
     it(`${label}: should merge ?subset= in CSS with the target like build`, async () => {
       const options: PluginOption = {
         type: "manual",

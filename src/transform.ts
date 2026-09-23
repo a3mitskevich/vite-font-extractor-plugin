@@ -238,6 +238,10 @@ export async function transformHook(ctx: PluginContext, code: string, id: string
         const aliases = extractFonts(face);
 
         if (!options) {
+          // Dev minifies a face without a target by its `?subset=` alone, like build
+          if (ctx.isServe && aliases.some((alias) => alias.includes("?subset="))) {
+            return { name, face, aliases, options: createSubsetOptions(name, {}) };
+          }
           registerSubsetFace(ctx, name, aliases);
           return null;
         }
