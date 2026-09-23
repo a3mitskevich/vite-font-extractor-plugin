@@ -1,0 +1,14 @@
+@font-face {
+    font-family: 'Icons';
+    src: url("../fonts/icon-font.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: 'Text';
+    src: url("../fonts/text-font.woff2?subset=abc") format("woff2");
+}
+
+.icon::before {
+    font-family: 'Icons';
+    content: "\e5cd";
+}

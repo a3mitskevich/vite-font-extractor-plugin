@@ -36,7 +36,7 @@ function resolveServeOptions(
   }
   const options = ctx.optionsMap.get(request.fontName);
   if (options) {
-    return mergeSubsetOptions(options, subset);
+    return mergeSubsetOptions(options, subset, request.fontName);
   }
   // A face without target options is minified by its `?subset=` alone, like in build
   return subset ? createSubsetOptions(request.fontName, subset) : null;

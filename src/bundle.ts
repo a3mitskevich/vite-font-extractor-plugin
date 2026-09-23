@@ -6,7 +6,6 @@ import type {
   MinifyFontOptions,
   MinifyStats,
   OptionsWithCacheSid,
-  SubsetOptions,
 } from "./types";
 import { getFontExtension, getHash, getSubsetKey, toError } from "./utils";
 import { type PluginContext, getLogger } from "./context";
@@ -14,6 +13,7 @@ import { processMinify } from "./minify";
 import { type AssetRename, rewriteFontReferences } from "./rewrite-refs";
 import { STANDALONE_GROUP_PREFIX } from "./asset-refs";
 import { warnInlinedFonts } from "./inline-fonts";
+import { mergeSubsetOptions } from "./subset-options";
 
 type GetFileName = (referenceId: string) => string;
 type EmitFile = (file: Rollup.EmittedAsset) => string;
@@ -30,22 +30,6 @@ interface MinifiedFont extends Omit<AssetRename, "newFileName"> {
   name: string;
   source: Buffer;
   savedBytes: number;
-}
-
-function mergeSubsetOptions(
-  options: OptionsWithCacheSid,
-  subset: SubsetOptions | undefined,
-): OptionsWithCacheSid {
-  if (!subset) return options;
-  const targetCharacters = "characters" in options.target ? options.target.characters : undefined;
-  const unicodeRanges = [...(options.target.unicodeRanges ?? []), ...(subset.unicodeRanges ?? [])];
-  const target = {
-    ...options.target,
-    characters: [targetCharacters, subset.characters].filter(Boolean).join("") || undefined,
-    unicodeRanges: unicodeRanges.length ? unicodeRanges : undefined,
-    engine: "subset" as const,
-  };
-  return { ...options, target, sid: JSON.stringify(target) };
 }
 
 function resolveAsset(
@@ -92,7 +76,7 @@ function collectFontGroups(
       continue;
     }
 
-    const options = mergeSubsetOptions(reference.options, reference.subset);
+    const options = mergeSubsetOptions(reference.options, reference.subset, reference.fontName);
     // The same file with the same options (repeated @font-face, CSS + JS) is minified once;
     // families sharing a file with different options get their own result
     const assetKey = `${asset.fileName}::${options.sid}`;
@@ -136,7 +120,11 @@ async function minifyGroup(
       const originalSize = Buffer.from(asset.source).length;
       const minified = minifiedBuffer?.[extension];
 
-      if (!minified || minified.length === 0 || minified.length >= originalSize) {
+      if (!minified || minified.length === 0) {
+        logger.skipped(fontName, `${extension} was not produced — keeping original`);
+        return [];
+      }
+      if (minified.length >= originalSize) {
         logger.skipped(fontName, `${extension} not smaller than original`);
         return [];
       }

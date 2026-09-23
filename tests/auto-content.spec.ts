@@ -155,3 +155,30 @@ describe("Auto mode: CSS content", () => {
     });
   });
 });
+
+describe("Auto mode with ?subset= on a @font-face", () => {
+  const autoSubset = createFixture("auto-subset", { fonts: [] });
+
+  Object.keys(viteBuild).forEach((version) => {
+    it(`vite@${version}: should minify the ?subset= face by its query and icons by detected glyphs`, async () => {
+      const { output, messages } = await build(version, autoSubset);
+
+      const text = fontkit.create(
+        Buffer.from(getFontAsset(output, "text-font", "woff2").source),
+      ) as fontkit.Font;
+      expect(["a", "b", "c"].every((char) => text.hasGlyphForCodePoint(char.codePointAt(0)!))).toBe(
+        true,
+      );
+      expect(text.hasGlyphForCodePoint("z".codePointAt(0)!)).toBe(false);
+
+      const icons = fontkit.create(
+        Buffer.from(getFontAsset(output, "icon-font", "woff2").source),
+      ) as fontkit.Font;
+      expect(icons.hasGlyphForCodePoint(CLOSE)).toBe(true);
+      expect(icons.hasGlyphForCodePoint(STAR)).toBe(false);
+
+      expect(findBrokenFontReferences(output)).toEqual([]);
+      expect(messages.filter((m) => m.type === "error")).toEqual([]);
+    });
+  });
+});
