@@ -12,7 +12,7 @@ import {
   viteBuild,
 } from "./utils";
 
-type Output = RollupOutput["output"];
+type Output = Array<RollupOutput["output"][number]>;
 
 const FONT_FACE_RE = /@font-face\s*\{[^}]*\}/g;
 const FACE_FAMILY_RE = /font-family:\s*["']?([^;"'}]+)/;
