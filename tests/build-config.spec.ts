@@ -19,6 +19,11 @@ import {
 type OutputItem = OutputAsset | OutputChunk;
 type BuildConfig = NonNullable<InlineConfig["build"]>;
 
+interface PreRenderedAssetInfo {
+  name?: string;
+  names?: string[];
+}
+
 const FONT_EXT_RE = /\.(?:woff2?|ttf|eot|otf)$/;
 const TOKEN_SEPARATOR_RE = /[\s"'`()\\,=<>/]+/;
 const MANIFEST_RE = /manifest\.json$/;
@@ -167,6 +172,22 @@ const expectHealthyFontOutput = (output: OutputItem[], messages: LoggerMessage[]
   expect(problems(messages)).toEqual([]);
 };
 
+const fontAssetFileNames = (info: PreRenderedAssetInfo): string =>
+  FONT_EXT_RE.test(info.names?.[0] ?? info.name ?? "")
+    ? "f/[hash][extname]"
+    : "assets/[name]-[hash][extname]";
+
+const ASSET_FILE_NAME_CASES = [
+  { title: "[name][extname]", pattern: "[name][extname]", expected: /^icon-font\d*\.\w+$/ },
+  { title: "[hash][extname]", pattern: "[hash][extname]", expected: /^[\w-]{8}\.\w+$/ },
+  {
+    title: "fonts/[name].[hash][extname]",
+    pattern: "fonts/[name].[hash][extname]",
+    expected: /^fonts\/icon-font\.[\w-]{8}\.\w+$/,
+  },
+  { title: "a function", pattern: fontAssetFileNames, expected: /^f\/[\w-]{8}\.\w+$/ },
+];
+
 describe.sequential("Build configuration", () => {
   const runBuildConfigTests = (version: ContainerVersion) => {
     describe(`vite@${version}`, () => {
@@ -192,6 +213,28 @@ describe.sequential("Build configuration", () => {
         expect(preloaded[0].name).toMatch(/\.woff2$/);
         expectHealthyFontOutput(output, messages);
       });
+
+      describe.each(ASSET_FILE_NAME_CASES)(
+        "build.rollupOptions.output.assetFileNames: $title",
+        ({ pattern, expected }) => {
+          it("should name minified fonts by the pattern", async () => {
+            const { output, messages } = await buildWithConfig(version, {
+              fixture: "asset-names",
+              build: { rollupOptions: { output: { assetFileNames: pattern } } },
+            });
+
+            const fonts = getFontAssets(output);
+            expect(fonts).toHaveLength(3);
+            for (const asset of fonts) {
+              expect(asset.fileName).toMatch(expected);
+            }
+            expect(collectReferencedFontNames(output).some((ref) => ref.from.endsWith(".js"))).toBe(
+              true,
+            );
+            expectHealthyFontOutput(output, messages);
+          });
+        },
+      );
     });
   };
 

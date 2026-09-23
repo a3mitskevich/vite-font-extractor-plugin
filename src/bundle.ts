@@ -1,5 +1,5 @@
 import type { Rollup } from "vite";
-import { basename, dirname } from "node:path";
+import { basename } from "node:path";
 import type {
   FontReference,
   InternalLogger,
@@ -24,7 +24,9 @@ interface FontGroup {
   assets: Rollup.OutputAsset[];
 }
 
-interface MinifiedAsset extends AssetRename {
+interface MinifiedFont extends Omit<AssetRename, "newFileName"> {
+  // Asset name the bundler builds the file name from (`assetFileNames`)
+  name: string;
   source: Buffer;
   savedBytes: number;
 }
@@ -113,7 +115,7 @@ function collectFontGroups(
 async function minifyGroup(
   ctx: PluginContext,
   { fontName, options, subsetKey, assets }: FontGroup,
-): Promise<MinifiedAsset[]> {
+): Promise<MinifiedFont[]> {
   const logger = getLogger(ctx);
   try {
     const minifiedBuffer = await processMinify(
@@ -138,16 +140,12 @@ async function minifyGroup(
         return [];
       }
 
-      const oldFileName = asset.fileName;
-      const base = basename(asset.name ?? oldFileName, `.${extension}`);
-      const newFileName = `${dirname(oldFileName)}/${base}-${getHash(minified)}.${extension}`;
-
       const isLast = idx === assets.length - 1;
       logger.minified(fontName, extension, originalSize, minified.length, isLast);
       return [
         {
-          oldFileName,
-          newFileName,
+          oldFileName: asset.fileName,
+          name: basename(asset.name ?? asset.fileName),
           subsetKey,
           fontName,
           source: minified,
@@ -161,6 +159,24 @@ async function minifyGroup(
     });
     return [];
   }
+}
+
+// The bundler names the files by `assetFileNames`; identical results are emitted once
+function emitMinifiedFonts(
+  emitFile: EmitFile,
+  getFileName: GetFileName,
+  fonts: MinifiedFont[],
+): AssetRename[] {
+  const fileNames = new Map<string, string>();
+  return fonts.map(({ oldFileName, name, source, subsetKey, fontName }) => {
+    const key = `${name}:${getHash(source)}`;
+    let newFileName = fileNames.get(key);
+    if (!newFileName) {
+      newFileName = getFileName(emitFile({ type: "asset", name, source }));
+      fileNames.set(key, newFileName);
+    }
+    return { oldFileName, newFileName, subsetKey, fontName };
+  });
 }
 
 export async function generateBundleHook(
@@ -180,17 +196,10 @@ export async function generateBundleHook(
   logger.phase("✂ ", "Minify");
 
   const minified = (await Promise.all(groups.map((group) => minifyGroup(ctx, group)))).flat();
+  const renames = emitMinifiedFonts(emitFile, getFileName, minified);
 
-  // Identical results (same content hash) are emitted once
-  const emitted = new Set<string>();
-  for (const { newFileName, source } of minified) {
-    if (emitted.has(newFileName)) continue;
-    emitted.add(newFileName);
-    emitFile({ type: "asset", fileName: newFileName, source });
-  }
-
-  const stillReferenced = rewriteFontReferences(bundle, minified);
-  for (const oldFileName of new Set(minified.map((asset) => asset.oldFileName))) {
+  const stillReferenced = rewriteFontReferences(bundle, renames);
+  for (const oldFileName of new Set(renames.map((rename) => rename.oldFileName))) {
     if (!stillReferenced.has(oldFileName)) {
       delete bundle[oldFileName];
     }
@@ -199,7 +208,7 @@ export async function generateBundleHook(
   const stats: MinifyStats = {
     minified: minified.length,
     cached: 0,
-    saved: minified.reduce((sum, asset) => sum + asset.savedBytes, 0),
+    saved: minified.reduce((sum, font) => sum + font.savedBytes, 0),
   };
   logger.summary(stats);
 

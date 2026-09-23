@@ -39,12 +39,16 @@ const NAME_ENCODERS: Array<(name: string) => string> = [
 const FONT_FACE_BLOCK_RE = /@font-face\s*\{[^}]*\}/g;
 const FONT_FAMILY_DECLARATION_RE = /font-family\s*:\s*([^;}]+)/;
 
+// A file name is a whole token: `icon.woff` must not match inside `my-icon.woff2`
+const NAME_START = "(?<![\\w.%-])";
+const NAME_END = "(?![\\w-])";
+
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // Matches `<name>`, `<name>?subset=X` and the unminified Rolldown form `<name>" + "?subset=X"`
 const createReferencePattern = (names: string[]): RegExp =>
   new RegExp(
-    `(${names.map(escapeRegExp).join("|")})` +
+    `${NAME_START}(${names.map(escapeRegExp).join("|")})${NAME_END}` +
       "(?:\\?subset=([^\"'`)\\s&]+)|([\"'`])\\s*\\+\\s*([\"'`])\\?subset=([^\"'`&\\s]+)\\4)?",
     "g",
   );
@@ -89,6 +93,20 @@ function updateImportedAssets(chunk: Rollup.OutputChunk, renames: AssetRename[])
       importedAssets.delete(oldFileName);
     }
   }
+}
+
+function findLeftovers(texts: string[], renames: AssetRename[]): Set<string> {
+  const leftovers = new Set<string>();
+  for (const oldFileName of new Set(renames.map((rename) => rename.oldFileName))) {
+    const oldBase = basename(oldFileName);
+    const pattern = new RegExp(
+      NAME_ENCODERS.map((encode) => NAME_START + escapeRegExp(encode(oldBase)) + NAME_END).join(
+        "|",
+      ),
+    );
+    if (texts.some((text) => pattern.test(text))) leftovers.add(oldFileName);
+  }
+  return leftovers;
 }
 
 /**
@@ -148,13 +166,5 @@ export function rewriteFontReferences(
     }
   }
 
-  const leftovers = new Set<string>();
-  for (const { oldFileName } of renames) {
-    const oldBase = basename(oldFileName);
-    const isReferenced = NAME_ENCODERS.some((encode) =>
-      texts.some((text) => text.includes(encode(oldBase))),
-    );
-    if (isReferenced) leftovers.add(oldFileName);
-  }
-  return leftovers;
+  return findLeftovers(texts, renames);
 }
