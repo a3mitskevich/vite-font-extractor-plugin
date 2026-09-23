@@ -66,6 +66,8 @@ export interface BuildOptions {
   pluginOptions?: PluginOption;
   // Exact plugin call arguments, e.g. `[]` for the zero-config call; overrides `pluginOptions`
   pluginArgs?: Parameters<FontExtractorPlugin>;
+  // Plugin factory to call instead of the TEST_TARGET one (e.g. the CommonJS build)
+  pluginFactory?: FontExtractorPlugin;
   customLogger?: FakeLogger;
   // Build with Vite's own console logger instead of a custom one; `messages` stays empty
   useConsoleLogger?: boolean;
@@ -253,7 +255,10 @@ export const buildByVersion = async (
     cache: options.cache == null ? out : options.cache,
   };
 
-  const FontExtract = await plugin(...(options.pluginArgs ?? [pluginOptions]));
+  const pluginArgs = options.pluginArgs ?? [pluginOptions];
+  const FontExtract = options.pluginFactory
+    ? (options.pluginFactory(...pluginArgs) as Plugin)
+    : await plugin(...pluginArgs);
   const customLogger = options.useConsoleLogger
     ? undefined
     : (options.customLogger ?? createLogger());
