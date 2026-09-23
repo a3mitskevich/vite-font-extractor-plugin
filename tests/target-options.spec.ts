@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { stripVTControlCharacters } from "node:util";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { PluginOption, Target } from "../src";
@@ -73,7 +74,8 @@ const captureConsole = async (run: () => Promise<unknown>): Promise<Record<LogTy
   const record =
     (type: LogType) =>
     (...args: unknown[]) => {
-      lines[type].push(args.map(String).join(" "));
+      // picocolors enables colors when CI is set — markers must match plain text
+      lines[type].push(stripVTControlCharacters(args.map(String).join(" ")));
     };
   const spies = [
     vi.spyOn(console, "log").mockImplementation(record("info")),
@@ -201,7 +203,11 @@ describe.sequential("Target and plugin options", () => {
           const { messages } = await logBuild("silent");
           const types = new Set(
             (Object.keys(LOG_MARKERS) as LogType[]).filter((type) =>
-              messages.some((m) => m.type === type && m.message.includes(LOG_MARKERS[type])),
+              messages.some(
+                (m) =>
+                  m.type === type &&
+                  stripVTControlCharacters(m.message).includes(LOG_MARKERS[type]),
+              ),
             ),
           );
           expect(types).toEqual(new Set(["info", "warn", "error"]));
