@@ -147,19 +147,23 @@ FontExtractor({
 })
 ```
 
-The cache is automatically cleaned when `cache` is set to `false`.
+Cache entries are keyed by the font file content and the target options, so replacing a font file never
+returns a stale result. Entries not used by the latest build are removed after it finishes. The cache
+directory is removed when `cache` is set to `false`.
 
 ## Vite Compatibility
 
-| Vite | Status       |
-|------|--------------|
-| v5   | Stable       |
-| v6   | Stable       |
-| v7   | Stable       |
-| v8   | Experimental |
+| Vite | Status |
+|------|--------|
+| v5   | Stable |
+| v6   | Stable |
+| v7   | Stable |
+| v8   | Stable |
 
-> Vite 8 uses Rolldown instead of Rollup. Icon font minification works fully. The `?subset=` feature has known
-> limitations — see [ROADMAP](./ROADMAP.md) for details.
+> Vite 8 uses Rolldown instead of Rollup — icon fonts, text fonts and `?subset=` (CSS and JS imports) work on
+> both bundlers. The plugin runs only for the client environment, SSR builds are skipped.
+>
+> **3.x is the last release line with Vite 5–7 support.** The next major (4.0) will support Vite 8 only.
 
 ## API Reference
 
