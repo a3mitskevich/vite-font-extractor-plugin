@@ -1,12 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import type { OutputAsset } from "rollup";
 import {
   buildByVersion,
   type ContainerVersion,
+  findBrokenFontReferences,
   fixtures,
   fontsLength,
+  getFontAssets,
+  getReadableFontAssets,
+  hasGlyph,
+  openFont,
+  type OutputItem,
   viteBuild,
   outDir,
 } from "./utils";
@@ -25,18 +30,17 @@ describe.sequential("Plugin options", () => {
             },
           });
 
-          // Font should remain unminified (original size)
-          const fontAssets = output.filter(
-            (a): a is OutputAsset => a.type === "asset" && a.fileName.includes("font"),
-          );
-
+          // Every format of the ignored font is emitted at its original size
+          const fontAssets = getFontAssets(output as OutputItem[]);
+          expect(fontAssets.map((asset) => asset.fileName.split(".").pop()).sort()).toEqual([
+            "eot",
+            "ttf",
+            "woff",
+            "woff2",
+          ]);
           fontAssets.forEach((asset) => {
-            const size = Buffer.from(asset.source).length;
             const ext = asset.fileName.split(".").pop() as keyof typeof fontsLength;
-            if (fontsLength[ext]) {
-              // Original size = not minified
-              expect(size).toBe(fontsLength[ext]);
-            }
+            expect(Buffer.from(asset.source).length, asset.fileName).toBe(fontsLength[ext]);
           });
         });
       });
@@ -74,10 +78,12 @@ describe.sequential("Plugin options", () => {
           const hasError = messages.some((m) => m.type === "error");
           expect(hasError).toBeFalsy();
 
-          const fontAssets = output.filter(
-            (a): a is OutputAsset => a.type === "asset" && a.fileName.includes("font"),
-          );
+          const fontAssets = getFontAssets(output as OutputItem[]);
           expect(fontAssets.length).toBeGreaterThan(0);
+          fontAssets.forEach((asset) => {
+            const ext = asset.fileName.split(".").pop() as keyof typeof fontsLength;
+            expect(Buffer.from(asset.source).length, asset.fileName).toBeLessThan(fontsLength[ext]);
+          });
         });
       });
 
@@ -85,12 +91,24 @@ describe.sequential("Plugin options", () => {
         it("should work with zero-config (no options)", async () => {
           const { output, messages } = await buildByVersion(version, {
             fixture: fixtures.auto.path,
-            pluginOptions: { type: "auto" },
+            pluginArgs: [],
           });
+          const items = output as OutputItem[];
 
-          const hasError = messages.some((m) => m.type === "error");
-          expect(hasError).toBeFalsy();
-          expect(output.length).toBeGreaterThan(0);
+          expect(messages.filter((m) => m.type === "error")).toEqual([]);
+          expect(messages.some((m) => m.message.includes("auto mode"))).toBe(true);
+          expect(findBrokenFontReferences(items)).toEqual([]);
+
+          // The glyph from `content` in the fixture CSS is detected and kept
+          const readable = getReadableFontAssets(items);
+          expect(readable.length).toBeGreaterThan(0);
+          readable.forEach((asset) => {
+            const ext = asset.fileName.split(".").pop() as keyof typeof fontsLength;
+            expect(Buffer.from(asset.source).length).toBeLessThan(fontsLength[ext]);
+            const font = openFont(asset.source);
+            expect(hasGlyph(font, 0xe5cd), asset.fileName).toBe(true);
+            expect(hasGlyph(font, 0xe838), asset.fileName).toBe(false);
+          });
         });
       });
     });
