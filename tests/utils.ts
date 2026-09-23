@@ -67,6 +67,8 @@ export interface BuildOptions {
   // Exact plugin call arguments, e.g. `[]` for the zero-config call; overrides `pluginOptions`
   pluginArgs?: Parameters<FontExtractorPlugin>;
   customLogger?: FakeLogger;
+  // Build with Vite's own console logger instead of a custom one; `messages` stays empty
+  useConsoleLogger?: boolean;
   cache?: false;
   fixture?: string;
   targets?: string[];
@@ -184,6 +186,7 @@ export const fixtures = {
   "configs-css-inline": createFixture("configs-css-inline"),
   "configs-lazy-css": createFixture("configs-lazy-css"),
   "configs-two-entries": createFixture("configs-two-entries"),
+  "log-levels": createFixture("log-levels"),
 } as const;
 
 export type FixturesNames = Array<keyof typeof fixtures>;
@@ -251,7 +254,9 @@ export const buildByVersion = async (
   };
 
   const FontExtract = await plugin(...(options.pluginArgs ?? [pluginOptions]));
-  const customLogger = options.customLogger ?? createLogger();
+  const customLogger = options.useConsoleLogger
+    ? undefined
+    : (options.customLogger ?? createLogger());
   const inlineConfig: InlineConfig = {
     root: options.fixture,
     configFile: false,
@@ -291,7 +296,7 @@ export const buildByVersion = async (
     output: bundles[0].output,
     outputs: bundles.map((bundle) => bundle.output),
     out,
-    messages: customLogger.messages,
+    messages: customLogger?.messages ?? [],
   };
 };
 

@@ -1,0 +1,15 @@
+/* One family per log type: minified (info), without options (warn), corrupt file (error) */
+@font-face {
+    font-family: 'Icons';
+    src: url("../fonts/icon-font.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: 'Untargeted';
+    src: url("../fonts/icon-font.woff") format("woff");
+}
+
+@font-face {
+    font-family: 'Broken';
+    src: url("./broken.woff2") format("woff2");
+}
