@@ -95,14 +95,6 @@ export function intersection<T>(array1: T[], array2: T[]): T[] {
   return array1.filter((item) => array2.includes(item));
 }
 
-export function hasDifferent<T>(array1: T[], array2: T[]): boolean {
-  if (array1.length !== array2.length) {
-    return true;
-  }
-  const [biggest, lowest] = array1.length > array2.length ? [array1, array2] : [array2, array1];
-  return biggest.some((item) => !lowest.includes(item));
-}
-
 export const escapeComments = (str: string): string => str.replaceAll(/\/\/.+\s/g, "");
 
 export const stripCssComments = (code: string): string => code.replace(/\/\*[\s\S]*?\*\//g, "");
