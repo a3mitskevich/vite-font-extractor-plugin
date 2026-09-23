@@ -93,6 +93,10 @@ export const escapeComments = (str: string): string => str.replaceAll(/\/\/.+\s/
 
 export const stripCssComments = (code: string): string => code.replace(/\/\*[\s\S]*?\*\//g, "");
 
+// "/app/fonts/a.woff2" with base "/app/" → "/fonts/a.woff2"
+export const stripBase = (url: string, base: string): string =>
+  base !== "/" && base.startsWith("/") && url.startsWith(base) ? url.slice(base.length - 1) : url;
+
 export function cleanUrl(url: string): string {
   return url.replace(POSTFIX_URL_RE, "");
 }

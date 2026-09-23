@@ -23,6 +23,8 @@ export interface PluginContext {
   logger: InternalLogger | null;
 
   isServe: boolean;
+  // Resolved `config.base`; dev urls carry it and must be stripped before resolving files
+  base: string;
   readonly glyphsFindMap: Map<string, string[]>;
   // Keyed by `${referenceId}:${subsetKey}:${fontName}`
   readonly transformMap: Map<string, FontReference>;
@@ -110,6 +112,7 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     importResolvers: null,
     logger: null,
     isServe: false,
+    base: "/",
     glyphsFindMap,
     transformMap: new Map(),
     fontServeProxy: new Map(),

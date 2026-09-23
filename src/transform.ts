@@ -7,6 +7,8 @@ import {
   extractFonts,
   extractGoogleFontsUrls,
   findUnicodeGlyphs,
+  getHash,
+  stripBase,
   stripCssComments,
   toError,
   createSubsetOptions,
@@ -50,6 +52,50 @@ function registerReferences(
   }
 }
 
+const FAMILY_QUERY_PARAM = "font-extractor-family";
+const FACE_URL_RE = /url\((['"]?)(.*?)\1\)/g;
+
+// Dev: a file shared by several families is requested once per family
+const tagFamilyUrl = (url: string, fontName: string): string =>
+  `${url}${url.includes("?") ? "&" : "?"}${FAMILY_QUERY_PARAM}=${getHash(fontName)}`;
+
+function registerServeProxy(
+  ctx: PluginContext,
+  id: string,
+  requestUrl: string,
+  sourceUrl: string,
+  font: FontFaceMeta,
+): void {
+  if (ctx.fontServeProxy.has(requestUrl)) {
+    return;
+  }
+  const process = font.options.auto
+    ? processServeAutoFontMinify(ctx, id, sourceUrl, font.name)
+    : processServeFontMinify(ctx, id, sourceUrl, font.name);
+  ctx.fontServeProxy.set(requestUrl, process);
+  if (font.options.auto) {
+    ctx.loadedAutoFontMap.set(requestUrl, false);
+  }
+}
+
+function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceMeta): string {
+  const localUrls = font.aliases.filter((url) => !url.startsWith("data:"));
+  for (const url of localUrls) {
+    const sourceUrl = stripBase(url, ctx.base);
+    // The plain url keeps working (served for the first family that registered it)
+    registerServeProxy(ctx, id, url, sourceUrl, font);
+    registerServeProxy(ctx, id, tagFamilyUrl(url, font.name), sourceUrl, font);
+  }
+  // Face text differs from the source when it contains comments — keep plain urls then
+  if (!code.includes(font.face)) {
+    return code;
+  }
+  const taggedFace = font.face.replace(FACE_URL_RE, (match, quote: string, url: string) =>
+    localUrls.includes(url) ? `url(${quote}${tagFamilyUrl(url, font.name)}${quote})` : match,
+  );
+  return code.replace(font.face, taggedFace);
+}
+
 async function processFont(
   ctx: PluginContext,
   code: string,
@@ -58,18 +104,7 @@ async function processFont(
 ): Promise<string> {
   checkFontProcessing(ctx, font.name, id);
   if (ctx.isServe) {
-    font.aliases.forEach((url) => {
-      if (ctx.fontServeProxy.has(url)) {
-        return;
-      }
-      const process = font.options.auto
-        ? processServeAutoFontMinify(ctx, id, url, font.name)
-        : processServeFontMinify(ctx, id, url, font.name);
-      ctx.fontServeProxy.set(url, process);
-      if (font.options.auto) {
-        ctx.loadedAutoFontMap.set(url, false);
-      }
-    });
+    return serveFont(ctx, code, id, font);
   } else {
     if (ctx.mode === "auto") {
       getLogger(ctx).warn(

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServer as createServerV7, type ViteDevServer } from "vite-7";
+import { createServer as createServerV8 } from "vite-8";
+import * as fontkit from "fontkit";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { plugin, fixturesDir, fontsLength } from "./utils";
@@ -103,4 +105,104 @@ describe.sequential("Dev server", () => {
     // Same size = cached result reused
     expect(body1.byteLength).toBe(body2.byteLength);
   });
+});
+
+describe.sequential("Dev server: file shared by families with different options", () => {
+  const servers = { "vite@7": createServerV7, "vite@8": createServerV8 };
+
+  for (const [label, createServer] of Object.entries(servers)) {
+    it(`${label}: should serve each family its own minified font`, async () => {
+      const FontExtract = await plugin({
+        type: "manual",
+        cache: false,
+        targets: [
+          { fontName: "Icons A", ligatures: ["close"] },
+          { fontName: "Icons B", ligatures: ["star"] },
+        ],
+      });
+      const server = await (createServer as typeof createServerV7)({
+        root: join(fixturesDir, "shared-file-families"),
+        configFile: false,
+        logLevel: "silent",
+        plugins: [FontExtract],
+        server: { port: 0, strictPort: false },
+      });
+      try {
+        await server.listen();
+        const address = server.httpServer?.address();
+        const port = typeof address === "object" && address ? address.port : 5173;
+        const baseUrl = `http://localhost:${port}`;
+
+        const css = await (
+          await fetch(`${baseUrl}/index.css`, { headers: { accept: "text/css" } })
+        ).text();
+        const urlByFamily = new Map(
+          Array.from(css.matchAll(/@font-face\s*\{[^}]*\}/g), ([block]) => [
+            /font-family\s*:\s*["']?([^"';}]+)/.exec(block)![1].trim(),
+            /url\(["']?([^"')]+)["']?\)/.exec(block)![1],
+          ]),
+        );
+        expect(urlByFamily.get("Icons A")).not.toBe(urlByFamily.get("Icons B"));
+
+        const fontOf = async (family: string): Promise<fontkit.Font> => {
+          const response = await fetch(`${baseUrl}${urlByFamily.get(family)}`);
+          return fontkit.create(Buffer.from(await response.arrayBuffer())) as fontkit.Font;
+        };
+        const rendersLigature = (font: fontkit.Font, text: string): boolean => {
+          const glyphs = font.layout(text).glyphs;
+          return glyphs.length === 1 && glyphs[0].id !== 0;
+        };
+
+        const iconsA = await fontOf("Icons A");
+        const iconsB = await fontOf("Icons B");
+        expect(rendersLigature(iconsA, "close")).toBe(true);
+        expect(rendersLigature(iconsA, "star")).toBe(false);
+        expect(rendersLigature(iconsB, "star")).toBe(true);
+        expect(rendersLigature(iconsB, "close")).toBe(false);
+      } finally {
+        await server.close();
+      }
+    });
+  }
+});
+
+describe.sequential("Dev server: non-root base", () => {
+  const servers = { "vite@7": createServerV7, "vite@8": createServerV8 };
+
+  for (const [label, createServer] of Object.entries(servers)) {
+    it(`${label}: should minify fonts served under base`, async () => {
+      const FontExtract = await plugin({
+        type: "manual",
+        cache: false,
+        targets: [{ fontName: "Font Name", ligatures: ["close"] }],
+      });
+      const server = await (createServer as typeof createServerV7)({
+        root: join(fixturesDir, "plain"),
+        base: "/app/",
+        configFile: false,
+        logLevel: "silent",
+        plugins: [FontExtract],
+        server: { port: 0, strictPort: false },
+      });
+      try {
+        await server.listen();
+        const address = server.httpServer?.address();
+        const port = typeof address === "object" && address ? address.port : 5173;
+        const origin = `http://localhost:${port}`;
+
+        const css = await (
+          await fetch(`${origin}/app/plain.css`, { headers: { accept: "text/css" } })
+        ).text();
+        const url = /url\(["']?([^"')]+\.woff2[^"')]*)["']?\)/.exec(css)?.[1];
+        expect(url?.startsWith("/app/")).toBe(true);
+
+        const response = await fetch(`${origin}${url}`);
+        const size = (await response.arrayBuffer()).byteLength;
+        expect(size).toBeGreaterThan(0);
+        expect(size).toBeLessThan(fontsLength.woff2);
+      } finally {
+        await server.close();
+      }
+    });
+  }
 });
