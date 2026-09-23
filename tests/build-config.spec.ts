@@ -236,6 +236,34 @@ describe.sequential("Build configuration", () => {
         },
       );
 
+      it("should warn that a font inlined by build.assetsInlineLimit is not minified", async () => {
+        const { output, messages } = await buildWithConfig(version, {
+          fixture: "inline-font",
+          build: { assetsInlineLimit: 100_000_000 },
+        });
+
+        expect(getFontAssets(output)).toEqual([]);
+        const warnings = problems(messages);
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0].type).toBe("warn");
+        expect(warnings[0].message).toContain('"Font Name"');
+        expect(warnings[0].message).toMatch(/inlined/);
+        expect(warnings[0].message).not.toMatch(/Asset not found/);
+      });
+
+      it("should warn that a font inlined by library mode is not minified", async () => {
+        const root = join(fixturesDir, "inline-font");
+        const { messages } = await buildWithConfig(version, {
+          fixture: "inline-font",
+          build: { lib: { entry: join(root, "lib.js"), formats: ["es"], fileName: "lib" } },
+        });
+
+        const warnings = problems(messages);
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0].message).toContain('"Font Name"');
+        expect(warnings[0].message).toMatch(/inlined/);
+      });
+
       it("should log the reason when a font fails to minify", async () => {
         const { output, messages } = await buildWithConfig(version, {
           fixture: "plain",

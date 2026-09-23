@@ -13,6 +13,7 @@ import { type PluginContext, getLogger } from "./context";
 import { processMinify } from "./minify";
 import { type AssetRename, rewriteFontReferences } from "./rewrite-refs";
 import { STANDALONE_GROUP_PREFIX } from "./asset-refs";
+import { warnInlinedFonts } from "./inline-fonts";
 
 type GetFileName = (referenceId: string) => string;
 type EmitFile = (file: Rollup.EmittedAsset) => string;
@@ -187,10 +188,14 @@ export async function generateBundleHook(
   ctx: PluginContext,
   bundle: Rollup.OutputBundle,
 ): Promise<void> {
+  const logger = getLogger(ctx);
+  warnInlinedFonts(ctx, bundle, (message) => {
+    logger.fix();
+    logger.warn(message);
+  });
   if (!ctx.transformMap.size) {
     return;
   }
-  const logger = getLogger(ctx);
   logger.fix();
 
   const groups = collectFontGroups(getFileName, ctx, bundle, logger);
