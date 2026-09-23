@@ -173,5 +173,5 @@ export async function generateBundleHook(
   };
   logger.summary(stats);
 
-  ctx.cache?.prune();
+  await ctx.cache?.prune();
 }

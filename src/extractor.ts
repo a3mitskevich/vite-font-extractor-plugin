@@ -3,7 +3,7 @@ import { isAbsolute } from "node:path";
 import type { PluginOption, ServeFontStubResponse } from "./types";
 import Cache from "./cache";
 import { createResolvers, intersection, mergePath, toError } from "./utils";
-import { PLUGIN_NAME } from "./constants";
+import { PLUGIN_NAME, TRANSFORM_ID_INCLUDE } from "./constants";
 import styler from "./styler";
 import { createInternalLogger } from "./internal-logger";
 import { createPluginContext, getLogger } from "./context";
@@ -92,11 +92,23 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         }
       });
     },
+    // Vite 6+: fonts are emitted by the client build only
+    applyToEnvironment(environment) {
+      return environment.config.consumer === "client";
+    },
     buildStart() {
       ctx.cache?.resetUsage();
     },
-    async transform(code, id) {
-      return transformHook(ctx, code, id);
+    transform: {
+      filter: { id: { include: TRANSFORM_ID_INCLUDE } },
+      async handler(code, id, options) {
+        // Filters are ignored before Vite 6.3, and applyToEnvironment before Vite 6
+        if (options?.ssr || !TRANSFORM_ID_INCLUDE.some((re) => re.test(id))) {
+          return null;
+        }
+        const result = await transformHook(ctx, code, id);
+        return result === code ? null : result;
+      },
     },
     async generateBundle(_, bundle) {
       return generateBundleHook(this.getFileName.bind(this), this.emitFile.bind(this), ctx, bundle);

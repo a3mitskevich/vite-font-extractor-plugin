@@ -69,6 +69,7 @@ export interface BuildOptions {
   targets?: string[];
   cssMinify?: CssMinify;
   manifest?: boolean;
+  ssr?: string;
 }
 
 export interface Font {
@@ -252,6 +253,7 @@ export const buildByVersion = async (
       sourcemap: false,
       cssMinify: options.cssMinify,
       manifest: options.manifest,
+      ssr: options.ssr,
     },
     environments: {
       client: {

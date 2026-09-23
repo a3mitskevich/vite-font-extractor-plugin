@@ -91,6 +91,16 @@ describe.sequential("Font references in build output", () => {
         expect(manifestReferences.length).toBeGreaterThan(0);
         expect(findBrokenFontReferences(items)).toEqual([]);
       });
+
+      it("should skip SSR builds where fonts are not emitted", async () => {
+        const { messages } = await buildByVersion(version, {
+          fixture: fixtures["subset-js"].path,
+          pluginOptions: { type: "manual", targets: [] },
+          ssr: "index.js",
+        });
+
+        expect(messages.filter((m) => m.type === "warn" || m.type === "error")).toEqual([]);
+      });
     });
   };
 

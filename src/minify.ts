@@ -1,9 +1,10 @@
 import { extract, type ExtractedResult, type MinifyOption } from "fontext";
-import type { MinifyFontOptions, OptionsWithCacheSid } from "./types";
+import type { MinifyFontOptions, OptionsWithCacheSid, Target } from "./types";
 import { camelCase, getHash } from "./utils";
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { SUPPORT_START_FONT_REGEX, SUPPORTED_RESULTS_FORMATS } from "./constants";
 import styler from "./styler";
+import type Cache from "./cache";
 import { type PluginContext, getLogger, getResolvers } from "./context";
 
 const SHA256_HEX_LENGTH = 64;
@@ -22,7 +23,69 @@ export async function getSourceByUrl(
     return null;
   }
 
-  return readFileSync(entrypointFilePath);
+  return readFile(entrypointFilePath);
+}
+
+function createExtractOption(
+  fontName: string,
+  fonts: MinifyFontOptions[],
+  target: Target,
+): MinifyOption {
+  const formats = fonts.map((font) => font.extension);
+  const base = { fontName, formats, safariFix: target.safariFix, silent: target.silent };
+  return target.engine === "subset"
+    ? {
+        ...base,
+        engine: "subset",
+        characters: target.characters,
+        ligatures: target.ligatures,
+        unicodeRanges: target.unicodeRanges,
+        withWhitespace: target.withWhitespace,
+      }
+    : {
+        ...base,
+        engine: target.engine,
+        raws: target.raws,
+        ligatures: target.ligatures,
+        unicodeRanges: target.unicodeRanges,
+        withWhitespace: target.withWhitespace,
+      };
+}
+
+async function hasCachedFormats(
+  cache: Cache,
+  cacheKey: string,
+  fonts: MinifyFontOptions[],
+): Promise<boolean> {
+  const checks = await Promise.all(
+    fonts.map((font) => cache.check(`${cacheKey}.${font.extension}`)),
+  );
+  return checks.every(Boolean);
+}
+
+async function readCachedFormats(
+  cache: Cache,
+  cacheKey: string,
+  fonts: MinifyFontOptions[],
+): Promise<Partial<ExtractedResult>> {
+  const entries = await Promise.all(
+    fonts.map(async (font) => [font.extension, await cache.get(`${cacheKey}.${font.extension}`)]),
+  );
+  return Object.fromEntries(entries);
+}
+
+async function writeCachedFormats(
+  cache: Cache,
+  cacheKey: string,
+  fonts: MinifyFontOptions[],
+  result: ExtractedResult,
+): Promise<void> {
+  await Promise.all(
+    fonts.map((font) => {
+      const buffer = result[font.extension];
+      return buffer ? cache.set(`${cacheKey}.${font.extension}`, buffer) : undefined;
+    }),
+  );
 }
 
 export async function processMinify(
@@ -59,58 +122,19 @@ export async function processMinify(
   // Source content is part of the key: an updated font file must not hit a stale entry
   const sourceHash = getHash(source, SHA256_HEX_LENGTH);
   const cacheKey = camelCase(fontName) + "-" + getHash(options.sid + sourceHash);
+  const emptyResult: ExtractedResult = { meta: [], report: { originalSize: 0, formats: {} } };
 
-  const needExtracting = fonts.some((font) => !ctx.cache?.check(cacheKey + `.${font.extension}`));
-
-  const minifiedBuffers: ExtractedResult = {
-    meta: [],
-    report: { originalSize: 0, formats: {} },
-  };
-
-  if (needExtracting) {
-    const target = options.target;
-    const formats = fonts.map((font) => font.extension);
-    const base = { fontName, formats, safariFix: target.safariFix, silent: target.silent };
-
-    const extractOption: MinifyOption =
-      target.engine === "subset"
-        ? {
-            ...base,
-            engine: "subset",
-            characters: target.characters,
-            ligatures: target.ligatures,
-            unicodeRanges: target.unicodeRanges,
-            withWhitespace: target.withWhitespace,
-          }
-        : {
-            ...base,
-            engine: target.engine,
-            raws: target.raws,
-            ligatures: target.ligatures,
-            unicodeRanges: target.unicodeRanges,
-            withWhitespace: target.withWhitespace,
-          };
-
-    const minifyResult = await extract(Buffer.from(source), extractOption);
-    Object.assign(minifiedBuffers, minifyResult);
-
-    if (ctx.cache) {
-      fonts.forEach((font) => {
-        const minifiedBuffer = minifyResult[font.extension];
-        if (minifiedBuffer) {
-          ctx.cache?.set(cacheKey + `.${font.extension}`, minifiedBuffer);
-        }
-      });
-    }
-  } else {
+  if (ctx.cache && (await hasCachedFormats(ctx.cache, cacheKey, fonts))) {
     logger.cached(fontName);
-    const cacheResult = Object.fromEntries(
-      fonts.map((font) => [font.extension, ctx.cache?.get(cacheKey + `.${font.extension}`)]),
-    );
-    Object.assign(minifiedBuffers, cacheResult);
+    return { ...emptyResult, ...(await readCachedFormats(ctx.cache, cacheKey, fonts)) };
   }
 
-  return minifiedBuffers;
+  const extractOption = createExtractOption(fontName, fonts, options.target);
+  const minifyResult = await extract(Buffer.from(source), extractOption);
+  if (ctx.cache) {
+    await writeCachedFormats(ctx.cache, cacheKey, fonts, minifyResult);
+  }
+  return { ...emptyResult, ...minifyResult };
 }
 
 export function checkFontProcessing(ctx: PluginContext, name: string, id: string): void {
