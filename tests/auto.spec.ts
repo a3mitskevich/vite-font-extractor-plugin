@@ -6,10 +6,20 @@ import {
   type BuildOptions,
   type ContainerVersion,
   type CssMinify,
+  findBrokenFontReferences,
+  findOrphanFontAssets,
   fixtures,
   fontsLength,
+  getReadableFontAssets,
+  hasGlyph,
+  openFont,
+  type OutputItem,
   viteBuild,
 } from "./utils";
+
+// `content` in the auto fixture holds U+E5CD ("close" in Material Icons)
+const CLOSE_CODE_POINT = 0xe5cd;
+const STAR_CODE_POINT = 0xe838;
 
 describe("Auto", () => {
   const runCommonTest = (version: ContainerVersion) => {
@@ -20,6 +30,7 @@ describe("Auto", () => {
           const build = async (options?: BuildOptions) =>
             buildByVersion(version, {
               ...options,
+              cssMinify,
               pluginOptions: {
                 type: "auto",
               },
@@ -27,15 +38,12 @@ describe("Auto", () => {
               targets: fixture.fonts.map((font) => font.name),
             });
 
-          it("should return a bundle with minified fonts", async () => {
-            const { output } = await build();
+          it("should return a bundle with fonts minified to the glyphs used in CSS", async () => {
+            const { output, messages } = await build();
+            const items = output as OutputItem[];
             const fontAssets = output.filter(
               (asset): asset is OutputAsset =>
                 asset.type === "asset" && asset.fileName.includes("font-"),
-            );
-            const cssAssets = output.filter(
-              (asset): asset is OutputAsset =>
-                asset.type === "asset" && asset.fileName.endsWith(".css"),
             );
 
             expect(fontAssets).toHaveLength(fixture.fonts.flatMap((font) => font.urls).length);
@@ -46,8 +54,16 @@ describe("Auto", () => {
               ) as keyof typeof fontsLength;
               expect(asset.source.length).toBeLessThan(fontsLength[ext]);
             });
-            cssAssets.forEach((asset) => {
-              expect(asset.source.toString()).not.toContain(".fef");
+            expect(findBrokenFontReferences(items)).toEqual([]);
+            expect(findOrphanFontAssets(items)).toEqual([]);
+            expect(messages.filter((m) => m.type === "error")).toEqual([]);
+
+            const readable = getReadableFontAssets(items);
+            expect(readable.length).toBeGreaterThan(0);
+            readable.forEach((asset) => {
+              const font = openFont(asset.source);
+              expect(hasGlyph(font, CLOSE_CODE_POINT), asset.fileName).toBe(true);
+              expect(hasGlyph(font, STAR_CODE_POINT), asset.fileName).toBe(false);
             });
           });
         });
@@ -62,5 +78,4 @@ describe("Auto", () => {
   };
 
   runAllTests();
-  // runCommonTest(versionV4, ['plain-html']) // for single debug
 });

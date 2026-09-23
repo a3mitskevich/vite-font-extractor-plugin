@@ -10,7 +10,7 @@ import {
 
 describe("Minificators", () => {
   const runMinificatorsTest = (version: ContainerVersion) => {
-    describe(`Google font test for vite@${version}`, () => {
+    describe(`External url sources for vite@${version}`, () => {
       Array.from(["lightningcss", "esbuild"] as CssMinify[]).forEach((cssMinify) => {
         describe(`Css minificator is ${cssMinify}`, () => {
           describe("Has an url in sources", () => {
@@ -19,6 +19,7 @@ describe("Minificators", () => {
             const build = async (options?: BuildOptions) =>
               buildByVersion(version, {
                 ...options,
+                cssMinify,
                 fixture: fixture.path,
                 targets: fixture.fonts.map((font) => font.name),
               });

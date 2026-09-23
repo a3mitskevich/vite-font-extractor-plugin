@@ -9,9 +9,9 @@ import {
   viteBuild,
 } from "./utils";
 
-describe("Common", () => {
+describe("Build log", () => {
   const runCommonTest = (version: ContainerVersion, fixturesNames: FixturesNames) => {
-    describe(`Common test for vite@${version}`, () => {
+    describe(`Log test for vite@${version}`, () => {
       fixturesNames.forEach((fixtureName) => {
         const fixture = fixtures[fixtureName];
         Array.from(["lightningcss", "esbuild"] as CssMinify[]).forEach((cssMinify) => {
@@ -19,6 +19,7 @@ describe("Common", () => {
             const build = async (options?: BuildOptions) =>
               buildByVersion(version, {
                 ...options,
+                cssMinify,
                 fixture: fixture.path,
                 targets: fixture.fonts.map((font) => font.name),
               });
