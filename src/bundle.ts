@@ -154,8 +154,10 @@ async function minifyGroup(
       ];
     });
   } catch (error) {
-    logger.error(`Failed to minify "${fontName}" — keeping original`, {
-      error: toError(error) as Rollup.RollupError,
+    const reason = toError(error);
+    // Vite's logger does not print `options.error`, so the reason goes into the message
+    logger.error(`Failed to minify "${fontName}" — keeping original: ${reason.message}`, {
+      error: reason as Rollup.RollupError,
     });
     return [];
   }

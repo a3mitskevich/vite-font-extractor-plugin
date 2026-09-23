@@ -235,6 +235,21 @@ describe.sequential("Build configuration", () => {
           });
         },
       );
+
+      it("should log the reason when a font fails to minify", async () => {
+        const { output, messages } = await buildWithConfig(version, {
+          fixture: "plain",
+          pluginOptions: {
+            type: "manual",
+            targets: [{ fontName: "Font Name", characters: "abc" }],
+          },
+        });
+
+        const errors = messages.filter((message) => message.type === "error");
+        expect(errors).toHaveLength(1);
+        expect(errors[0].message).toMatch(/Failed to minify "Font Name" — keeping original: \S+/);
+        expect(findBrokenReferences(output)).toEqual([]);
+      });
     });
   };
 
