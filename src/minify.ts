@@ -1,11 +1,18 @@
 import { extract, type ExtractedResult, type MinifyOption } from "fontext";
-import type { MinifyFontOptions, OptionsWithCacheSid, Target } from "./types";
+import type {
+  IconTarget,
+  InternalLogger,
+  MinifyFontOptions,
+  OptionsWithCacheSid,
+  Target,
+} from "./types";
 import { camelCase, getHash } from "./utils";
 import { readFile } from "node:fs/promises";
 import { SUPPORT_START_FONT_REGEX, SUPPORTED_RESULTS_FORMATS } from "./constants";
 import styler from "./styler";
 import type Cache from "./cache";
 import { type PluginContext, getLogger, getResolvers } from "./context";
+import { checkIconGlyphs, formatGlyphs, type IconGlyphs, splitGlyphTexts } from "./glyph-filter";
 
 const SHA256_HEX_LENGTH = 64;
 
@@ -30,6 +37,7 @@ function createExtractOption(
   fontName: string,
   fonts: MinifyFontOptions[],
   target: Target,
+  glyphs?: IconGlyphs,
 ): MinifyOption {
   const formats = fonts.map((font) => font.extension);
   const base = { fontName, formats, safariFix: target.safariFix, silent: target.silent };
@@ -45,8 +53,8 @@ function createExtractOption(
     : {
         ...base,
         engine: target.engine,
-        raws: target.raws,
-        ligatures: target.ligatures,
+        raws: glyphs?.raws ?? target.raws,
+        ligatures: glyphs?.ligatures ?? target.ligatures,
         unicodeRanges: target.unicodeRanges,
         withWhitespace: target.withWhitespace,
       };
@@ -86,6 +94,58 @@ async function writeCachedFormats(
       return buffer ? cache.set(`${cacheKey}.${font.extension}`, buffer) : undefined;
     }),
   );
+}
+
+// Auto mode collects content glyphs of all CSS, most of them belong to other fonts
+function resolveAutoGlyphs(
+  logger: InternalLogger,
+  fontName: string,
+  source: Buffer,
+  target: IconTarget,
+): IconGlyphs | null | undefined {
+  const texts = [...(target.raws ?? []), ...(target.ligatures ?? [])];
+  const check = checkIconGlyphs(source, splitGlyphTexts(texts));
+  if (!check) return undefined;
+  if (check.missing.length) {
+    logger.info(
+      `  Font "${fontName}": skipped glyphs from CSS content not found in the font: ${formatGlyphs(check.missing)}`,
+    );
+  }
+  if (!check.raws.length && !check.ligatures.length && !target.unicodeRanges?.length) {
+    logger.warn(
+      `Font "${fontName}" contains none of the glyphs used in CSS content — keeping original.` +
+        " Add it to ignore if it is not an icon font.",
+    );
+    return null;
+  }
+  return check;
+}
+
+// fontext rejects the whole font for a raw glyph it can not resolve — name every such glyph
+function assertTargetRaws(fontName: string, source: Buffer, target: IconTarget): void {
+  const check = checkIconGlyphs(source, { raws: target.raws ?? [], ligatures: [] });
+  if (check?.missing.length) {
+    throw new Error(
+      `Target "${fontName}": raws ${formatGlyphs(check.missing)} are not icon glyphs of the font.` +
+        " Remove them or use unicodeRanges.",
+    );
+  }
+}
+
+/**
+ * Glyphs to pass instead of the target ones: undefined keeps the target as is,
+ * null means there is nothing to extract.
+ */
+function resolveIconGlyphs(
+  logger: InternalLogger,
+  fontName: string,
+  source: Buffer,
+  { auto, target }: OptionsWithCacheSid,
+): IconGlyphs | null | undefined {
+  if (target.engine === "subset") return undefined;
+  if (auto) return resolveAutoGlyphs(logger, fontName, source, target);
+  if (target.raws?.length) assertTargetRaws(fontName, source, target);
+  return undefined;
 }
 
 export async function processMinify(
@@ -129,8 +189,13 @@ export async function processMinify(
     return { ...emptyResult, ...(await readCachedFormats(ctx.cache, cacheKey, fonts)) };
   }
 
-  const extractOption = createExtractOption(fontName, fonts, options.target);
-  const minifyResult = await extract(Buffer.from(source), extractOption);
+  const sourceBuffer = Buffer.from(source);
+  const glyphs = resolveIconGlyphs(logger, fontName, sourceBuffer, options);
+  if (glyphs === null) {
+    return null;
+  }
+  const extractOption = createExtractOption(fontName, fonts, options.target, glyphs);
+  const minifyResult = await extract(sourceBuffer, extractOption);
   if (ctx.cache) {
     await writeCachedFormats(ctx.cache, cacheKey, fonts, minifyResult);
   }

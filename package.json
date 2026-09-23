@@ -66,6 +66,7 @@
   },
   "dependencies": {
     "fontext": "^1.11.0",
+    "fontkit": "^2.0.4",
     "picocolors": "1.1.1"
   },
   "peerDependencies": {
