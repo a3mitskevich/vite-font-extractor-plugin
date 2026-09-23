@@ -1,11 +1,11 @@
 import type Cache from "./cache";
 import type {
+  FontReference,
   ImportResolvers,
   InternalLogger,
   OptionsWithCacheSid,
   PluginOption,
   ServeFontStubResponse,
-  SubsetOptions,
   IconTarget,
   Target,
   TargetOptionsMap,
@@ -24,10 +24,8 @@ export interface PluginContext {
 
   isServe: boolean;
   readonly glyphsFindMap: Map<string, string[]>;
-  readonly transformMap: Map<
-    string,
-    { fontName: string; options: OptionsWithCacheSid; subset?: SubsetOptions; referenceId?: string }
-  >;
+  // Keyed by `${referenceId}:${subsetKey}`
+  readonly transformMap: Map<string, FontReference>;
   readonly fontServeProxy: Map<string, () => Promise<ServeFontStubResponse | null>>;
   readonly progress: Map<string, string>;
   readonly loadedAutoFontMap: Map<string, boolean>;

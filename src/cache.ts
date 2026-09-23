@@ -1,5 +1,4 @@
 import { mkdirSync, existsSync, writeFileSync, readFileSync, rmSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { mergePath } from "./utils";
 
 export default class Cache {
@@ -10,6 +9,8 @@ export default class Cache {
     }
   }
   public readonly path: string;
+  // Keys read or written since the last resetUsage(), everything else is stale on prune()
+  private readonly usedKeys = new Set<string>();
 
   constructor(to: string) {
     this.path = mergePath(to, ".font-extractor-cache");
@@ -25,10 +26,12 @@ export default class Cache {
   }
 
   get(key: string): Buffer {
+    this.usedKeys.add(key);
     return readFileSync(this.getPathTo(key));
   }
 
   set(key: string, data: Buffer | string): void {
+    this.usedKeys.add(key);
     this.createDir();
     writeFileSync(this.getPathTo(key), data);
   }
@@ -40,21 +43,20 @@ export default class Cache {
     mkdirSync(this.path, { recursive: true });
   }
 
-  clearCache(pattern?: string): void {
-    if (pattern) {
-      const targetDir = join(this.path, pattern);
-      if (existsSync(targetDir)) {
-        const files = readdirSync(targetDir, { recursive: true, withFileTypes: true });
-        for (const entry of files) {
-          if (entry.isFile()) {
-            rmSync(join(entry.parentPath ?? entry.path, entry.name));
-          }
-        }
-      }
-    } else {
-      rmSync(this.path, { recursive: true });
+  resetUsage(): void {
+    this.usedKeys.clear();
+  }
+
+  // Removes entries that were not used by the current build
+  prune(): void {
+    if (!this.exist) {
+      return;
     }
-    this.createDir();
+    for (const entry of readdirSync(this.path, { withFileTypes: true })) {
+      if (entry.isFile() && !this.usedKeys.has(entry.name)) {
+        rmSync(this.getPathTo(entry.name));
+      }
+    }
   }
 
   getPathTo(...to: string[]): string {

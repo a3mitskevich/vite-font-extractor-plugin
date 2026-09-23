@@ -6,6 +6,8 @@ import { SUPPORT_START_FONT_REGEX, SUPPORTED_RESULTS_FORMATS } from "./constants
 import styler from "./styler";
 import { type PluginContext, getLogger, getResolvers } from "./context";
 
+const SHA256_HEX_LENGTH = 64;
+
 export async function getSourceByUrl(
   ctx: PluginContext,
   url: string,
@@ -46,8 +48,17 @@ export async function processMinify(
     return null;
   }
 
-  const sid = options.sid;
-  const cacheKey = camelCase(fontName) + "-" + getHash(sid + entryPoint.url);
+  const source =
+    entryPoint.source ?? (await getSourceByUrl(ctx, entryPoint.url, entryPoint.importer));
+
+  if (!source) {
+    logger.error(`No found source for ${fontName}:${styler.path(entryPoint.url)}`);
+    return null;
+  }
+
+  // Source content is part of the key: an updated font file must not hit a stale entry
+  const sourceHash = getHash(source, SHA256_HEX_LENGTH);
+  const cacheKey = camelCase(fontName) + "-" + getHash(options.sid + sourceHash);
 
   const needExtracting = fonts.some((font) => !ctx.cache?.check(cacheKey + `.${font.extension}`));
 
@@ -57,18 +68,6 @@ export async function processMinify(
   };
 
   if (needExtracting) {
-    if (ctx.cache) {
-      ctx.cache.clearCache(fontName);
-    }
-
-    const source =
-      entryPoint.source ?? (await getSourceByUrl(ctx, entryPoint.url, entryPoint.importer));
-
-    if (!source) {
-      logger.error(`No found source for ${fontName}:${styler.path(entryPoint.url)}`);
-      return null;
-    }
-
     const target = options.target;
     const formats = fonts.map((font) => font.extension);
     const base = { fontName, formats, safariFix: target.safariFix, silent: target.silent };

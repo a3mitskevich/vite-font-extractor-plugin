@@ -68,6 +68,7 @@ export interface BuildOptions {
   fixture?: string;
   targets?: string[];
   cssMinify?: CssMinify;
+  manifest?: boolean;
 }
 
 export interface Font {
@@ -168,6 +169,8 @@ export const fixtures = {
   "subset-combined": createFixture("subset-combined"),
   "auto-one-icon": createFixture("auto-one-icon"),
   "auto-two-icons": createFixture("auto-two-icons"),
+  "multi-source": createFixture("multi-source"),
+  "duplicate-url": createFixture("duplicate-url"),
 } as const;
 
 export type FixturesNames = Array<keyof typeof fixtures>;
@@ -248,6 +251,7 @@ export const buildByVersion = async (
       emptyOutDir: true,
       sourcemap: false,
       cssMinify: options.cssMinify,
+      manifest: options.manifest,
     },
     environments: {
       client: {
@@ -271,4 +275,34 @@ export const buildByVersion = async (
     out,
     messages: customLogger.messages,
   };
+};
+
+export interface FontReference {
+  from: string;
+  path: string;
+}
+
+type OutputItem = RollupOutput["output"][number];
+
+const FONT_REFERENCE_RE = /assets\/[^"'`()\s?#]+?\.(?:woff2?|ttf|eot|otf)/g;
+
+const getOutputText = (item: OutputItem): string | null => {
+  if (item.type === "chunk") return item.code;
+  return typeof item.source === "string" ? item.source : null;
+};
+
+export const collectFontReferences = (output: OutputItem[]): FontReference[] =>
+  output.flatMap((item) => {
+    const text = getOutputText(item);
+    if (!text) return [];
+    return Array.from(text.matchAll(FONT_REFERENCE_RE), (match) => ({
+      from: item.fileName,
+      path: match[0],
+    }));
+  });
+
+// References to font files that are not present in the build output (would 404 at runtime)
+export const findBrokenFontReferences = (output: OutputItem[]): FontReference[] => {
+  const fileNames = new Set(output.map((item) => item.fileName));
+  return collectFontReferences(output).filter((ref) => !fileNames.has(ref.path));
 };

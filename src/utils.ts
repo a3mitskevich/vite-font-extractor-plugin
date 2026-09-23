@@ -13,7 +13,7 @@ import {
   SYMBOL_REGEX,
   UNICODE_REGEX,
 } from "./constants";
-import type { ImportResolvers } from "./types";
+import type { ImportResolvers, SubsetOptions } from "./types";
 
 export const mergePath = (...paths: string[]): string =>
   normalizePath(join(...paths.filter(Boolean)));
@@ -35,6 +35,27 @@ export function exists<T>(value: T): value is NonNullable<T> {
 export function toError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value));
 }
+
+// Parses the value of `?subset=` — comma separated characters and/or U+ ranges
+export function parseSubsetQuery(value: string): SubsetOptions {
+  const characters: string[] = [];
+  const unicodeRanges: string[] = [];
+  for (const part of value.split(",")) {
+    if (/^u\+/i.test(part)) {
+      unicodeRanges.push(part);
+    } else {
+      characters.push(part);
+    }
+  }
+  return {
+    characters: characters.length > 0 ? characters.join("") : undefined,
+    unicodeRanges: unicodeRanges.length > 0 ? unicodeRanges : undefined,
+  };
+}
+
+// Stable identity of a subset, "" when the font is used without `?subset=`
+export const getSubsetKey = (subset?: SubsetOptions): string =>
+  subset ? JSON.stringify(subset) : "";
 
 export function createSubsetOptions(
   fontName: string,
@@ -79,16 +100,6 @@ export function cleanUrl(url: string): string {
 export function createResolvers(config: ResolvedConfig): ImportResolvers {
   let fontResolve: ResolveFn | undefined;
   return {
-    get common() {
-      return (
-        fontResolve ??
-        (fontResolve = config.createResolver({
-          extensions: [],
-          tryIndex: false,
-          preferRelative: false,
-        }))
-      );
-    },
     get font() {
       return (
         fontResolve ??

@@ -8,7 +8,6 @@ import styler from "./styler";
 import { createInternalLogger } from "./internal-logger";
 import { createPluginContext, getLogger } from "./context";
 import { transformHook } from "./transform";
-import { renderChunkHook } from "./render-chunk";
 import { generateBundleHook } from "./bundle";
 
 export default function FontExtractor(pluginOption: PluginOption = { type: "auto" }): Plugin {
@@ -93,19 +92,14 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         }
       });
     },
+    buildStart() {
+      ctx.cache?.resetUsage();
+    },
     async transform(code, id) {
       return transformHook(ctx, code, id);
     },
-    renderChunk(code) {
-      return renderChunkHook(ctx, code);
-    },
     async generateBundle(_, bundle) {
-      return generateBundleHook(
-        this.getFileName.bind(this),
-        this.emitFile.bind(this),
-        ctx,
-        bundle as any,
-      );
+      return generateBundleHook(this.getFileName.bind(this), this.emitFile.bind(this), ctx, bundle);
     },
   };
 }

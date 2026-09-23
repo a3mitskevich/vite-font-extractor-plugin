@@ -1,5 +1,5 @@
 import { isCSSRequest } from "vite";
-import type { FontFaceMeta, SubsetOptions } from "./types";
+import type { FontFaceMeta, OptionsWithCacheSid, SubsetOptions } from "./types";
 import {
   exists,
   extractFontFaces,
@@ -15,54 +15,36 @@ import styler from "./styler";
 import { type PluginContext, getLogger } from "./context";
 import { checkFontProcessing } from "./minify";
 import { processServeAutoFontMinify, processServeFontMinify } from "./serve";
+import {
+  type AssetReference,
+  extractAssetReferences,
+  getFaceGroupId,
+  getReferenceKey,
+} from "./asset-refs";
 
-const VITE_ASSET_RE = /__VITE_ASSET__([\w$]+)__(?:\$_(.*?)__)?/g;
-const SUBSET_RE = /[?&]subset=([^&'")\s]+)/;
-
-function parseSubsetParam(url: string): SubsetOptions | undefined {
-  const match = SUBSET_RE.exec(url);
-  if (!match) return undefined;
-
-  // Strip trailing __ from Vite asset placeholder query
-  const rawValue = match[1].replace(/__+$/, "");
-  const parts = rawValue.split(",");
-  const characters: string[] = [];
-  const unicodeRanges: string[] = [];
-
-  for (const part of parts) {
-    if (part.startsWith("U+") || part.startsWith("u+")) {
-      unicodeRanges.push(part);
-    } else {
-      characters.push(part);
-    }
-  }
-
-  return {
-    characters: characters.length > 0 ? characters.join("") : undefined,
-    unicodeRanges: unicodeRanges.length > 0 ? unicodeRanges : undefined,
-  };
+interface RegisterOptions {
+  fontName: string;
+  groupId: string;
+  getOptions: (subset?: SubsetOptions) => OptionsWithCacheSid;
+  // Target fonts take precedence over fonts registered only by their `?subset=` query
+  overwrite: boolean;
 }
 
-function collectFontReferences(
+function registerReferences(
   ctx: PluginContext,
-  _code: string,
-  fontName: string,
-  aliases: string[],
+  references: AssetReference[],
+  { fontName, groupId, getOptions, overwrite }: RegisterOptions,
 ): void {
-  for (const alias of aliases) {
-    VITE_ASSET_RE.lastIndex = 0;
-    const match = VITE_ASSET_RE.exec(alias);
-    if (match) {
-      const referenceId = match[1];
-      const options = ctx.optionsMap.get(fontName);
-      if (options) {
-        const subset = parseSubsetParam(alias);
-        // Composite key: same file with different ?subset= → different entries
-        const subsetKey = subset ? JSON.stringify(subset) : "";
-        const mapKey = `${referenceId}:${subsetKey}`;
-        ctx.transformMap.set(mapKey, { fontName, options, subset, referenceId });
-      }
-    }
+  for (const reference of references) {
+    const key = getReferenceKey(reference);
+    if (!overwrite && ctx.transformMap.has(key)) continue;
+    ctx.transformMap.set(key, {
+      fontName,
+      options: getOptions(reference.subset),
+      subset: reference.subset,
+      referenceId: reference.referenceId,
+      groupId,
+    });
   }
 }
 
@@ -93,9 +75,44 @@ async function processFont(
           " If this font is not a target please add it to ignore.",
       );
     }
-    collectFontReferences(ctx, code, font.name, font.aliases);
+    const references = extractAssetReferences(font.aliases.join("\n"));
+    registerReferences(ctx, references, {
+      fontName: font.name,
+      groupId: getFaceGroupId(references),
+      getOptions: () => font.options,
+      overwrite: true,
+    });
   }
   return code;
+}
+
+// Font face without target options — minified only when its sources use `?subset=`
+function registerSubsetFace(ctx: PluginContext, name: string, aliases: string[]): void {
+  if (!aliases.some((alias) => alias.includes("?subset="))) {
+    getLogger(ctx).warn(`Font "${name}" has no minify options — add to targets or use ?subset=`);
+    return;
+  }
+  const references = extractAssetReferences(aliases.join("\n")).filter((ref) => ref.subset);
+  registerReferences(ctx, references, {
+    fontName: name,
+    groupId: getFaceGroupId(references),
+    getOptions: (subset) => createSubsetOptions(name, subset ?? {}),
+    overwrite: false,
+  });
+}
+
+// `?subset=` anywhere else, e.g. `import font from './font.woff2?subset=ABC'` in JS
+function registerStandaloneSubsets(ctx: PluginContext, code: string): void {
+  for (const reference of extractAssetReferences(code)) {
+    if (!reference.subset) continue;
+    const fontName = `subset (${reference.referenceId.substring(0, 6)})`;
+    registerReferences(ctx, [reference], {
+      fontName,
+      groupId: `ref:${reference.referenceId}`,
+      getOptions: (subset) => createSubsetOptions(fontName, subset ?? {}),
+      overwrite: false,
+    });
+  }
 }
 
 export async function transformHook(ctx: PluginContext, code: string, id: string): Promise<string> {
@@ -171,34 +188,7 @@ export async function transformHook(ctx: PluginContext, code: string, id: string
         const aliases = extractFonts(face);
 
         if (!options) {
-          // Font not in targets — check if it uses ?subset= (handled via subset pipeline)
-          const hasSubset = aliases.some((alias) => alias.includes("?subset="));
-          if (hasSubset) {
-            // Register subset fonts with their CSS font-family name (not cryptic refId)
-            for (const alias of aliases) {
-              VITE_ASSET_RE.lastIndex = 0;
-              const match = VITE_ASSET_RE.exec(alias);
-              if (match) {
-                const referenceId = match[1];
-                const subset = parseSubsetParam(alias);
-                if (subset) {
-                  const subsetKey = JSON.stringify(subset);
-                  const mapKey = `${referenceId}:${subsetKey}`;
-                  if (!ctx.transformMap.has(mapKey)) {
-                    const subsetOptions = createSubsetOptions(name, subset);
-                    ctx.transformMap.set(mapKey, {
-                      fontName: name,
-                      options: subsetOptions,
-                      subset,
-                      referenceId,
-                    });
-                  }
-                }
-              }
-            }
-          } else {
-            logger.warn(`Font "${name}" has no minify options — add to targets or use ?subset=`);
-          }
+          registerSubsetFace(ctx, name, aliases);
           return null;
         }
 
@@ -220,31 +210,8 @@ export async function transformHook(ctx: PluginContext, code: string, id: string
     }
   }
 
-  // Handle ?subset= in any file (JS imports, CSS, HTML)
-  // Vite transforms `import font from './font.woff2?subset=ABC'` into
-  // `export default "__VITE_ASSET__<refId>__$_?subset=ABC__"`
-  if (code.includes("?subset=")) {
-    const globalAssetRe = /__VITE_ASSET__([\w$]+)__(?:\$_(.*?)__)?/g;
-    let assetMatch;
-    while ((assetMatch = globalAssetRe.exec(code))) {
-      const query = assetMatch[2];
-      if (!query || !query.includes("subset=")) continue;
-
-      const referenceId = assetMatch[1];
-      const subset = parseSubsetParam(query);
-      if (!subset) continue;
-
-      const subsetKey = JSON.stringify(subset);
-      const mapKey = `${referenceId}:${subsetKey}`;
-      if (ctx.transformMap.has(mapKey)) continue;
-
-      {
-        // Fallback name for subset fonts not caught by @font-face processing above
-        const fontName = `subset (${referenceId.substring(0, 6)})`;
-        const options = createSubsetOptions(fontName, subset);
-        ctx.transformMap.set(mapKey, { fontName, options, subset, referenceId });
-      }
-    }
+  if (!ctx.isServe && code.includes("?subset=")) {
+    registerStandaloneSubsets(ctx, code);
   }
 
   return code;

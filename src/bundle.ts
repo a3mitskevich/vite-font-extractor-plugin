@@ -1,22 +1,149 @@
-import type { OutputAsset, RollupError } from "rollup";
+import type { Rollup } from "vite";
 import { basename, dirname } from "node:path";
-import type { MinifyFontOptions, MinifyStats, OptionsWithCacheSid } from "./types";
-import { getFontExtension, getHash, toError } from "./utils";
+import type {
+  FontReference,
+  InternalLogger,
+  MinifyFontOptions,
+  MinifyStats,
+  OptionsWithCacheSid,
+  SubsetOptions,
+} from "./types";
+import { getFontExtension, getHash, getSubsetKey, toError } from "./utils";
 import { type PluginContext, getLogger } from "./context";
 import { processMinify } from "./minify";
+import { type AssetRename, rewriteFontReferences } from "./rewrite-refs";
 
-interface EmitAsset {
-  type: "asset";
-  fileName?: string;
-  name?: string;
-  source: string | Uint8Array;
+type GetFileName = (referenceId: string) => string;
+type EmitFile = (file: Rollup.EmittedAsset) => string;
+
+interface FontGroup {
+  fontName: string;
+  options: OptionsWithCacheSid;
+  subsetKey: string;
+  assets: Rollup.OutputAsset[];
+}
+
+interface MinifiedAsset extends AssetRename {
+  savedBytes: number;
+}
+
+function mergeSubsetOptions(
+  options: OptionsWithCacheSid,
+  subset: SubsetOptions | undefined,
+): OptionsWithCacheSid {
+  if (!subset) return options;
+  const targetCharacters = "characters" in options.target ? options.target.characters : undefined;
+  const unicodeRanges = [...(options.target.unicodeRanges ?? []), ...(subset.unicodeRanges ?? [])];
+  const target = {
+    ...options.target,
+    characters: [targetCharacters, subset.characters].filter(Boolean).join("") || undefined,
+    unicodeRanges: unicodeRanges.length ? unicodeRanges : undefined,
+    engine: "subset" as const,
+  };
+  return { ...options, target, sid: JSON.stringify(target) };
+}
+
+function resolveAsset(
+  getFileName: GetFileName,
+  bundle: Rollup.OutputBundle,
+  reference: FontReference,
+): Rollup.OutputAsset | undefined {
+  try {
+    const item = bundle[getFileName(reference.referenceId)];
+    return item?.type === "asset" ? item : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// One group = formats of one font source with one glyph set, minified by a single extract() call
+function collectFontGroups(
+  getFileName: GetFileName,
+  ctx: PluginContext,
+  bundle: Rollup.OutputBundle,
+  logger: InternalLogger,
+): FontGroup[] {
+  const groups = new Map<string, FontGroup>();
+  const seenAssets = new Set<string>();
+
+  for (const [key, reference] of ctx.transformMap) {
+    const asset = resolveAsset(getFileName, bundle, reference);
+    if (!asset) {
+      logger.warn(`Asset not found for key ${key}`);
+      continue;
+    }
+
+    const subsetKey = getSubsetKey(reference.subset);
+    // The same file can be referenced from several places (CSS + JS, repeated @font-face)
+    const assetKey = `${asset.fileName}::${subsetKey}`;
+    if (seenAssets.has(assetKey)) continue;
+    seenAssets.add(assetKey);
+
+    const groupKey = `${reference.groupId}::${subsetKey}`;
+    const group = groups.get(groupKey) ?? {
+      fontName: reference.fontName,
+      options: mergeSubsetOptions(reference.options, reference.subset),
+      subsetKey,
+      assets: [],
+    };
+    group.assets.push(asset);
+    groups.set(groupKey, group);
+  }
+
+  return [...groups.values()];
+}
+
+async function minifyGroup(
+  ctx: PluginContext,
+  emitFile: EmitFile,
+  { fontName, options, subsetKey, assets }: FontGroup,
+): Promise<MinifiedAsset[]> {
+  const logger = getLogger(ctx);
+  try {
+    const minifiedBuffer = await processMinify(
+      ctx,
+      fontName,
+      assets.map<MinifyFontOptions>((asset) => ({
+        extension: getFontExtension(asset.fileName),
+        source: Buffer.from(asset.source),
+        url: "",
+      })),
+      options,
+    );
+
+    logger.found("Font", fontName, `${assets.length} format${assets.length !== 1 ? "s" : ""}`);
+    return assets.flatMap((asset, idx) => {
+      const extension = getFontExtension(asset.fileName);
+      const originalSize = Buffer.from(asset.source).length;
+      const minified = minifiedBuffer?.[extension];
+
+      if (!minified || minified.length === 0 || minified.length >= originalSize) {
+        logger.skipped(fontName, `${extension} not smaller than original`);
+        return [];
+      }
+
+      const oldFileName = asset.fileName;
+      const base = basename(asset.name ?? oldFileName, `.${extension}`);
+      const newFileName = `${dirname(oldFileName)}/${base}-${getHash(minified)}.${extension}`;
+      emitFile({ type: "asset", fileName: newFileName, source: minified });
+
+      const isLast = idx === assets.length - 1;
+      logger.minified(fontName, extension, originalSize, minified.length, isLast);
+      return [{ oldFileName, newFileName, subsetKey, savedBytes: originalSize - minified.length }];
+    });
+  } catch (error) {
+    logger.error(`Failed to minify "${fontName}" — keeping original`, {
+      error: toError(error) as Rollup.RollupError,
+    });
+    return [];
+  }
 }
 
 export async function generateBundleHook(
-  getFileName: (referenceId: string) => string,
-  emitFile: (file: EmitAsset) => string,
+  getFileName: GetFileName,
+  emitFile: EmitFile,
   ctx: PluginContext,
-  bundle: Record<string, OutputAsset>,
+  bundle: Rollup.OutputBundle,
 ): Promise<void> {
   if (!ctx.transformMap.size) {
     return;
@@ -24,136 +151,27 @@ export async function generateBundleHook(
   const logger = getLogger(ctx);
   logger.fix();
 
-  // Build fileName → asset index once for O(1) lookups
-  const assetByFileName = new Map<string, OutputAsset>();
-  for (const asset of Object.values(bundle)) {
-    if (asset.type === "asset") {
-      assetByFileName.set(asset.fileName, asset as OutputAsset);
-    }
-  }
-
-  // Group reference IDs by font name, collecting the original assets
-  const fontGroups = new Map<string, { options: OptionsWithCacheSid; assets: OutputAsset[] }>();
-
-  for (const [mapKey, { fontName, options, subset, referenceId }] of ctx.transformMap) {
-    // Resolve asset: use referenceId for CSS (getFileName), or mapKey for JS (direct fileName)
-    const resolveKey = referenceId ?? mapKey;
-    let asset: OutputAsset | undefined;
-    try {
-      const fileName = getFileName(resolveKey);
-      asset = assetByFileName.get(fileName);
-    } catch {
-      // getFileName throws for JS subset keys (not Vite reference IDs) — fallback to direct fileName lookup
-      asset = assetByFileName.get(resolveKey);
-    }
-
-    if (!asset) {
-      logger.warn(`Asset not found for key ${mapKey}`);
-      continue;
-    }
-
-    let mergedOptions = options;
-    if (subset) {
-      const mergedTarget = {
-        ...options.target,
-        characters:
-          [options.target.characters, subset.characters].filter(Boolean).join("") || undefined,
-        unicodeRanges: [...(options.target.unicodeRanges ?? []), ...(subset.unicodeRanges ?? [])]
-          .length
-          ? [...(options.target.unicodeRanges ?? []), ...(subset.unicodeRanges ?? [])]
-          : undefined,
-        engine: "subset" as const,
-      };
-      mergedOptions = { ...options, target: mergedTarget, sid: JSON.stringify(mergedTarget) };
-    }
-
-    // Group by fontName + subset — different subsets of same font → separate groups
-    const subsetKey = subset ? JSON.stringify(subset) : "";
-    const groupKey = `${fontName}::${subsetKey}`;
-    const group = fontGroups.get(groupKey);
-    if (group) {
-      group.assets.push(asset);
-    } else {
-      fontGroups.set(groupKey, { options: mergedOptions, assets: [asset] });
-    }
-  }
-
-  const stringAssets = Object.values(bundle).filter(
-    (asset): asset is OutputAsset => asset.type === "asset" && typeof asset.source === "string",
-  );
+  const groups = collectFontGroups(getFileName, ctx, bundle, logger);
 
   logger.phase("✂ ", "Minify");
 
-  const stats: MinifyStats = { minified: 0, cached: 0, saved: 0 };
+  const minified = (
+    await Promise.all(groups.map((group) => minifyGroup(ctx, emitFile, group)))
+  ).flat();
 
-  await Promise.all(
-    Array.from(fontGroups.entries()).map(async ([groupKey, { options, assets }]) => {
-      const fontName = groupKey.split("::")[0];
-      try {
-        const minifiedBuffer = await processMinify(
-          ctx,
-          fontName,
-          assets.map<MinifyFontOptions>((asset) => ({
-            extension: getFontExtension(asset.fileName),
-            source: Buffer.from(asset.source),
-            url: "",
-          })),
-          options,
-        );
+  const stillReferenced = rewriteFontReferences(bundle, minified);
+  for (const oldFileName of new Set(minified.map((asset) => asset.oldFileName))) {
+    if (!stillReferenced.has(oldFileName)) {
+      delete bundle[oldFileName];
+    }
+  }
 
-        logger.found("Font", fontName, `${assets.length} format${assets.length !== 1 ? "s" : ""}`);
-        assets.forEach((asset, idx) => {
-          const extension = getFontExtension(asset.fileName);
-          const originalBuffer = Buffer.from(asset.source);
-          const minified = minifiedBuffer?.[extension];
-          const isLast = idx === assets.length - 1;
-
-          if (!minified || minified.length === 0 || minified.length >= originalBuffer.length) {
-            logger.skipped(fontName, `${extension} not smaller than original`);
-            return;
-          }
-
-          const oldFileName = asset.fileName;
-          const contentHash = getHash(minified);
-          const dir = dirname(oldFileName);
-          const base = basename(asset.name ?? oldFileName, `.${extension}`);
-          const newFileName = `${dir}/${base}-${contentHash}.${extension}`;
-
-          emitFile({ type: "asset", fileName: newFileName, source: minified });
-          delete bundle[oldFileName];
-
-          stringAssets.forEach((strAsset) => {
-            const source = strAsset.source as string;
-            const candidates = [
-              oldFileName,
-              oldFileName.replaceAll(" ", "\\ "),
-              oldFileName.replaceAll(" ", "%20"),
-            ];
-            for (const candidate of candidates) {
-              if (source.includes(candidate)) {
-                // Replace fileName and strip any ?subset= query that follows
-                strAsset.source = source.replace(
-                  new RegExp(
-                    candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\?subset=[^\"'\\)]*)?",
-                  ),
-                  newFileName,
-                );
-                break;
-              }
-            }
-          });
-
-          logger.minified(fontName, extension, originalBuffer.length, minified.length, isLast);
-          stats.minified++;
-          stats.saved += originalBuffer.length - minified.length;
-        });
-      } catch (error) {
-        logger.error(`Failed to minify "${fontName}" — keeping original`, {
-          error: toError(error) as RollupError,
-        });
-      }
-    }),
-  );
-
+  const stats: MinifyStats = {
+    minified: minified.length,
+    cached: 0,
+    saved: minified.reduce((sum, asset) => sum + asset.savedBytes, 0),
+  };
   logger.summary(stats);
+
+  ctx.cache?.prune();
 }
