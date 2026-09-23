@@ -29,8 +29,6 @@ const PLUGIN_OPTIONS: PluginOption = {
 };
 
 const CDN = "https://cdn.example.com";
-// CDN as a regular expression source: dots must not match any character
-const CDN_PATTERN = CDN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 interface Scenario {
   fixture: () => string;
@@ -90,7 +88,7 @@ const scenarios: Record<string, Scenario> = {
     config: { base: `${CDN}/app/` },
     check: ([output]) => {
       expect(cssOf(output)).toMatch(
-        new RegExp(`url\\(${CDN_PATTERN}/app/assets/icon-font-[\\w-]+\\.woff2\\)`),
+        /url\(https:\/\/cdn\.example\.com\/app\/assets\/icon-font-[\w-]+\.woff2\)/,
       );
     },
   },
@@ -106,7 +104,7 @@ const scenarios: Record<string, Scenario> = {
     },
     check: ([output]) => {
       expect(cssOf(output)).toMatch(
-        new RegExp(`url\\(${CDN_PATTERN}/assets/icon-font-[\\w-]+\\.woff2\\)`),
+        /url\(https:\/\/cdn\.example\.com\/assets\/icon-font-[\w-]+\.woff2\)/,
       );
       expect(jsOf(output)).toMatch(/window\.__cdn\(["`]assets\/icon-font-[\w-]+\.woff2["`]\)/);
     },
