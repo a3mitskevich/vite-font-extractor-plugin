@@ -5,10 +5,16 @@ import Cache from "./cache";
 import { createResolvers, intersection, mergePath } from "./utils";
 import { PLUGIN_NAME, TRANSFORM_ID_INCLUDE } from "./constants";
 import { createInternalLogger } from "./internal-logger";
-import { createPluginContext } from "./context";
+import {
+  createPluginContext,
+  pruneBuildState,
+  replaceModuleReferences,
+  resetBuildState,
+} from "./context";
 import { transformHook } from "./transform";
 import { generateBundleHook } from "./bundle";
 import { createServeMiddleware } from "./serve";
+import { extractAssetReferences } from "./asset-refs";
 
 export default function FontExtractor(pluginOption: PluginOption = { type: "auto" }): Plugin {
   const ctx = createPluginContext(pluginOption);
@@ -64,7 +70,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       return environment.config.consumer === "client";
     },
     buildStart() {
-      ctx.cache?.resetUsage();
+      resetBuildState(ctx);
     },
     transform: {
       filter: { id: { include: TRANSFORM_ID_INCLUDE } },
@@ -73,9 +79,18 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         if (options?.ssr || !TRANSFORM_ID_INCLUDE.some((re) => re.test(id))) {
           return null;
         }
+        if (!ctx.isServe) {
+          const references = extractAssetReferences(code).map((ref) => ref.referenceId);
+          replaceModuleReferences(ctx, id, new Set(references));
+        }
         const result = await transformHook(ctx, code, id);
         return result === code ? null : result;
       },
+    },
+    buildEnd() {
+      if (!ctx.isServe) {
+        pruneBuildState(ctx, this.getModuleIds());
+      }
     },
     async generateBundle(_, bundle) {
       return generateBundleHook(this.getFileName.bind(this), this.emitFile.bind(this), ctx, bundle);
