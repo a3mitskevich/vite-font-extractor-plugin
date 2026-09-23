@@ -30,8 +30,9 @@ import type { ResolvedConfig } from "vite";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync, rmSync } from "node:fs";
+import * as fontkit from "fontkit";
 import type { FontExtractorPlugin, Target, PluginOption } from "../src";
-import type { RollupOutput } from "rollup";
+import type { OutputAsset, RollupOutput } from "rollup";
 
 export type InlineConfig = InlineConfigV5 & InlineConfigV6 & InlineConfigV7 & InlineConfigV8;
 export type Plugin = PluginV5 & PluginV6 & PluginV7 & PluginV8;
@@ -63,6 +64,8 @@ export function createCachedImport<T>(imp: () => Promise<T>): () => T | Promise<
 
 export interface BuildOptions {
   pluginOptions?: PluginOption;
+  // Exact plugin call arguments, e.g. `[]` for the zero-config call; overrides `pluginOptions`
+  pluginArgs?: Parameters<FontExtractorPlugin>;
   customLogger?: FakeLogger;
   cache?: false;
   fixture?: string;
@@ -173,6 +176,7 @@ export const fixtures = {
   "multi-source": createFixture("multi-source"),
   "duplicate-url": createFixture("duplicate-url"),
   "shared-file-families": createFixture("shared-file-families"),
+  "subset-target-chars": createFixture("subset-target-chars"),
 } as const;
 
 export type FixturesNames = Array<keyof typeof fixtures>;
@@ -239,7 +243,7 @@ export const buildByVersion = async (
     cache: options.cache == null ? out : options.cache,
   };
 
-  const FontExtract = await plugin(pluginOptions);
+  const FontExtract = await plugin(...(options.pluginArgs ?? [pluginOptions]));
   const customLogger = options.customLogger ?? createLogger();
   const inlineConfig: InlineConfig = {
     root: options.fixture,
@@ -282,30 +286,148 @@ export const buildByVersion = async (
 
 export interface FontReference {
   from: string;
+  // Output file name the reference resolves to, or the referenced path when nothing matches
   path: string;
 }
 
-type OutputItem = RollupOutput["output"][number];
+export type OutputItem = RollupOutput["output"][number];
 
-const FONT_REFERENCE_RE = /assets\/[^"'`()\s?#]+?\.(?:woff2?|ttf|eot|otf)/g;
+export const FONT_FILE_RE = /\.(?:woff2?|ttf|eot|otf|svg)$/;
+
+// Runs of url/path characters (`\ ` is an escaped space in CSS). Matched greedily — a lazy
+// pattern ending in the extension is quadratic on long base64/minified runs.
+const PATH_TOKEN_RE = /(?:[\w\-.~@+%/:]|\\ )+/g;
+
+const SOURCE_MAP_RE = /\.map$/;
+const MANIFEST_RE = /manifest\.json$/;
+
+interface ManifestChunk {
+  file?: string;
+  css?: string[];
+  assets?: string[];
+}
 
 const getOutputText = (item: OutputItem): string | null => {
   if (item.type === "chunk") return item.code;
   return typeof item.source === "string" ? item.source : null;
 };
 
-export const collectFontReferences = (output: OutputItem[]): FontReference[] =>
-  output.flatMap((item) => {
-    const text = getOutputText(item);
+// Manifest keys and `src` are source paths — only emitted files count as references
+const getManifestText = (source: string): string =>
+  Object.values(JSON.parse(source) as Record<string, ManifestChunk>)
+    .flatMap((chunk) => [chunk.file ?? "", ...(chunk.css ?? []), ...(chunk.assets ?? [])])
+    .map((file) => `"${file}"`)
+    .join("\n");
+
+const getReferenceText = (item: OutputItem): string | null => {
+  // Source maps list original sources, not emitted files
+  if (SOURCE_MAP_RE.test(item.fileName)) return null;
+  const text = getOutputText(item);
+  if (text == null) return null;
+  return MANIFEST_RE.test(item.fileName) ? getManifestText(text) : text;
+};
+
+const decodePath = (token: string): string =>
+  token
+    .replaceAll("\\ ", " ")
+    .replaceAll("%20", " ")
+    .replace(/^\.{0,2}\/+/, "");
+
+const baseNameOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
+
+/**
+ * Font file references in text outputs, independent of `base` (absolute, relative, CDN url)
+ * and `assetFileNames`: a reference is matched to an output file by its base name.
+ * Plain (unescaped) spaces inside names are not supported.
+ */
+export const collectFontReferences = (
+  output: OutputItem[],
+  files: OutputItem[] = output,
+): FontReference[] => {
+  const fileByBaseName = new Map(files.map((item) => [baseNameOf(item.fileName), item.fileName]));
+  return output.flatMap((item) => {
+    const text = getReferenceText(item);
     if (!text) return [];
-    return Array.from(text.matchAll(FONT_REFERENCE_RE), (match) => ({
-      from: item.fileName,
-      path: match[0],
-    }));
+    return Array.from(text.matchAll(PATH_TOKEN_RE), ([token]) => decodePath(token))
+      .filter((path) => FONT_FILE_RE.test(path))
+      .map((path) => ({ from: item.fileName, path: fileByBaseName.get(baseNameOf(path)) ?? path }));
   });
+};
 
 // References to font files that are not present in the build output (would 404 at runtime)
 export const findBrokenFontReferences = (output: OutputItem[]): FontReference[] => {
   const fileNames = new Set(output.map((item) => item.fileName));
   return collectFontReferences(output).filter((ref) => !fileNames.has(ref.path));
 };
+
+const FONT_FACE_BLOCK_RE = /@font-face\s*\{[^}]*\}/g;
+const FONT_FAMILY_RE = /font-family\s*:\s*([^;}]+)/;
+
+// Output font files each @font-face family points at, across all CSS assets
+export const getFontFilesByFamily = (output: OutputItem[]): Map<string, string[]> => {
+  const css = output
+    .filter((item): item is OutputAsset => item.type === "asset" && item.fileName.endsWith(".css"))
+    .map((item) => String(item.source))
+    .join("\n");
+  const byFamily = new Map<string, string[]>();
+  for (const [block] of css.matchAll(FONT_FACE_BLOCK_RE)) {
+    const family = FONT_FAMILY_RE.exec(block)?.[1].replace(/["']/g, "").trim() ?? "";
+    const blockItem = { type: "asset", fileName: "", source: block } as OutputAsset;
+    const paths = collectFontReferences([blockItem], output).map((ref) => ref.path);
+    byFamily.set(family, [...(byFamily.get(family) ?? []), ...paths]);
+  }
+  return byFamily;
+};
+
+export const getOutputAsset = (output: OutputItem[], fileName: string): OutputAsset => {
+  const asset = output.find(
+    (item): item is OutputAsset => item.type === "asset" && item.fileName === fileName,
+  );
+  if (!asset) throw new Error(`Asset "${fileName}" not found in build output`);
+  return asset;
+};
+
+export const getFontAssets = (output: OutputItem[]): OutputAsset[] =>
+  output.filter(
+    (item): item is OutputAsset => item.type === "asset" && FONT_FILE_RE.test(item.fileName),
+  );
+
+// Emitted font files that nothing in the output points at
+export const findOrphanFontAssets = (output: OutputItem[]): string[] => {
+  const referenced = new Set(collectFontReferences(output).map((ref) => ref.path));
+  return getFontAssets(output)
+    .map((asset) => asset.fileName)
+    .filter((fileName) => !referenced.has(fileName));
+};
+
+// EOT and SVG fonts are not readable by fontkit
+const FONTKIT_READABLE_RE = /\.(?:woff2?|ttf|otf)$/;
+
+export const getReadableFontAssets = (output: OutputItem[]): OutputAsset[] =>
+  getFontAssets(output).filter((asset) => FONTKIT_READABLE_RE.test(asset.fileName));
+
+export const openFont = (source: string | Uint8Array): fontkit.Font =>
+  fontkit.create(Buffer.from(source)) as fontkit.Font;
+
+// fontkit reads glyph data lazily; a missing ligature in a fontext WOFF points outside the table
+const WOFF_MISSING_GLYPH_ERROR = "Offset is outside the bounds";
+
+// A ligature is rendered when the text collapses into one existing glyph
+export const rendersLigature = (font: fontkit.Font, text: string): boolean => {
+  try {
+    const { glyphs } = font.layout(text);
+    return glyphs.length === 1 && glyphs[0].id !== 0;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes(WOFF_MISSING_GLYPH_ERROR)) return false;
+    throw error;
+  }
+};
+
+export const hasGlyph = (font: fontkit.Font, codePoint: number): boolean =>
+  font.hasGlyphForCodePoint(codePoint);
+
+export const hasGlyphsFor = (font: fontkit.Font, text: string): boolean =>
+  Array.from(text).every((char) => hasGlyph(font, char.codePointAt(0)!));
+
+export const hasAnyGlyphFor = (font: fontkit.Font, text: string): boolean =>
+  Array.from(text).some((char) => hasGlyph(font, char.codePointAt(0)!));
