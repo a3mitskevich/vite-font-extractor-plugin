@@ -148,6 +148,50 @@ function resolveIconGlyphs(
   return undefined;
 }
 
+const listExtensions = (fonts: MinifyFontOptions[]): string =>
+  [...new Set(fonts.map((font) => `.${font.extension}`))].join(", ");
+
+// fontext can not write every format a @font-face may list (otf) — such files stay as they are
+function selectOutputFormats(
+  logger: InternalLogger,
+  fontName: string,
+  fonts: MinifyFontOptions[],
+): MinifyFontOptions[] {
+  const isSupported = (font: MinifyFontOptions): boolean =>
+    SUPPORTED_RESULTS_FORMATS.includes(font.extension);
+  const unsupported = fonts.filter((font) => !isSupported(font));
+  if (unsupported.length) {
+    const extensions = listExtensions(unsupported);
+    logger.warn(
+      `Font "${fontName}": ${extensions} is not supported for minification — keeping original ${extensions}`,
+    );
+  }
+  return fonts.filter(isSupported);
+}
+
+// Any readable file is a source, even one whose format can not be written back
+async function readSource(
+  ctx: PluginContext,
+  fontName: string,
+  fonts: MinifyFontOptions[],
+): Promise<Buffer | string | null> {
+  const logger = getLogger(ctx);
+  const entryPoint = fonts.find((font) => SUPPORT_START_FONT_REGEX.test(font.extension));
+  if (!entryPoint) {
+    logger.warn(
+      `Font "${fontName}": ${listExtensions(fonts)} can not be read for minification — keeping original.` +
+        " Add a woff2, woff, ttf or otf source.",
+    );
+    return null;
+  }
+  const source =
+    entryPoint.source ?? (await getSourceByUrl(ctx, entryPoint.url, entryPoint.importer));
+  if (!source) {
+    logger.error(`No found source for ${fontName}:${styler.path(entryPoint.url)}`);
+  }
+  return source;
+}
+
 export async function processMinify(
   ctx: PluginContext,
   fontName: string,
@@ -156,26 +200,12 @@ export async function processMinify(
 ): Promise<ExtractedResult | null> {
   const logger = getLogger(ctx);
 
-  const unsupportedFont = fonts.find((font) => !SUPPORTED_RESULTS_FORMATS.includes(font.extension));
-  if (unsupportedFont) {
-    logger.error(
-      `Font face has unsupported extension - ${unsupportedFont.extension ?? "undefined"}`,
-    );
+  const outputs = selectOutputFormats(logger, fontName, fonts);
+  if (!outputs.length) {
     return null;
   }
-
-  const entryPoint = fonts.find((font) => SUPPORT_START_FONT_REGEX.test(font.extension));
-
-  if (!entryPoint) {
-    logger.error("No find supported fonts file extensions for extracting process");
-    return null;
-  }
-
-  const source =
-    entryPoint.source ?? (await getSourceByUrl(ctx, entryPoint.url, entryPoint.importer));
-
+  const source = await readSource(ctx, fontName, fonts);
   if (!source) {
-    logger.error(`No found source for ${fontName}:${styler.path(entryPoint.url)}`);
     return null;
   }
 
@@ -184,9 +214,9 @@ export async function processMinify(
   const cacheKey = camelCase(fontName) + "-" + getHash(options.sid + sourceHash);
   const emptyResult: ExtractedResult = { meta: [], report: { originalSize: 0, formats: {} } };
 
-  if (ctx.cache && (await hasCachedFormats(ctx.cache, cacheKey, fonts))) {
+  if (ctx.cache && (await hasCachedFormats(ctx.cache, cacheKey, outputs))) {
     logger.cached(fontName);
-    return { ...emptyResult, ...(await readCachedFormats(ctx.cache, cacheKey, fonts)) };
+    return { ...emptyResult, ...(await readCachedFormats(ctx.cache, cacheKey, outputs)) };
   }
 
   const sourceBuffer = Buffer.from(source);
@@ -194,10 +224,10 @@ export async function processMinify(
   if (glyphs === null) {
     return null;
   }
-  const extractOption = createExtractOption(fontName, fonts, options.target, glyphs);
+  const extractOption = createExtractOption(fontName, outputs, options.target, glyphs);
   const minifyResult = await extract(sourceBuffer, extractOption);
   if (ctx.cache) {
-    await writeCachedFormats(ctx.cache, cacheKey, fonts, minifyResult);
+    await writeCachedFormats(ctx.cache, cacheKey, outputs, minifyResult);
   }
   return { ...emptyResult, ...minifyResult };
 }
