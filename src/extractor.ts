@@ -92,8 +92,18 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         pruneBuildState(ctx, this.getModuleIds());
       }
     },
-    async generateBundle(_, bundle) {
-      return generateBundleHook(this.getFileName.bind(this), this.emitFile.bind(this), ctx, bundle);
+    generateBundle: {
+      // After Vite's own generateBundle hooks: the single CSS of `cssCodeSplit: false`,
+      // HTML (font preloads) and the manifest are emitted there
+      order: "post",
+      async handler(_, bundle) {
+        return generateBundleHook(
+          this.getFileName.bind(this),
+          this.emitFile.bind(this),
+          ctx,
+          bundle,
+        );
+      },
     },
   };
 }
