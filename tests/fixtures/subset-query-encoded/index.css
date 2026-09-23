@@ -1,0 +1,18 @@
+@font-face {
+    font-family: 'Comma';
+    src: url("../fonts/text-font.woff2?subset=a%2Cb") format("woff2");
+}
+
+@font-face {
+    font-family: 'Range';
+    src: url("../fonts/text-font.woff2?subset=u+0030-0039") format("woff2");
+}
+
+@font-face {
+    font-family: 'Space';
+    src: url("../fonts/text-font.woff2?subset=A%20B") format("woff2");
+}
+
+.test {
+    font-family: "Comma", "Range", "Space", serif;
+}

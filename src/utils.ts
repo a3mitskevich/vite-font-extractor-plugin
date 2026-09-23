@@ -33,13 +33,30 @@ export function toError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value));
 }
 
-// Parses the value of `?subset=` — comma separated characters and/or U+ ranges
+const UNICODE_RANGE_RE = /^u\+[0-9a-f]+(?:-(?:u\+)?[0-9a-f]+)?$/i;
+// `A\ B`: CSS minifiers escape spaces in unquoted urls
+const CSS_CHAR_ESCAPE_RE = /\\([^0-9a-fA-F\r\n])/gu;
+
+function decodeSubsetPart(part: string): string {
+  const unescaped = part.replace(CSS_CHAR_ESCAPE_RE, "$1");
+  try {
+    return decodeURIComponent(unescaped);
+  } catch {
+    return unescaped;
+  }
+}
+
+/**
+ * Parses the value of `?subset=` — comma separated characters and/or U+ ranges.
+ * Parts are decoded after splitting, so `%2C` requests a literal comma.
+ */
 export function parseSubsetQuery(value: string): SubsetOptions {
   const characters: string[] = [];
   const unicodeRanges: string[] = [];
-  for (const part of value.split(",")) {
-    if (/^u\+/i.test(part)) {
-      unicodeRanges.push(part);
+  for (const part of value.split(",").map(decodeSubsetPart).filter(Boolean)) {
+    if (UNICODE_RANGE_RE.test(part)) {
+      // fontext accepts only the upper-case `U+` prefix
+      unicodeRanges.push(part.toUpperCase());
     } else {
       characters.push(part);
     }

@@ -10,8 +10,10 @@ export interface AssetReference {
 //   __VITE_ASSET__<ref>__$_?subset=ABC__                 Vite 5–7 (CSS and JS)
 //   __VITE_ASSET__<ref>__?subset=ABC                     Vite 8 (CSS)
 //   import.meta.ROLLDOWN_FILE_URL_<ref> + "?subset=ABC"  Vite 8 (JS asset import)
+// Vite decodes the url, so the query may contain spaces (`?subset=A%20B` → `?subset=A B`),
+// but not line breaks: placeholders may come one per line
 const ASSET_PLACEHOLDER_RE =
-  /__VITE_ASSET__([\w$-]+)__(?:\$_([^"'`)\s]*?)__|(\?[^"'`)\s]*))?|import\.meta\.ROLLDOWN_FILE_URL_([\w$-]+)(?:\s*\+\s*(["'`])(\?[^"'`]*)\5)?/g;
+  /__VITE_ASSET__([\w$-]+)__(?:\$_([^"'`)\r\n]*?)__|(\?[^"'`)\r\n]*))?|import\.meta\.ROLLDOWN_FILE_URL_([\w$-]+)(?:\s*\+\s*(["'`])(\?[^"'`]*)\5)?/g;
 
 const SUBSET_PARAM_RE = /[?&]subset=([^&#]+)/;
 
