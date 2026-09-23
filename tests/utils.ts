@@ -172,6 +172,7 @@ export const fixtures = {
   "auto-two-icons": createFixture("auto-two-icons"),
   "multi-source": createFixture("multi-source"),
   "duplicate-url": createFixture("duplicate-url"),
+  "shared-file-families": createFixture("shared-file-families"),
 } as const;
 
 export type FixturesNames = Array<keyof typeof fixtures>;

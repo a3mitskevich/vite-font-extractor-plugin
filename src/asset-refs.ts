@@ -30,6 +30,12 @@ export function extractAssetReferences(code: string): AssetReference[] {
 export const getReferenceKey = ({ referenceId, subset }: AssetReference): string =>
   `${referenceId}:${getSubsetKey(subset)}`;
 
+// Group of a `?subset=` reference found outside of @font-face (e.g. a JS import)
+export const STANDALONE_GROUP_PREFIX = "ref:";
+
+export const getStandaloneGroupId = (referenceId: string): string =>
+  STANDALONE_GROUP_PREFIX + referenceId;
+
 // Every format of one @font-face shares the group, so all of them are minified from one source
 export const getFaceGroupId = (references: AssetReference[]): string =>
   "face:" + [...new Set(references.map((reference) => reference.referenceId))].sort().join(",");

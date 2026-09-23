@@ -7,12 +7,23 @@ export interface AssetRename {
   newFileName: string;
   // "" when the minified font replaces references without `?subset=`
   subsetKey: string;
+  // CSS font-family the result was minified for
+  fontName: string;
 }
 
 interface NameVariant {
   oldBase: string;
   encode: (name: string) => string;
 }
+
+interface RenameTarget {
+  byFamily: Map<string, string>;
+  // Used outside of @font-face blocks (JS, html preload) and for unknown families
+  fallback: string;
+}
+
+// oldBase → subsetKey → target
+type RenameTargets = Map<string, Map<string, RenameTarget>>;
 
 interface ChunkMetadata {
   viteMetadata?: { importedAssets?: Set<string> };
@@ -25,6 +36,9 @@ const NAME_ENCODERS: Array<(name: string) => string> = [
   (name) => name.replaceAll(" ", "%20"),
 ];
 
+const FONT_FACE_BLOCK_RE = /@font-face\s*\{[^}]*\}/g;
+const FONT_FAMILY_DECLARATION_RE = /font-family\s*:\s*([^;}]+)/;
+
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // Matches `<name>`, `<name>?subset=X` and the unminified Rolldown form `<name>" + "?subset=X"`
@@ -34,6 +48,9 @@ const createReferencePattern = (names: string[]): RegExp =>
       "(?:\\?subset=([^\"'`)\\s&]+)|([\"'`])\\s*\\+\\s*([\"'`])\\?subset=([^\"'`&\\s]+)\\4)?",
     "g",
   );
+
+const getBlockFamily = (block: string): string | undefined =>
+  FONT_FAMILY_DECLARATION_RE.exec(block)?.[1].replace(/["']/g, "").trim();
 
 function createNameVariants(renames: AssetRename[]): Map<string, NameVariant> {
   const variants = new Map<string, NameVariant>();
@@ -46,12 +63,15 @@ function createNameVariants(renames: AssetRename[]): Map<string, NameVariant> {
   return variants;
 }
 
-function createTargets(renames: AssetRename[]): Map<string, Map<string, string>> {
-  const targets = new Map<string, Map<string, string>>();
-  for (const { oldFileName, newFileName, subsetKey } of renames) {
+function createTargets(renames: AssetRename[]): RenameTargets {
+  const targets: RenameTargets = new Map();
+  for (const { oldFileName, newFileName, subsetKey, fontName } of renames) {
     const oldBase = basename(oldFileName);
-    const bySubset = targets.get(oldBase) ?? new Map<string, string>();
-    bySubset.set(subsetKey, basename(newFileName));
+    const newBase = basename(newFileName);
+    const bySubset = targets.get(oldBase) ?? new Map<string, RenameTarget>();
+    const target = bySubset.get(subsetKey) ?? { byFamily: new Map(), fallback: newBase };
+    target.byFamily.set(fontName, newBase);
+    bySubset.set(subsetKey, target);
     targets.set(oldBase, bySubset);
   }
   return targets;
@@ -73,6 +93,7 @@ function updateImportedAssets(chunk: Rollup.OutputChunk, renames: AssetRename[])
 
 /**
  * Points every CSS/HTML/JS reference of a renamed font to its minified file.
+ * Inside @font-face the file minified for that font-family is used.
  * Returns old file names that are still referenced and therefore must stay in the bundle.
  */
 export function rewriteFontReferences(
@@ -86,7 +107,7 @@ export function rewriteFontReferences(
   const names = [...variants.keys()].sort((a, b) => b.length - a.length);
   const pattern = createReferencePattern(names);
 
-  const rewrite = (text: string): string =>
+  const rewriteNames = (text: string, family?: string): string =>
     text.replace(
       pattern,
       (
@@ -102,8 +123,14 @@ export function rewriteFontReferences(
         const subsetKey = value ? getSubsetKey(parseSubsetQuery(value)) : "";
         const target = targets.get(oldBase)?.get(subsetKey);
         if (!target) return match;
-        return encode(target) + (concatQuery ? quote : "");
+        const newBase = (family && target.byFamily.get(family)) || target.fallback;
+        return encode(newBase) + (concatQuery ? quote : "");
       },
+    );
+
+  const rewrite = (text: string): string =>
+    rewriteNames(
+      text.replace(FONT_FACE_BLOCK_RE, (block) => rewriteNames(block, getBlockFamily(block))),
     );
 
   const texts: string[] = [];

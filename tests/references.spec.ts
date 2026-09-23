@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { OutputAsset, OutputChunk } from "rollup";
 import { createHash } from "node:crypto";
+import * as fontkit from "fontkit";
 import {
   buildByVersion,
   collectFontReferences,
@@ -26,6 +27,26 @@ const contentHash = (asset: OutputAsset): string =>
 
 const getEntryChunk = (output: OutputItem[]): OutputChunk | undefined =>
   output.find((item): item is OutputChunk => item.type === "chunk" && item.isEntry);
+
+// Maps each @font-face family in the output CSS to the font file its src points at
+const getFontFileByFamily = (output: OutputItem[]): Map<string, string> => {
+  const css = output
+    .filter((item): item is OutputAsset => item.type === "asset" && item.fileName.endsWith(".css"))
+    .map((item) => String(item.source))
+    .join("\n");
+  const entries = Array.from(css.matchAll(/@font-face\s*\{[^}]*\}/g), ([block]) => {
+    const family = /font-family\s*:\s*([^;}]+)/.exec(block)?.[1].replace(/["']/g, "").trim();
+    const path = /assets\/[^"'`()\s?#]+?\.(?:woff2?|ttf|eot|otf)/.exec(block)?.[0];
+    return [family ?? "", path ?? ""] as const;
+  });
+  return new Map(entries);
+};
+
+// A ligature is rendered when the text collapses into one existing glyph
+const rendersLigature = (font: fontkit.Font, text: string): boolean => {
+  const glyphs = font.layout(text).glyphs;
+  return glyphs.length === 1 && glyphs[0].id !== 0;
+};
 
 describe.sequential("Font references in build output", () => {
   const runReferenceTests = (version: ContainerVersion) => {
@@ -55,7 +76,38 @@ describe.sequential("Font references in build output", () => {
           ref.from.endsWith(".css"),
         );
         expect(cssReferences).toHaveLength(2);
+        // Same family and options: one minified file shared by both @font-face rules
+        expect(getFontAssets(items)).toHaveLength(1);
+        expect(new Set(cssReferences.map((ref) => ref.path)).size).toBe(1);
         expect(findBrokenFontReferences(items)).toEqual([]);
+      });
+
+      it("should minify a file shared by families with different options separately", async () => {
+        const { output } = await buildByVersion(version, {
+          fixture: fixtures["shared-file-families"].path,
+          pluginOptions: {
+            type: "manual",
+            targets: [
+              { fontName: "Icons A", ligatures: ["close"] },
+              { fontName: "Icons B", ligatures: ["star"] },
+            ],
+          },
+        });
+        const items = output as OutputItem[];
+
+        const fileByFamily = getFontFileByFamily(items);
+        expect(fileByFamily.size).toBe(2);
+        expect(fileByFamily.get("Icons A")).not.toBe(fileByFamily.get("Icons B"));
+        expect(findBrokenFontReferences(items)).toEqual([]);
+
+        const fontOf = (family: string) => {
+          const asset = items.find((item) => item.fileName === fileByFamily.get(family));
+          return fontkit.create(Buffer.from((asset as OutputAsset).source)) as fontkit.Font;
+        };
+        expect(rendersLigature(fontOf("Icons A"), "close")).toBe(true);
+        expect(rendersLigature(fontOf("Icons A"), "star")).toBe(false);
+        expect(rendersLigature(fontOf("Icons B"), "star")).toBe(true);
+        expect(rendersLigature(fontOf("Icons B"), "close")).toBe(false);
       });
 
       it("should keep a JS import with ?subset= pointing at the minified font", async () => {

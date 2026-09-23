@@ -20,6 +20,7 @@ import {
   extractAssetReferences,
   getFaceGroupId,
   getReferenceKey,
+  getStandaloneGroupId,
 } from "./asset-refs";
 
 interface RegisterOptions {
@@ -36,7 +37,8 @@ function registerReferences(
   { fontName, groupId, getOptions, overwrite }: RegisterOptions,
 ): void {
   for (const reference of references) {
-    const key = getReferenceKey(reference);
+    // Families sharing one file may have different options — each needs its own entry
+    const key = `${getReferenceKey(reference)}:${fontName}`;
     if (!overwrite && ctx.transformMap.has(key)) continue;
     ctx.transformMap.set(key, {
       fontName,
@@ -108,7 +110,7 @@ function registerStandaloneSubsets(ctx: PluginContext, code: string): void {
     const fontName = `subset (${reference.referenceId.substring(0, 6)})`;
     registerReferences(ctx, [reference], {
       fontName,
-      groupId: `ref:${reference.referenceId}`,
+      groupId: getStandaloneGroupId(reference.referenceId),
       getOptions: (subset) => createSubsetOptions(fontName, subset ?? {}),
       overwrite: false,
     });

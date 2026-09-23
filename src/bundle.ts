@@ -12,6 +12,7 @@ import { getFontExtension, getHash, getSubsetKey, toError } from "./utils";
 import { type PluginContext, getLogger } from "./context";
 import { processMinify } from "./minify";
 import { type AssetRename, rewriteFontReferences } from "./rewrite-refs";
+import { STANDALONE_GROUP_PREFIX } from "./asset-refs";
 
 type GetFileName = (referenceId: string) => string;
 type EmitFile = (file: Rollup.EmittedAsset) => string;
@@ -24,6 +25,7 @@ interface FontGroup {
 }
 
 interface MinifiedAsset extends AssetRename {
+  source: Buffer;
   savedBytes: number;
 }
 
@@ -65,25 +67,40 @@ function collectFontGroups(
 ): FontGroup[] {
   const groups = new Map<string, FontGroup>();
   const seenAssets = new Set<string>();
+  const references = [...ctx.transformMap];
+  // `?subset=` registered outside of @font-face is redundant when a face already covers it
+  const faceReferences = new Set(
+    references
+      .filter(([, reference]) => !reference.groupId.startsWith(STANDALONE_GROUP_PREFIX))
+      .map(([, reference]) => `${reference.referenceId}:${getSubsetKey(reference.subset)}`),
+  );
 
-  for (const [key, reference] of ctx.transformMap) {
+  for (const [key, reference] of references) {
+    const isStandalone = reference.groupId.startsWith(STANDALONE_GROUP_PREFIX);
+    if (
+      isStandalone &&
+      faceReferences.has(`${reference.referenceId}:${getSubsetKey(reference.subset)}`)
+    ) {
+      continue;
+    }
     const asset = resolveAsset(getFileName, bundle, reference);
     if (!asset) {
       logger.warn(`Asset not found for key ${key}`);
       continue;
     }
 
-    const subsetKey = getSubsetKey(reference.subset);
-    // The same file can be referenced from several places (CSS + JS, repeated @font-face)
-    const assetKey = `${asset.fileName}::${subsetKey}`;
+    const options = mergeSubsetOptions(reference.options, reference.subset);
+    // The same file with the same options (repeated @font-face, CSS + JS) is minified once;
+    // families sharing a file with different options get their own result
+    const assetKey = `${asset.fileName}::${options.sid}`;
     if (seenAssets.has(assetKey)) continue;
     seenAssets.add(assetKey);
 
-    const groupKey = `${reference.groupId}::${subsetKey}`;
+    const groupKey = `${reference.groupId}::${options.sid}`;
     const group = groups.get(groupKey) ?? {
       fontName: reference.fontName,
-      options: mergeSubsetOptions(reference.options, reference.subset),
-      subsetKey,
+      options,
+      subsetKey: getSubsetKey(reference.subset),
       assets: [],
     };
     group.assets.push(asset);
@@ -95,7 +112,6 @@ function collectFontGroups(
 
 async function minifyGroup(
   ctx: PluginContext,
-  emitFile: EmitFile,
   { fontName, options, subsetKey, assets }: FontGroup,
 ): Promise<MinifiedAsset[]> {
   const logger = getLogger(ctx);
@@ -125,11 +141,19 @@ async function minifyGroup(
       const oldFileName = asset.fileName;
       const base = basename(asset.name ?? oldFileName, `.${extension}`);
       const newFileName = `${dirname(oldFileName)}/${base}-${getHash(minified)}.${extension}`;
-      emitFile({ type: "asset", fileName: newFileName, source: minified });
 
       const isLast = idx === assets.length - 1;
       logger.minified(fontName, extension, originalSize, minified.length, isLast);
-      return [{ oldFileName, newFileName, subsetKey, savedBytes: originalSize - minified.length }];
+      return [
+        {
+          oldFileName,
+          newFileName,
+          subsetKey,
+          fontName,
+          source: minified,
+          savedBytes: originalSize - minified.length,
+        },
+      ];
     });
   } catch (error) {
     logger.error(`Failed to minify "${fontName}" — keeping original`, {
@@ -155,9 +179,15 @@ export async function generateBundleHook(
 
   logger.phase("✂ ", "Minify");
 
-  const minified = (
-    await Promise.all(groups.map((group) => minifyGroup(ctx, emitFile, group)))
-  ).flat();
+  const minified = (await Promise.all(groups.map((group) => minifyGroup(ctx, group)))).flat();
+
+  // Identical results (same content hash) are emitted once
+  const emitted = new Set<string>();
+  for (const { newFileName, source } of minified) {
+    if (emitted.has(newFileName)) continue;
+    emitted.add(newFileName);
+    emitFile({ type: "asset", fileName: newFileName, source });
+  }
 
   const stillReferenced = rewriteFontReferences(bundle, minified);
   for (const oldFileName of new Set(minified.map((asset) => asset.oldFileName))) {
