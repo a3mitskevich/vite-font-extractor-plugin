@@ -77,6 +77,39 @@ describe.sequential("Font references in build output", () => {
         expect(findBrokenFontReferences(items)).toEqual([]);
       });
 
+      it("should map each ?subset= of one file to its own minified font", async () => {
+        const { output } = await buildByVersion(version, {
+          fixture: fixtures["subset-multi-js"].path,
+          pluginOptions: { type: "manual", targets: [] },
+        });
+        const items = output as OutputItem[];
+
+        const fontAssets = getFontAssets(items);
+        expect(fontAssets).toHaveLength(2);
+        expect(contentHash(fontAssets[0])).not.toBe(contentHash(fontAssets[1]));
+
+        const entry = getEntryChunk(items)!;
+        const jsPaths = collectFontReferences([entry]).map((ref) => ref.path);
+        expect(new Set(jsPaths)).toEqual(new Set(fontAssets.map((asset) => asset.fileName)));
+        expect(entry.code).not.toContain("?subset=");
+        expect(findBrokenFontReferences(items)).toEqual([]);
+      });
+
+      it("should strip ?subset= from CSS font urls", async () => {
+        const { output } = await buildByVersion(version, {
+          fixture: fixtures["subset-chars"].path,
+          pluginOptions: { type: "manual", targets: [] },
+        });
+        const items = output as OutputItem[];
+
+        const css = items.find(
+          (item): item is OutputAsset => item.type === "asset" && item.fileName.endsWith(".css"),
+        );
+        expect(css).toBeDefined();
+        expect(String(css!.source)).not.toContain("?subset=");
+        expect(findBrokenFontReferences(items)).toEqual([]);
+      });
+
       it("should keep manifest entries pointing at emitted fonts", async () => {
         const { output } = await buildByVersion(version, {
           fixture: fixtures["subset-js"].path,
