@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { OutputAsset, OutputChunk } from "rollup";
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 import * as fontkit from "fontkit";
 import {
   buildByVersion,
@@ -8,6 +9,8 @@ import {
   type ContainerVersion,
   findBrokenFontReferences,
   fixtures,
+  fixturesDir,
+  fontsLength,
   textFontsLength,
   viteBuild,
 } from "./utils";
@@ -108,6 +111,31 @@ describe.sequential("Font references in build output", () => {
         expect(rendersLigature(fontOf("Icons A"), "star")).toBe(false);
         expect(rendersLigature(fontOf("Icons B"), "star")).toBe(true);
         expect(rendersLigature(fontOf("Icons B"), "close")).toBe(false);
+      });
+
+      it("should keep the full file for a family without target sharing it", async () => {
+        const { output, messages } = await buildByVersion(version, {
+          fixture: join(fixturesDir, "shared-file-untargeted"),
+          pluginOptions: { type: "manual", targets: [{ fontName: "Icons", ligatures: ["close"] }] },
+        });
+        const items = output as OutputItem[];
+
+        const fileByFamily = getFontFileByFamily(items);
+        expect(fileByFamily.get("Icons")).not.toBe(fileByFamily.get("IconsFull"));
+        expect(findBrokenFontReferences(items)).toEqual([]);
+
+        const assetOf = (family: string) =>
+          items.find((item) => item.fileName === fileByFamily.get(family)) as OutputAsset;
+        const fontOf = (family: string) =>
+          fontkit.create(Buffer.from(assetOf(family).source)) as fontkit.Font;
+        expect(Buffer.from(assetOf("IconsFull").source).length).toBe(fontsLength.woff2);
+        expect(rendersLigature(fontOf("IconsFull"), "star")).toBe(true);
+        expect(rendersLigature(fontOf("Icons"), "close")).toBe(true);
+        expect(rendersLigature(fontOf("Icons"), "star")).toBe(false);
+        // The only expected notice: the family has neither a target nor `?subset=`
+        const problems = messages.filter((m) => m.type === "warn" || m.type === "error");
+        expect(problems).toHaveLength(1);
+        expect(problems[0].message).toContain('"IconsFull" has no minify options');
       });
 
       it("should keep a JS import with ?subset= pointing at the minified font", async () => {

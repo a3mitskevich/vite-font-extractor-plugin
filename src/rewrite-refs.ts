@@ -1,6 +1,7 @@
 import type { Rollup } from "vite";
 import { basename } from "node:path";
 import { getSubsetKey, parseSubsetQuery } from "./utils";
+import { FONT_FACE_BLOCK_RE, getBlockFamily, normalizeFamily } from "./output-font-face";
 
 export interface AssetRename {
   oldFileName: string;
@@ -17,8 +18,9 @@ interface NameVariant {
 }
 
 interface RenameTarget {
+  // Keyed by normalized font-family
   byFamily: Map<string, string>;
-  // Used outside of @font-face blocks (JS, html preload) and for unknown families
+  // Used outside of @font-face blocks (JS, html preload)
   fallback: string;
 }
 
@@ -36,9 +38,6 @@ const NAME_ENCODERS: Array<(name: string) => string> = [
   (name) => name.replaceAll(" ", "%20"),
 ];
 
-const FONT_FACE_BLOCK_RE = /@font-face\s*\{[^}]*\}/g;
-const FONT_FAMILY_DECLARATION_RE = /font-family\s*:\s*([^;}]+)/;
-
 // A file name is a whole token: `icon.woff` must not match inside `my-icon.woff2`
 const NAME_START = "(?<![\\w.%-])";
 const NAME_END = "(?![\\w-])";
@@ -52,9 +51,6 @@ const createReferencePattern = (names: string[]): RegExp =>
       "(?:\\?subset=([^\"'`)\\s&]+)|([\"'`])\\s*\\+\\s*([\"'`])\\?subset=([^\"'`&\\s]+)\\4)?",
     "g",
   );
-
-const getBlockFamily = (block: string): string | undefined =>
-  FONT_FAMILY_DECLARATION_RE.exec(block)?.[1].replace(/["']/g, "").trim();
 
 function createNameVariants(renames: AssetRename[]): Map<string, NameVariant> {
   const variants = new Map<string, NameVariant>();
@@ -74,12 +70,16 @@ function createTargets(renames: AssetRename[]): RenameTargets {
     const newBase = basename(newFileName);
     const bySubset = targets.get(oldBase) ?? new Map<string, RenameTarget>();
     const target = bySubset.get(subsetKey) ?? { byFamily: new Map(), fallback: newBase };
-    target.byFamily.set(fontName, newBase);
+    target.byFamily.set(normalizeFamily(fontName), newBase);
     bySubset.set(subsetKey, target);
     targets.set(oldBase, bySubset);
   }
   return targets;
 }
+
+// Inside @font-face a family without its own result keeps the original (full) file
+const pickNewBase = (target: RenameTarget, family: string | undefined): string | undefined =>
+  family === undefined ? target.fallback : target.byFamily.get(normalizeFamily(family));
 
 function updateImportedAssets(chunk: Rollup.OutputChunk, renames: AssetRename[]): void {
   const importedAssets = (chunk as ChunkMetadata).viteMetadata?.importedAssets;
@@ -94,6 +94,42 @@ function updateImportedAssets(chunk: Rollup.OutputChunk, renames: AssetRename[])
     }
   }
 }
+
+type RewriteNames = (text: string, family?: string) => string;
+
+function createNameRewriter(renames: AssetRename[]): RewriteNames {
+  const variants = createNameVariants(renames);
+  const targets = createTargets(renames);
+  const names = [...variants.keys()].sort((a, b) => b.length - a.length);
+  const pattern = createReferencePattern(names);
+
+  return (text, family) =>
+    text.replace(
+      pattern,
+      (match, name: string, query?: string, quote?: string, _q?: string, concatQuery?: string) => {
+        const { oldBase, encode } = variants.get(name)!;
+        const value = query ?? concatQuery;
+        const subsetKey = value ? getSubsetKey(parseSubsetQuery(value)) : "";
+        const target = targets.get(oldBase)?.get(subsetKey);
+        const newBase = target && pickNewBase(target, family);
+        if (!newBase) return match;
+        return encode(newBase) + (concatQuery ? quote : "");
+      },
+    );
+}
+
+// @font-face blocks are rewritten per family, the text around them with the fallback
+const rewriteText = (text: string, rewriteNames: RewriteNames): string => {
+  let result = "";
+  let lastIndex = 0;
+  for (const match of text.matchAll(FONT_FACE_BLOCK_RE)) {
+    const [block] = match;
+    result += rewriteNames(text.slice(lastIndex, match.index));
+    result += rewriteNames(block, getBlockFamily(block));
+    lastIndex = match.index + block.length;
+  }
+  return result + rewriteNames(text.slice(lastIndex));
+};
 
 function findLeftovers(texts: string[], renames: AssetRename[]): Set<string> {
   const leftovers = new Set<string>();
@@ -120,48 +156,18 @@ export function rewriteFontReferences(
 ): Set<string> {
   if (!renames.length) return new Set();
 
-  const variants = createNameVariants(renames);
-  const targets = createTargets(renames);
-  const names = [...variants.keys()].sort((a, b) => b.length - a.length);
-  const pattern = createReferencePattern(names);
-
-  const rewriteNames = (text: string, family?: string): string =>
-    text.replace(
-      pattern,
-      (
-        match,
-        name: string,
-        query?: string,
-        quote?: string,
-        _quote?: string,
-        concatQuery?: string,
-      ) => {
-        const { oldBase, encode } = variants.get(name)!;
-        const value = query ?? concatQuery;
-        const subsetKey = value ? getSubsetKey(parseSubsetQuery(value)) : "";
-        const target = targets.get(oldBase)?.get(subsetKey);
-        if (!target) return match;
-        const newBase = (family && target.byFamily.get(family)) || target.fallback;
-        return encode(newBase) + (concatQuery ? quote : "");
-      },
-    );
-
-  const rewrite = (text: string): string =>
-    rewriteNames(
-      text.replace(FONT_FACE_BLOCK_RE, (block) => rewriteNames(block, getBlockFamily(block))),
-    );
-
+  const rewriteNames = createNameRewriter(renames);
   const texts: string[] = [];
   for (const item of Object.values(bundle)) {
     if (item.type === "chunk") {
-      const code = rewrite(item.code);
+      const code = rewriteText(item.code, rewriteNames);
       if (code !== item.code) {
         item.code = code;
         updateImportedAssets(item, renames);
       }
       texts.push(item.code);
     } else if (typeof item.source === "string") {
-      item.source = rewrite(item.source);
+      item.source = rewriteText(item.source, rewriteNames);
       texts.push(item.source);
     }
   }
