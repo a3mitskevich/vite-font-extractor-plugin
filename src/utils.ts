@@ -6,12 +6,9 @@ import {
   FONT_FACE_BLOCK_REGEX,
   FONT_FAMILY_RE,
   FONT_URL_REGEX,
-  GLYPH_REGEX,
   GOOGLE_FONT_URL_RE,
   POSTFIX_URL_RE,
   SUPPORTED_RESULTS_FORMATS,
-  SYMBOL_REGEX,
-  UNICODE_REGEX,
 } from "./constants";
 import type { ImportResolvers, SubsetOptions } from "./types";
 
@@ -176,19 +173,4 @@ export function groupBy<T>(array: T[], key: (item: T) => string): Record<string,
   return result;
 }
 
-export const findUnicodeGlyphs = (code: string): string[] => {
-  const matches = code.match(GLYPH_REGEX) || [];
-  return matches
-    .map((match) => {
-      const [, unicodeMatch] = match.match(UNICODE_REGEX) || [];
-      if (unicodeMatch) {
-        return String.fromCharCode(parseInt(unicodeMatch, 16));
-      }
-      const [, symbolMatch] = match.match(SYMBOL_REGEX) || [];
-      if (symbolMatch) {
-        return symbolMatch;
-      }
-      return "";
-    })
-    .filter(Boolean);
-};
+export { findUnicodeGlyphs } from "./content-glyphs";

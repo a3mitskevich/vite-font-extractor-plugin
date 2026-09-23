@@ -218,6 +218,85 @@ describe("findUnicodeGlyphs", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toBe(String.fromCharCode(0xe002));
   });
+
+  const cp = (hex: number): string => String.fromCodePoint(hex);
+
+  it("should find a literal glyph in single quotes", () => {
+    expect(findUnicodeGlyphs(`.a::before { content: '${cp(0xe5cd)}'; }`)).toEqual([cp(0xe5cd)]);
+  });
+
+  it("should read escapes of 1 to 6 hex digits", () => {
+    const css = `.a{content:"\\0e5cd"} .b{content:"\\E838"} .c{content:"\\41"} .d{content:"\\00E88A"}`;
+    expect(findUnicodeGlyphs(css)).toEqual([cp(0xe5cd), cp(0xe838), "A", cp(0xe88a)]);
+  });
+
+  it("should read a non-BMP escape as one code point", () => {
+    expect(findUnicodeGlyphs(`.a{content:"\\1F600"}`)).toEqual([cp(0x1f600)]);
+  });
+
+  it("should consume one whitespace after an escape", () => {
+    expect(findUnicodeGlyphs(`.a{content:"\\e5cd \\e838"}`)).toEqual([cp(0xe5cd), cp(0xe838)]);
+    expect(findUnicodeGlyphs(`.a{content:"\\41 B"}`)).toEqual(["A", "B"]);
+  });
+
+  it("should find every glyph of one value", () => {
+    expect(findUnicodeGlyphs(`.a{content:"\\e5cd\\e838"}`)).toEqual([cp(0xe5cd), cp(0xe838)]);
+    expect(findUnicodeGlyphs(`.a{content:"${cp(0xe5cd)}${cp(0xe838)}"}`)).toEqual([
+      cp(0xe5cd),
+      cp(0xe838),
+    ]);
+  });
+
+  it("should keep surrogate pairs and emoji whole", () => {
+    expect(findUnicodeGlyphs(`.a{content:"😀"}`)).toEqual(["😀"]);
+    expect(findUnicodeGlyphs(`.a{content:"${cp(0xf0001)}"}`)).toEqual([cp(0xf0001)]);
+  });
+
+  it("should read several strings and ignore functions", () => {
+    const css = `.a::before { content: counter(item) "\\e5cd" attr(data-icon) 'x' counters(n, ".") ; }`;
+    expect(findUnicodeGlyphs(css)).toEqual([cp(0xe5cd), "x"]);
+  });
+
+  it("should return ligature text as one entry", () => {
+    expect(findUnicodeGlyphs(`.a{content:"close"} .b{content:'play_arrow'}`)).toEqual([
+      "close",
+      "play_arrow",
+    ]);
+  });
+
+  it("should split ligature words separated by spaces", () => {
+    expect(findUnicodeGlyphs(`.a{content:"close  star"}`)).toEqual(["close", "star"]);
+  });
+
+  it("should ignore whitespace-only and empty values", () => {
+    expect(findUnicodeGlyphs(`.a{content:""} .b{content:" "} .c{content:"\\20"}`)).toEqual([]);
+  });
+
+  it("should read escaped quotes and non-hex escapes as literal characters", () => {
+    expect(findUnicodeGlyphs(`.a{content:"\\""} .b{content:'\\''} .c{content:"\\/"}`)).toEqual([
+      '"',
+      "'",
+      "/",
+    ]);
+  });
+
+  it("should not end a value at a semicolon inside a string", () => {
+    expect(findUnicodeGlyphs(`.a{content:";" "\\e5cd"}`)).toEqual([";", cp(0xe5cd)]);
+  });
+
+  it("should skip invalid code points", () => {
+    expect(
+      findUnicodeGlyphs(`.a{content:"\\0"} .b{content:"\\D800"} .c{content:"\\110000"}`),
+    ).toEqual([]);
+  });
+
+  it("should read custom properties holding a content value", () => {
+    expect(findUnicodeGlyphs(`:root{--icon-content:"\\e5cd"}`)).toEqual([cp(0xe5cd)]);
+  });
+
+  it("should ignore properties without strings", () => {
+    expect(findUnicodeGlyphs(`.a{justify-content:center;align-content:space-between}`)).toEqual([]);
+  });
 });
 
 describe("camelCase", () => {
