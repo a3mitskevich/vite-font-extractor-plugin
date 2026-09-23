@@ -90,6 +90,8 @@ export interface InternalLogger extends Pick<Logger, LogType> {
   found(type: string, name: string, detail?: string): void;
   minified(fontName: string, ext: string, original: number, result: number, isLast?: boolean): void;
   cached(fontName: string): void;
+  // Number of `cached()` calls so far — the build summary counts cache hits from it
+  cachedCount(): number;
   skipped(fontName: string, reason: string): void;
   summary(stats: MinifyStats): void;
 }

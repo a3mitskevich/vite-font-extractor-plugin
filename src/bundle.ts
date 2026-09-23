@@ -202,6 +202,7 @@ export async function generateBundleHook(
 
   logger.phase("✂ ", "Minify");
 
+  const cachedBefore = logger.cachedCount();
   const minified = (await Promise.all(groups.map((group) => minifyGroup(ctx, group)))).flat();
   const renames = emitMinifiedFonts(emitFile, getFileName, minified);
 
@@ -214,7 +215,7 @@ export async function generateBundleHook(
 
   const stats: MinifyStats = {
     minified: minified.length,
-    cached: 0,
+    cached: logger.cachedCount() - cachedBefore,
     saved: minified.reduce((sum, font) => sum + font.savedBytes, 0),
   };
   logger.summary(stats);

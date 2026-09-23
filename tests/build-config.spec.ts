@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { OutputAsset, OutputChunk } from "rollup";
+import { rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import * as fontkit from "fontkit";
 import type { PluginOption } from "../src";
@@ -277,6 +278,22 @@ describe.sequential("Build configuration", () => {
         expect(errors).toHaveLength(1);
         expect(errors[0].message).toMatch(/Failed to minify "Font Name" — keeping original: \S+/);
         expect(findBrokenReferences(output)).toEqual([]);
+      });
+
+      it("should count fonts restored from cache in the summary", async () => {
+        const cacheDir = join(outDir, `cache-${generateId()}`);
+        const pluginOptions: PluginOption = { ...MANUAL_OPTIONS, cache: cacheDir };
+        const summaryOf = (messages: LoggerMessage[]): string | undefined =>
+          messages.find((message) => message.message.includes("Done"))?.message;
+        try {
+          const first = await buildWithConfig(version, { fixture: "plain", pluginOptions });
+          const second = await buildWithConfig(version, { fixture: "plain", pluginOptions });
+
+          expect(summaryOf(first.messages)).not.toContain("cached");
+          expect(summaryOf(second.messages)).toContain("1 cached");
+        } finally {
+          rmSync(cacheDir, { recursive: true, force: true });
+        }
       });
     });
   };
