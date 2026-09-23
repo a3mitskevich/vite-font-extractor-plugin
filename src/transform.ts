@@ -16,7 +16,7 @@ import {
 import styler from "./styler";
 import { type PluginContext, getLogger } from "./context";
 import { checkFontProcessing } from "./minify";
-import { processServeAutoFontMinify, processServeFontMinify } from "./serve";
+import { createServeFontLoader, type ServeFontRequest } from "./serve";
 import {
   type AssetReference,
   extractAssetReferences,
@@ -61,31 +61,33 @@ const tagFamilyUrl = (url: string, fontName: string): string =>
 
 function registerServeProxy(
   ctx: PluginContext,
-  id: string,
   requestUrl: string,
-  sourceUrl: string,
-  font: FontFaceMeta,
+  request: ServeFontRequest,
 ): void {
   if (ctx.fontServeProxy.has(requestUrl)) {
     return;
   }
-  const process = font.options.auto
-    ? processServeAutoFontMinify(ctx, id, sourceUrl, font.name)
-    : processServeFontMinify(ctx, id, sourceUrl, font.name);
-  ctx.fontServeProxy.set(requestUrl, process);
-  if (font.options.auto) {
+  ctx.fontServeProxy.set(requestUrl, createServeFontLoader(ctx, request));
+  if (request.auto) {
     ctx.loadedAutoFontMap.set(requestUrl, false);
   }
 }
 
 function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceMeta): string {
   const localUrls = font.aliases.filter((url) => !url.startsWith("data:"));
-  for (const url of localUrls) {
-    const sourceUrl = stripBase(url, ctx.base);
+  const sourceUrls = localUrls.map((url) => stripBase(url, ctx.base));
+  localUrls.forEach((url, index) => {
+    const request: ServeFontRequest = {
+      importer: id,
+      url: sourceUrls[index],
+      aliases: sourceUrls,
+      fontName: font.name,
+      auto: font.options.auto,
+    };
     // The plain url keeps working (served for the first family that registered it)
-    registerServeProxy(ctx, id, url, sourceUrl, font);
-    registerServeProxy(ctx, id, tagFamilyUrl(url, font.name), sourceUrl, font);
-  }
+    registerServeProxy(ctx, url, request);
+    registerServeProxy(ctx, tagFamilyUrl(url, font.name), request);
+  });
   // Face text differs from the source when it contains comments — keep plain urls then
   if (!code.includes(font.face)) {
     return code;

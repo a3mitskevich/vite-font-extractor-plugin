@@ -1,0 +1,8 @@
+@font-face {
+    font-family: 'Text Font';
+    src: url("../fonts/text-font.woff2") format("woff2");
+}
+
+body {
+    font-family: "Text Font", serif;
+}

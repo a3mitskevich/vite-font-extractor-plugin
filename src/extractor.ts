@@ -1,14 +1,14 @@
-import { type Plugin, send } from "vite";
+import type { Plugin } from "vite";
 import { isAbsolute } from "node:path";
-import type { PluginOption, ServeFontStubResponse } from "./types";
+import type { PluginOption } from "./types";
 import Cache from "./cache";
-import { createResolvers, intersection, mergePath, toError } from "./utils";
+import { createResolvers, intersection, mergePath } from "./utils";
 import { PLUGIN_NAME, TRANSFORM_ID_INCLUDE } from "./constants";
-import styler from "./styler";
 import { createInternalLogger } from "./internal-logger";
-import { createPluginContext, getLogger } from "./context";
+import { createPluginContext } from "./context";
 import { transformHook } from "./transform";
 import { generateBundleHook } from "./bundle";
+import { createServeMiddleware } from "./serve";
 
 export default function FontExtractor(pluginOption: PluginOption = { type: "auto" }): Plugin {
   const ctx = createPluginContext(pluginOption);
@@ -53,45 +53,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
     configureServer(server) {
       ctx.isServe = true;
-      const inFlightRequests = new Map<string, Promise<ServeFontStubResponse | null>>();
-      server.middlewares.use((req, res, next) => {
-        const url = req.url!;
-        const processFn = ctx.fontServeProxy.get(url);
-        if (!processFn) {
-          next();
-        } else {
-          const pending =
-            inFlightRequests.get(url) ??
-            (() => {
-              const p = processFn();
-              inFlightRequests.set(url, p);
-              p.finally(() => inFlightRequests.delete(url));
-              return p;
-            })();
-          const logger = getLogger(ctx);
-          pending
-            .then((stub) => {
-              if (!stub) {
-                next();
-                return;
-              }
-              logger.fix();
-              logger.info(`Stub server response for: ${styler.path(url)}`);
-              send(req, res, stub.content, `font/${stub.extension}`, {
-                cacheControl: "no-cache",
-                headers: server.config.server.headers,
-                etag: "",
-              });
-              ctx.loadedAutoFontMap.set(url, true);
-            })
-            .catch((error) => {
-              logger.error(`Failed to process font: ${styler.path(url)}`, {
-                error: toError(error),
-              });
-              next(error);
-            });
-        }
-      });
+      server.middlewares.use(createServeMiddleware(ctx, server));
     },
     // Vite 6+: fonts are emitted by the client build only
     applyToEnvironment(environment) {
