@@ -48,7 +48,8 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 const createReferencePattern = (names: string[]): RegExp =>
   new RegExp(
     `${NAME_START}(${names.map(escapeRegExp).join("|")})${NAME_END}` +
-      "(?:\\?subset=([^\"'`)\\s&]+)|([\"'`])\\s*\\+\\s*([\"'`])\\?subset=([^\"'`&\\s]+)\\4)?",
+      // Vite decodes urls, so a subset value may contain spaces (`?subset=A%20B` → `A B`)
+      "(?:\\?subset=([^\"'`)&\\r\\n]+)|([\"'`])\\s*\\+\\s*([\"'`])\\?subset=([^\"'`&\\r\\n]+)\\4)?",
     "g",
   );
 

@@ -127,10 +127,6 @@ describe("extractAssetReferences: decoded queries", () => {
 
 const encodedFixture = createFixture("subset-query-encoded", { fonts: [] });
 
-// Vite 6–8 write `?subset=A B` (decoded) into the output; rewrite-refs.ts must accept spaces
-// in the query before the "Space" face points to its minified file there
-const REWRITES_DECODED_SPACES: Record<string, boolean> = { "5": true };
-
 describe("?subset= encoding in builds", () => {
   Object.keys(viteBuild).forEach((version) => {
     describe(`vite@${version}`, () => {
@@ -161,8 +157,8 @@ describe("?subset= encoding in builds", () => {
         expectSubset(getAsset(output, faces.get("Range")!), "0123456789");
       });
 
-      const spaceTest = REWRITES_DECODED_SPACES[version.split(".")[0]] ? it : it.fails;
-      spaceTest("decodes %20 to a space", () => {
+      // Vite 6–8 write the decoded `?subset=A B` into the output
+      it("decodes %20 to a space", () => {
         expectSubset(getAsset(output, faces.get("Space")!), "A B");
       });
     });
