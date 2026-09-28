@@ -11,8 +11,8 @@
 
 # vite-font-extractor-plugin
 
-Vite plugin that **extracts only the glyphs you use** from font files — icon fonts, text fonts, or both. Supports Vite
-5, 6, 7, and 8.
+Vite plugin that **extracts only the glyphs you use** from font files — icon fonts, text fonts, or both — and emits
+them under content-hashed names, so they can be cached forever. Supports Vite 5, 6, 7, and 8.
 
 ```
 Before:  Material Icons   348 KB (all 2,000+ icons)
@@ -21,6 +21,8 @@ After:   Material Icons    12 KB (only 3 icons you need)   → 97% smaller
 
 ## Features
 
+- **Cache-friendly file names** — a minified font is named by the hash of its content, so a changed font or glyph set
+  gets a new file name and CDN or browser caches never need invalidation ([details](#long-term-caching))
 - **Icon font minification** — keep only the ligatures you use (Material Icons and other ligature icon fonts)
 - **Text font subsetting** — keep only specific characters via `?subset=` query or target options
 - **Zero-config auto mode** — detects glyphs from CSS `content: "..."` automatically
@@ -165,6 +167,29 @@ form `family=Material+Icons|Roboto` and the css2 API with several `family=` para
 - `.otf` can't be written by the minifier — other formats of the `@font-face` are minified and the `.otf` is kept
   original with a warning. A font available only as `.eot` is kept original too.
 - SSR builds are skipped: fonts are emitted by the client build.
+
+## Long-term caching
+
+Minified fonts can be served with `Cache-Control: public, max-age=31536000, immutable` and never invalidated on a CDN:
+new content always comes under a new file name.
+
+- The plugin emits each result under the name of its source font, and the bundler names the file by
+  `assetFileNames`. Vite's default `assets/[name]-[hash][extname]` hashes the bytes of the minified font.
+- Every reference (CSS, JS, HTML preloads, manifest) is rewritten to the new name in the same build.
+
+| Change between builds                                                          | File name     |
+|--------------------------------------------------------------------------------|---------------|
+| An icon added or removed, new `characters` / `unicodeRanges` / `?subset=`, new CSS `content` in auto mode | New hash      |
+| The font file replaced                                                         | New hash      |
+| Nothing changed, `cache` enabled and kept between builds                       | Same hash     |
+| Nothing changed, no cache                                                      | May change    |
+
+- The name carries a hash only when `assetFileNames` has `[hash]`. With `[name][extname]` it stays the same and the
+  CDN has to be invalidated.
+- Icon fonts are built through svg2ttf, which writes the build time (one second resolution) into the font. Without a
+  cache, two builds of the same glyphs in different seconds get different hashes — clients download the same font
+  again, though a stale font is never served under an old name. Enable [`cache`](#caching) and keep its directory
+  between CI builds to keep file names stable.
 
 ## Caching
 
