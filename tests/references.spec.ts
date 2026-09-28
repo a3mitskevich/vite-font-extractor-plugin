@@ -176,6 +176,32 @@ describe.sequential("Font references in build output", () => {
         expect(findBrokenFontReferences(items)).toEqual([]);
       });
 
+      it("should not rewrite a font whose file name ends with a minified file name", async () => {
+        const { output } = await buildByVersion(version, {
+          fixture: fixtures["name-suffix"].path,
+          pluginOptions: { type: "manual", targets: [ICON_TARGET], ignore: ["Text Font"] },
+          config: {
+            build: {
+              rollupOptions: {
+                output: {
+                  // Hash-less names: the target `font.woff2` is a suffix of `text-font.woff2`
+                  assetFileNames: (asset: { name?: string; names?: string[] }) =>
+                    [...(asset.names ?? []), asset.name].includes("icon-font.woff2")
+                      ? "assets/font[extname]"
+                      : "assets/[name][extname]",
+                },
+              },
+            },
+          },
+        });
+        const items = output as OutputItem[];
+
+        expect(getFontFileByFamily(items).get("Text Font")).toBe("assets/text-font.woff2");
+        expect(getFontFileByFamily(items).get("Font Name")).not.toBe("assets/font.woff2");
+        expect(findBrokenFontReferences(items)).toEqual([]);
+        expect(findOrphanFontAssets(items)).toEqual([]);
+      });
+
       it("should point a JS ?subset= import at its own font with a relative base", async () => {
         const { output } = await buildByVersion(version, {
           fixture: fixtures["subset-js-target"].path,
