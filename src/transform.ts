@@ -26,6 +26,7 @@ import {
   getReferenceKey,
   getStandaloneGroupId,
 } from "./asset-refs";
+import { hasSubsetParam } from "./subset-options";
 
 interface RegisterOptions {
   fontName: string;
@@ -129,7 +130,7 @@ async function processFont(
 
 // Font face without target options — minified only when its sources use `?subset=`
 function registerSubsetFace(ctx: PluginContext, name: string, aliases: string[]): void {
-  if (!aliases.some((alias) => alias.includes("?subset="))) {
+  if (!aliases.some(hasSubsetParam)) {
     getLogger(ctx).warn(`Font "${name}" has no minify options — add to targets or use ?subset=`);
     return;
   }
@@ -239,7 +240,7 @@ export async function transformHook(ctx: PluginContext, code: string, id: string
 
         if (!options) {
           // Dev minifies a face without a target by its `?subset=` alone, like build
-          if (ctx.isServe && aliases.some((alias) => alias.includes("?subset="))) {
+          if (ctx.isServe && aliases.some(hasSubsetParam)) {
             return { name, face, aliases, options: createSubsetOptions(name, {}) };
           }
           registerSubsetFace(ctx, name, aliases);
@@ -264,7 +265,7 @@ export async function transformHook(ctx: PluginContext, code: string, id: string
     }
   }
 
-  if (!ctx.isServe && code.includes("?subset=")) {
+  if (!ctx.isServe && hasSubsetParam(code)) {
     registerStandaloneSubsets(ctx, code);
   }
 

@@ -174,6 +174,8 @@ export const fixtures = {
   "subset-same-css": createFixture("subset-same-css", { fonts: [] }),
   "subset-same-js": createFixture("subset-same-js", { fonts: [] }),
   "subset-js": createFixture("subset-js", { fonts: [{ name: "Font", urls: [] }] }),
+  "subset-js-target": createFixture("subset-js-target", { fonts: [] }),
+  "subset-query-params": createFixture("subset-query-params", { fonts: [] }),
   "subset-chars": createFixture("subset-chars"),
   "subset-range": createFixture("subset-range"),
   "subset-combined": createFixture("subset-combined"),
@@ -372,9 +374,16 @@ export const collectFontReferences = (
   return output.flatMap((item) => {
     const text = getReferenceText(item);
     if (!text) return [];
-    return Array.from(text.matchAll(PATH_TOKEN_RE), ([token]) => decodePath(token))
-      .filter((path) => FONT_FILE_RE.test(path))
-      .map((path) => ({ from: item.fileName, path: fileByBaseName.get(baseNameOf(path)) ?? path }));
+    return Array.from(text.matchAll(PATH_TOKEN_RE), (match) => ({
+      path: decodePath(match[0]),
+      // `font.woff2&v=1`: params without `?` are part of the path, the url 404s
+      hasBrokenQuery: text[match.index + match[0].length] === "&",
+    }))
+      .filter(({ path }) => FONT_FILE_RE.test(path))
+      .map(({ path, hasBrokenQuery }) => ({
+        from: item.fileName,
+        path: hasBrokenQuery ? `${path}&` : (fileByBaseName.get(baseNameOf(path)) ?? path),
+      }));
   });
 };
 

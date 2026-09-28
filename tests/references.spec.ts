@@ -8,6 +8,7 @@ import {
   collectFontReferences,
   type ContainerVersion,
   findBrokenFontReferences,
+  findOrphanFontAssets,
   fixtures,
   fixturesDir,
   fontsLength,
@@ -173,6 +174,54 @@ describe.sequential("Font references in build output", () => {
         expect(new Set(jsPaths)).toEqual(new Set(fontAssets.map((asset) => asset.fileName)));
         expect(entry.code).not.toContain("?subset=");
         expect(findBrokenFontReferences(items)).toEqual([]);
+      });
+
+      it("should point a JS ?subset= import at its own font with a relative base", async () => {
+        const { output } = await buildByVersion(version, {
+          fixture: fixtures["subset-js-target"].path,
+          pluginOptions: {
+            type: "manual",
+            targets: [{ fontName: "Text Font", engine: "subset", characters: "A" }],
+          },
+          config: { base: "./" },
+        });
+        const items = output as OutputItem[];
+
+        const fontAssets = getFontAssets(items);
+        expect(fontAssets).toHaveLength(2);
+        const css = items.find((item) => item.fileName.endsWith(".css"))!;
+        const entry = getEntryChunk(items)!;
+        const [cssPath] = collectFontReferences([css], items).map((ref) => ref.path);
+        const [jsPath] = collectFontReferences([entry], items).map((ref) => ref.path);
+        expect(cssPath).not.toBe(jsPath);
+        expect(new Set([cssPath, jsPath])).toEqual(
+          new Set(fontAssets.map((asset) => asset.fileName)),
+        );
+        expect(entry.code).not.toContain("?subset=");
+        expect(findBrokenFontReferences(items)).toEqual([]);
+        expect(findOrphanFontAssets(items)).toEqual([]);
+      });
+
+      it("should keep other query params next to ?subset=", async () => {
+        const { output } = await buildByVersion(version, {
+          fixture: fixtures["subset-query-params"].path,
+          pluginOptions: { type: "manual", targets: [] },
+        });
+        const items = output as OutputItem[];
+
+        const fontAssets = getFontAssets(items);
+        expect(fontAssets).toHaveLength(2);
+        for (const asset of fontAssets) {
+          expect(Buffer.from(asset.source).length).toBeLessThan(textFontsLength.woff2);
+        }
+        const css = items.find((item): item is OutputAsset => item.fileName.endsWith(".css"))!;
+        const cssCode = String(css.source);
+        const entry = getEntryChunk(items)!;
+        expect(cssCode).toMatch(/\.woff2\?v=1\b/);
+        expect(entry.code).toMatch(/\.woff2\?v=2\b/);
+        expect(cssCode + entry.code).not.toContain("subset=");
+        expect(findBrokenFontReferences(items)).toEqual([]);
+        expect(findOrphanFontAssets(items)).toEqual([]);
       });
 
       it("should strip ?subset= from CSS font urls", async () => {

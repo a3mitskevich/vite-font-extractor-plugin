@@ -1,5 +1,6 @@
 import type { SubsetOptions } from "./types";
 import { getSubsetKey, parseSubsetQuery } from "./utils";
+import { SUBSET_PARAM_RE } from "./subset-options";
 
 export interface AssetReference {
   referenceId: string;
@@ -14,8 +15,6 @@ export interface AssetReference {
 // but not line breaks: placeholders may come one per line
 const ASSET_PLACEHOLDER_RE =
   /__VITE_ASSET__([\w$-]+)__(?:\$_([^"'`)\r\n]*?)__|(\?[^"'`)\r\n]*))?|import\.meta\.ROLLDOWN_FILE_URL_([\w$-]+)(?:\s*\+\s*(["'`])(\?[^"'`]*)\5)?/g;
-
-const SUBSET_PARAM_RE = /[?&]subset=([^&#]+)/;
 
 const parseSubset = (query: string | undefined): SubsetOptions | undefined => {
   const value = query ? SUBSET_PARAM_RE.exec(query)?.[1] : undefined;

@@ -44,14 +44,42 @@ const NAME_END = "(?![\\w-])";
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// Matches `<name>`, `<name>?subset=X` and the unminified Rolldown form `<name>" + "?subset=X"`
+const SUBSET_PARAM = "subset=";
+
+// A query with a `subset` param among others (`?v=2&subset=X&w=1`), `stop` ends the url.
+// Vite decodes urls, so a subset value may contain spaces (`?subset=A%20B` → `A B`)
+const createSubsetQuery = (stop: string): string =>
+  `((?:[^${stop}&?]*&)*${SUBSET_PARAM}[^${stop}&]+(?:&[^${stop}]*)?)`;
+
+// Rolldown with a relative base: `new URL("<name>", import.meta.url).href + "?subset=X"`
+const NEW_URL_HREF = "\\s*,\\s*import\\.meta\\.url\\s*\\)\\.href";
+
+// Matches `<name>`, `<name>?subset=X` and the Rolldown forms `<name>" + "?subset=X"` and
+// `<name>", import.meta.url).href + "?subset=X"`
 const createReferencePattern = (names: string[]): RegExp =>
   new RegExp(
     `${NAME_START}(${names.map(escapeRegExp).join("|")})${NAME_END}` +
-      // Vite decodes urls, so a subset value may contain spaces (`?subset=A%20B` → `A B`)
-      "(?:\\?subset=([^\"'`)&\\r\\n]+)|([\"'`])\\s*\\+\\s*([\"'`])\\?subset=([^\"'`&\\r\\n]+)\\4)?",
+      `(?:\\?${createSubsetQuery("\"'`)\\r\\n")}` +
+      `|(["'\`])(${NEW_URL_HREF})?\\s*\\+\\s*(["'\`])\\?${createSubsetQuery("\"'`\\r\\n")}\\5)?`,
     "g",
   );
+
+interface SubsetQuery {
+  subsetKey: string;
+  // Other params of the query, kept on the new url: `?v=2`, or ""
+  restQuery: string;
+}
+
+function splitSubsetQuery(query: string | undefined): SubsetQuery {
+  if (!query) return { subsetKey: "", restQuery: "" };
+  const params = query.split("&");
+  const value = params.find((param) => param.startsWith(SUBSET_PARAM))!;
+  const rest = params.filter((param) => !param.startsWith(SUBSET_PARAM));
+  return {
+    subsetKey: getSubsetKey(parseSubsetQuery(value.slice(SUBSET_PARAM.length))),
+    restQuery: rest.length ? `?${rest.join("&")}` : "",
+  };
+}
 
 function createNameVariants(renames: AssetRename[]): Map<string, NameVariant> {
   const variants = new Map<string, NameVariant>();
@@ -107,14 +135,22 @@ function createNameRewriter(renames: AssetRename[]): RewriteNames {
   return (text, family) =>
     text.replace(
       pattern,
-      (match, name: string, query?: string, quote?: string, _q?: string, concatQuery?: string) => {
+      (
+        match,
+        name: string,
+        query?: string,
+        quote?: string,
+        newUrlHref?: string,
+        _q?: string,
+        concatQuery?: string,
+      ) => {
         const { oldBase, encode } = variants.get(name)!;
-        const value = query ?? concatQuery;
-        const subsetKey = value ? getSubsetKey(parseSubsetQuery(value)) : "";
+        const { subsetKey, restQuery } = splitSubsetQuery(query ?? concatQuery);
         const target = targets.get(oldBase)?.get(subsetKey);
         const newBase = target && pickNewBase(target, family);
         if (!newBase) return match;
-        return encode(newBase) + (concatQuery ? quote : "");
+        const url = encode(newBase) + restQuery;
+        return concatQuery === undefined ? url : url + quote + (newUrlHref ?? "");
       },
     );
 }

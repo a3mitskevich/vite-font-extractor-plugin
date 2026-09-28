@@ -20,6 +20,8 @@ Stabilize Vite 5–8 support; Vite 8 is no longer experimental. This is the last
 - Fix auto mode crashing the build on a `@font-face` with `?subset=`
 - Fix Google Fonts urls in one-line or minified HTML and css2 urls with several families
 - Fix `?subset=` decoding (`%20`, `%2C`, lower-case `u+`) and `ignore` for `?subset=` faces
+- Fix `?subset=` next to other query params (`?v=2&subset=…`): the font is minified and the other params stay on the url
+- Fix a JS `?subset=` import pointing at the wrong font on Vite 8 with a relative `base`
 - Fix stale references between `build --watch` rebuilds
 - Implement the documented `apply` option; warn when `type` is not set (it falls back to `manual`)
 - Dev server: `?subset=` in CSS, `?v=` in font urls and EOT fonts are minified

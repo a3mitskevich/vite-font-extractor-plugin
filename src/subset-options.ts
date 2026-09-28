@@ -1,7 +1,10 @@
 import type { OptionsWithCacheSid, SubsetOptions, Target } from "./types";
 import { parseSubsetQuery } from "./utils";
 
-const SUBSET_PARAM_RE = /[?&]subset=([^&#]+)/;
+// `subset` may follow other params: `?v=2&subset=ABC`
+export const SUBSET_PARAM_RE = /[?&]subset=([^&#]+)/;
+
+export const hasSubsetParam = (text: string): boolean => SUBSET_PARAM_RE.test(text);
 
 // `?subset=` of a font url, undefined when the url has none
 export function parseUrlSubset(url: string): SubsetOptions | undefined {
