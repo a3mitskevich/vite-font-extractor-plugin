@@ -71,9 +71,6 @@ function registerServeProxy(
     return;
   }
   ctx.fontServeProxy.set(requestUrl, createServeFontLoader(ctx, request));
-  if (request.auto) {
-    ctx.loadedAutoFontMap.set(requestUrl, false);
-  }
 }
 
 function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceMeta): string {

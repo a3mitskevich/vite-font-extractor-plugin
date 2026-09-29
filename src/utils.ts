@@ -95,8 +95,6 @@ export function intersection<T>(array1: T[], array2: T[]): T[] {
   return array1.filter((item) => array2.includes(item));
 }
 
-export const escapeComments = (str: string): string => str.replaceAll(/\/\/.+\s/g, "");
-
 export const stripCssComments = (code: string): string => code.replace(/\/\*[\s\S]*?\*\//g, "");
 
 // "/app/fonts/a.woff2" with base "/app/" → "/fonts/a.woff2"
@@ -168,15 +166,6 @@ export function camelCase(str: string): string {
   return str
     .replace(/[\s_-]+(.)?/g, (_, c: string | undefined) => (c ? c.toUpperCase() : ""))
     .replace(/^[A-Z]/, (c) => c.toLowerCase());
-}
-
-export function groupBy<T>(array: T[], key: (item: T) => string): Record<string, T[]> {
-  const result: Record<string, T[]> = {};
-  for (const item of array) {
-    const k = key(item);
-    (result[k] ??= []).push(item);
-  }
-  return result;
 }
 
 export { findUnicodeGlyphs } from "./content-glyphs";

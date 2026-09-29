@@ -7,7 +7,6 @@ import {
   findUnicodeGlyphs,
   stripCssComments,
   camelCase,
-  groupBy,
 } from "../src/utils";
 
 describe("extractFontFaces", () => {
@@ -318,27 +317,5 @@ describe("camelCase", () => {
 
   it("should lowercase first letter of PascalCase", () => {
     expect(camelCase("FontName")).toBe("fontName");
-  });
-});
-
-describe("groupBy", () => {
-  it("should group items by key", () => {
-    const items = [
-      { type: "a", value: 1 },
-      { type: "b", value: 2 },
-      { type: "a", value: 3 },
-    ];
-    const result = groupBy(items, (i) => i.type);
-    expect(result).toEqual({
-      a: [
-        { type: "a", value: 1 },
-        { type: "a", value: 3 },
-      ],
-      b: [{ type: "b", value: 2 }],
-    });
-  });
-
-  it("should return empty object for empty array", () => {
-    expect(groupBy([], () => "key")).toEqual({});
   });
 });

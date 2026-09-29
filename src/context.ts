@@ -33,7 +33,6 @@ export interface PluginContext {
   readonly moduleReferences: Map<string, ReadonlySet<string>>;
   readonly fontServeProxy: Map<string, () => Promise<ServeFontStubResponse | null>>;
   readonly progress: Map<string, string>;
-  readonly loadedAutoFontMap: Map<string, boolean>;
 }
 
 export function getLogger(ctx: PluginContext): InternalLogger {
@@ -121,7 +120,6 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     moduleReferences: new Map(),
     fontServeProxy: new Map(),
     progress: new Map(),
-    loadedAutoFontMap: new Map(),
   };
 }
 

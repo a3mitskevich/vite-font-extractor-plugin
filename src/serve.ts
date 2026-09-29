@@ -139,7 +139,6 @@ export function createServeMiddleware(
             headers: server.config.server.headers,
             etag: "",
           });
-          ctx.loadedAutoFontMap.set(url, true);
         },
         (error: unknown) => {
           logFailure(url, error);

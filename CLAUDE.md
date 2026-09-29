@@ -54,7 +54,7 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 
 **`src/serve.ts`** — Dev server middleware and lazy minification (manual, auto, `?subset=`, `?v=`, non-root `base`, per-family urls `?font-extractor-family=`). Minification errors are logged and the original font is served — the dev server must never crash.
 
-**`src/utils.ts`** — Regex extraction helpers, `camelCase`, `groupBy`, `stripCssComments`, `toError`.
+**`src/utils.ts`** — Regex extraction helpers, `camelCase`, `stripCssComments`, `toError`.
 
 **`src/cache.ts`** — Async file-system cache in `.font-extractor-cache/`, keyed by font content + options; entries unused by a build are pruned. Removed when cache is disabled.
 
