@@ -20,12 +20,15 @@ type EmitFile = (file: Rollup.EmittedAsset) => string;
 
 interface FontGroup {
   fontName: string;
+  // Every font-family served by the result: families sharing a file with the same options
+  fontNames: string[];
   options: OptionsWithCacheSid;
   subsetKey: string;
   assets: Rollup.OutputAsset[];
 }
 
-interface MinifiedFont extends Omit<AssetRename, "newFileName"> {
+interface MinifiedFont extends Omit<AssetRename, "newFileName" | "fontName"> {
+  fontNames: string[];
   // Asset name the bundler builds the file name from (`assetFileNames`)
   name: string;
   source: Buffer;
@@ -45,6 +48,9 @@ function resolveAsset(
   }
 }
 
+const withFontName = (fontNames: string[], fontName: string): string[] =>
+  fontNames.includes(fontName) ? fontNames : [...fontNames, fontName];
+
 // One group = formats of one font source with one glyph set, minified by a single extract() call
 function collectFontGroups(
   getFileName: GetFileName,
@@ -53,7 +59,7 @@ function collectFontGroups(
   logger: InternalLogger,
 ): FontGroup[] {
   const groups = new Map<string, FontGroup>();
-  const seenAssets = new Set<string>();
+  const groupByAsset = new Map<string, FontGroup>();
   const references = [...ctx.transformMap];
   // `?subset=` registered outside of @font-face is redundant when a face already covers it
   const faceReferences = new Set(
@@ -77,21 +83,27 @@ function collectFontGroups(
     }
 
     const options = mergeSubsetOptions(reference.options, reference.subset, reference.fontName);
-    // The same file with the same options (repeated @font-face, CSS + JS) is minified once;
-    // families sharing a file with different options get their own result
+    // The same file with the same options (repeated @font-face, CSS + JS, families sharing a file
+    // in auto mode) is minified once and serves every family; different options get their own result
     const assetKey = `${asset.fileName}::${options.sid}`;
-    if (seenAssets.has(assetKey)) continue;
-    seenAssets.add(assetKey);
+    const seenGroup = groupByAsset.get(assetKey);
+    if (seenGroup) {
+      seenGroup.fontNames = withFontName(seenGroup.fontNames, reference.fontName);
+      continue;
+    }
 
     const groupKey = `${reference.groupId}::${options.sid}`;
     const group = groups.get(groupKey) ?? {
       fontName: reference.fontName,
+      fontNames: [],
       options,
       subsetKey: getSubsetKey(reference.subset),
       assets: [],
     };
+    group.fontNames = withFontName(group.fontNames, reference.fontName);
     group.assets.push(asset);
     groups.set(groupKey, group);
+    groupByAsset.set(assetKey, group);
   }
 
   return [...groups.values()];
@@ -99,7 +111,7 @@ function collectFontGroups(
 
 async function minifyGroup(
   ctx: PluginContext,
-  { fontName, options, subsetKey, assets }: FontGroup,
+  { fontName, fontNames, options, subsetKey, assets }: FontGroup,
 ): Promise<MinifiedFont[]> {
   const logger = getLogger(ctx);
   try {
@@ -136,7 +148,7 @@ async function minifyGroup(
           oldFileName: asset.fileName,
           name: basename(asset.name ?? asset.fileName),
           subsetKey,
-          fontName,
+          fontNames,
           source: minified,
           savedBytes: originalSize - minified.length,
         },
@@ -159,14 +171,14 @@ function emitMinifiedFonts(
   fonts: MinifiedFont[],
 ): AssetRename[] {
   const fileNames = new Map<string, string>();
-  return fonts.map(({ oldFileName, name, source, subsetKey, fontName }) => {
+  return fonts.flatMap(({ oldFileName, name, source, subsetKey, fontNames }) => {
     const key = `${name}:${getHash(source)}`;
     let newFileName = fileNames.get(key);
     if (!newFileName) {
       newFileName = getFileName(emitFile({ type: "asset", name, source }));
       fileNames.set(key, newFileName);
     }
-    return { oldFileName, newFileName, subsetKey, fontName };
+    return fontNames.map((fontName) => ({ oldFileName, newFileName, subsetKey, fontName }));
   });
 }
 

@@ -114,6 +114,27 @@ describe.sequential("Font references in build output", () => {
         expect(rendersLigature(fontOf("Icons B"), "close")).toBe(false);
       });
 
+      it("should point every auto-mode family sharing a file at the minified font", async () => {
+        const { output } = await buildByVersion(version, {
+          fixture: join(fixturesDir, "shared-file-families-auto"),
+          pluginOptions: { type: "auto" },
+        });
+        const items = output as OutputItem[];
+
+        const fileByFamily = getFontFileByFamily(items);
+        expect(fileByFamily.size).toBe(2);
+        // Auto mode extracts one glyph set for every family: one file serves both
+        expect(fileByFamily.get("Icons A")).toBe(fileByFamily.get("Icons B"));
+        expect(getFontAssets(items)).toHaveLength(1);
+        expect(findBrokenFontReferences(items)).toEqual([]);
+
+        const asset = items.find((item) => item.fileName === fileByFamily.get("Icons B"));
+        const font = fontkit.create(Buffer.from((asset as OutputAsset).source)) as fontkit.Font;
+        expect(Buffer.from((asset as OutputAsset).source).length).toBeLessThan(fontsLength.woff2);
+        expect(rendersLigature(font, "close")).toBe(true);
+        expect(rendersLigature(font, "star")).toBe(true);
+      });
+
       it("should keep the full file for a family without target sharing it", async () => {
         const { output, messages } = await buildByVersion(version, {
           fixture: join(fixturesDir, "shared-file-untargeted"),
