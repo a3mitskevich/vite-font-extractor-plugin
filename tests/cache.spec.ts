@@ -7,6 +7,7 @@ import {
   buildByVersion,
   type ContainerVersion,
   fixturesDir,
+  fontsLength,
   generateId,
   outDir,
   viteBuild,
@@ -20,7 +21,7 @@ interface TempProject {
   useFont(fileName: string): void;
 }
 
-const createTempProject = (): TempProject => {
+const createTempProject = (family = "Font Name"): TempProject => {
   const root = join(outDir, `cache-${generateId()}`);
   mkdirSync(root, { recursive: true });
   writeFileSync(
@@ -29,7 +30,7 @@ const createTempProject = (): TempProject => {
   );
   writeFileSync(
     join(root, "index.css"),
-    '@font-face { font-family: "Font Name"; src: url("./font.woff2") format("woff2"); }',
+    `@font-face { font-family: "${family}"; src: url("./font.woff2") format("woff2"); }`,
   );
   return {
     root,
@@ -86,6 +87,25 @@ describe.sequential("Disk cache", () => {
 
         const entries = readdirSync(join(project.cacheDir, CACHE_DIR_NAME));
         expect(entries).toHaveLength(1);
+      });
+
+      it("should cache a font whose family name contains path characters", async () => {
+        const family = "Icons/../Regular";
+        const project = createTempProject(family);
+        projects.push(project);
+        project.useFont("icon-font.woff2");
+
+        const { output, messages } = await build(project, {
+          fontName: family,
+          ligatures: ["close"],
+        });
+
+        expect(messages.filter((m) => m.type === "error")).toEqual([]);
+        expect(Buffer.from(getWoff2(output).source).length).toBeLessThan(fontsLength.woff2);
+        const entries = readdirSync(join(project.cacheDir, CACHE_DIR_NAME), {
+          withFileTypes: true,
+        });
+        expect(entries.map((entry) => entry.isFile())).toEqual([true]);
       });
     });
   };

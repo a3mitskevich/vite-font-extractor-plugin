@@ -15,6 +15,8 @@ import { type PluginContext, getLogger, getResolvers } from "./context";
 import { checkIconGlyphs, formatGlyphs, type IconGlyphs, splitGlyphTexts } from "./glyph-filter";
 
 const SHA256_HEX_LENGTH = 64;
+// A font-family may contain any character; the cache key is a flat file name
+const UNSAFE_FILE_NAME_CHARS_RE = /[^\w-]/g;
 
 export async function getSourceByUrl(
   ctx: PluginContext,
@@ -211,7 +213,10 @@ export async function processMinify(
 
   // Source content is part of the key: an updated font file must not hit a stale entry
   const sourceHash = getHash(source, SHA256_HEX_LENGTH);
-  const cacheKey = camelCase(fontName) + "-" + getHash(options.sid + sourceHash);
+  const cacheKey =
+    camelCase(fontName).replace(UNSAFE_FILE_NAME_CHARS_RE, "_") +
+    "-" +
+    getHash(options.sid + sourceHash);
   const emptyResult: ExtractedResult = { meta: [], report: { originalSize: 0, formats: {} } };
 
   if (ctx.cache && (await hasCachedFormats(ctx.cache, cacheKey, outputs))) {
