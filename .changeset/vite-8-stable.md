@@ -7,10 +7,10 @@ Stabilize Vite 5–8 support; Vite 8 is no longer experimental. This is the last
 - Fix Vite 8 bundles broken by a JS import with `?subset=` (undeclared identifier at runtime)
 - Fix references to minified fonts: JS chunks, repeated urls in CSS and the manifest now point at emitted files
 - Fix `@font-face` rules of one family backed by different files being replaced with one minified source
-- Fix a font file shared by several families with different options: each family now gets its own minified file (build and dev)
+- Fix a font file shared by several families with different options: each family now gets its own minified file (build and dev); in auto mode every family sharing a file points at the minified font
 - Fix dev server serving original fonts when `base` is not `/`
 - Fix `require()` resolving to the ESM build instead of `dist/index.cjs`
-- Fix stale disk cache after a font file changes; unused cache entries are pruned after a build
+- Fix stale disk cache after a font file changes; unused cache entries are pruned after a build; a `font-family` with path characters (`/`) is cached too
 - Skip SSR builds (no more "Asset not found" warnings)
 - Faster builds: `transform` hook filter keeps the plugin out of unrelated modules
 - Fix the dev server exiting on a minification error — the error is logged and the original font is served

@@ -22,7 +22,8 @@ After:   Material Icons    12 KB (only 3 icons you need)   → 97% smaller
 ## Features
 
 - **Cache-friendly file names** — a minified font is named by the hash of its content, so a changed font or glyph set
-  gets a new file name and CDN or browser caches never need invalidation ([details](#long-term-caching))
+  gets a new file name and cached fonts never need invalidation; CSS/JS referencing them are not renamed yet
+  ([details](#long-term-caching))
 - **Icon font minification** — keep only the ligatures you use (Material Icons and other ligature icon fonts)
 - **Text font subsetting** — keep only specific characters via `?subset=` query or target options
 - **Zero-config auto mode** — detects glyphs from CSS `content: "..."` automatically
@@ -122,6 +123,9 @@ rive.load({fonts: [fontUrl]})
 
 `new URL('./fonts/Roboto.woff2?subset=…', import.meta.url)` is not supported — use an `import` as above.
 
+The `?subset=` query is removed from the url after the bundle is rendered, so with `build.sourcemap` the columns
+after it on the same line of a minified chunk are slightly off in the sourcemap.
+
 ### Via plugin config
 
 ```js
@@ -176,6 +180,11 @@ new content always comes under a new file name.
 - The plugin emits each result under the name of its source font, and the bundler names the file by
   `assetFileNames`. Vite's default `assets/[name]-[hash][extname]` hashes the bytes of the minified font.
 - Every reference (CSS, JS, HTML preloads, manifest) is rewritten to the new name in the same build.
+- The CSS and JS files that reference a font are **not** renamed. The bundler hashes them before the plugin rewrites
+  the font url, and at that point they contain the original font name. When only the glyph set changes (a ligature
+  added to `targets`, an icon used in a template), `index-<hash>.css` keeps its name but points at the new font.
+  Serve CSS and JS with revalidation (`no-cache` or `must-revalidate`) rather than `immutable`, or keep the fonts of
+  previous deploys available. Renaming them together with the font is planned for 4.0.
 
 | Change between builds                                                          | File name     |
 |--------------------------------------------------------------------------------|---------------|

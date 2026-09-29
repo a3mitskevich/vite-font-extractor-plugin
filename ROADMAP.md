@@ -17,6 +17,11 @@ Development roadmap for `vite-font-extractor-plugin` — v3.1.
 - Move the disk cache to `config.cacheDir`
 - Toolchain majors: vitest 5, TypeScript 6, tsup → tsdown, changesets 3, lint-staged 17
 - Dev server: invalidate auto-mode fonts on HMR (`?v=` and non-root `base` are handled since 3.1)
+- Rename CSS/JS that reference a minified font. They are hashed before `generateBundle` rewrites the font url, so
+  a changed glyph set keeps `index-<hash>.css` under the old name (documented in 3.1, "Long-term caching").
+  CSS: re-emit the rewritten asset by content and update HTML, preload deps, `importedCss` and the manifest.
+  JS: `augmentChunkHash` with the fonts' signature. This needs deterministic fontext output (see
+  "Deterministic font hashing"); without it, the same inputs produce a new font name under an unchanged JS name
 
 ---
 
