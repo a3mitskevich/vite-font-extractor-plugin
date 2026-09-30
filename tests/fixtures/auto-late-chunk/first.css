@@ -1,0 +1,9 @@
+@font-face {
+  font-family: "Icons A";
+  src: url("../fonts/icon-font.woff2") format("woff2");
+}
+
+.close::before {
+  font-family: "Icons A";
+  content: "close";
+}

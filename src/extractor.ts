@@ -109,8 +109,11 @@ const createGlyphWait =
 function checkAutoGlyphs(ctx: PluginContext): string | null {
   const used = ctx.autoGlyphSets;
   if (!used.size || (used.size === 1 && used.has(ctx.autoProxyOption.sid))) return null;
-  const known = new Set([...used].flatMap((sid) => JSON.parse(sid) as string[]));
-  const missing = (ctx.autoProxyOption.target.raws ?? []).filter((glyph) => !known.has(glyph));
+  // Every font has to know the glyph: another font minified later with it does not help
+  const sets = [...used].map((sid) => new Set(JSON.parse(sid) as string[]));
+  const missing = (ctx.autoProxyOption.target.raws ?? []).filter((glyph) =>
+    sets.some((set) => !set.has(glyph)),
+  );
   if (!missing.length) return null;
   return (
     `auto mode: CSS content ${missing.map((glyph) => JSON.stringify(glyph)).join(", ")} was found ` +
