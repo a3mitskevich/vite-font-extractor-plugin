@@ -46,7 +46,7 @@ const buildAt = async (time: number, options: Parameters<typeof buildFixture>[0]
 const namesAt = async (time: number, options: Parameters<typeof buildFixture>[0]) =>
   getFontFileNames((await buildAt(time, options)).output as OutputAsset[]);
 
-describe.sequential("Hash consistency", () => {
+describe("Hash consistency", () => {
   afterEach(() => {
     vi.useRealTimers();
   });

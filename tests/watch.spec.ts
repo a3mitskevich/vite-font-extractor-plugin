@@ -124,7 +124,7 @@ const settle = (): Promise<void> =>
 const subsetImportJs = (characters: string): string =>
   `import "./index.css";\nimport font from "../fonts/text-font.woff2?subset=${characters}";\n\ndocument.title = font;\n`;
 
-describe.sequential("Build watch mode", () => {
+describe("Build watch mode", () => {
   it(`should keep fonts minified and references intact across rebuilds`, async () => {
     const { root, out, workDir } = createProject();
     const logger = createFakeLogger();

@@ -91,7 +91,7 @@ const captureConsole = async (run: () => Promise<unknown>): Promise<Record<LogTy
   };
 };
 
-describe.sequential("Target and plugin options", () => {
+describe("Target and plugin options", () => {
   it("raws: should keep the glyphs of the given characters", async () => {
     const { output, messages } = await iconBuild({
       fontName: "",

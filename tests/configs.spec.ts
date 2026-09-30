@@ -250,7 +250,7 @@ const expectInvariants = (output: OutputItem[]): void => {
     .forEach((asset) => expect(cssNames.has(asset.fileName), asset.fileName).toBe(false));
 };
 
-describe.sequential("Build config regressions", () => {
+describe("Build config regressions", () => {
   beforeAll(() => {
     spacesProject = createSpacesProject();
   });

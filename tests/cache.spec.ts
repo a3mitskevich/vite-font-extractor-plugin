@@ -47,7 +47,7 @@ const getWoff2 = (output: unknown[]): OutputAsset => {
   return asset;
 };
 
-describe.sequential("Disk cache", () => {
+describe("Disk cache", () => {
   const projects: TempProject[] = [];
 
   afterEach(() => {

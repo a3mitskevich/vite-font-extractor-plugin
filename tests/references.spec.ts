@@ -36,7 +36,7 @@ const readManifest = (output: OutputItem[]): Record<string, ManifestChunk> => {
   return JSON.parse(String(manifest.source)) as Record<string, ManifestChunk>;
 };
 
-describe.sequential("Font references in build output", () => {
+describe("Font references in build output", () => {
   it("should minify each @font-face of one family from its own source file", async () => {
     const { output, messages } = await buildFixture({
       fixture: fixtures["multi-source"].path,

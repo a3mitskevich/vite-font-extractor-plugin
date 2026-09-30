@@ -83,7 +83,7 @@ const ENTRY_JS = /^assets\/index-[\w-]+\.js$/;
 const ICONS_WOFF2 = /^assets\/icons-[\w-]+\.woff2$/;
 const JS_FONT = /^assets\/js-font-[\w-]+\.woff2$/;
 
-describe.sequential("Goal: file names follow the minified fonts", () => {
+describe("Goal: file names follow the minified fonts", () => {
   let root = "";
   let base: Snapshot;
 

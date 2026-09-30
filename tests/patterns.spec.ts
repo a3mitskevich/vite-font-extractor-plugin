@@ -20,7 +20,7 @@ const getCssSource = (output: OutputItem[]): string =>
 const warningsAndErrors = (messages: { type: string; message: string }[]) =>
   messages.filter((m) => m.type === "warn" || m.type === "error");
 
-describe.sequential("Font import patterns", () => {
+describe("Font import patterns", () => {
   describe("multi-weight @font-face", () => {
     it("should process both weights of same font family", async () => {
       const { output, messages } = await buildFixture({

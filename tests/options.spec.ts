@@ -15,7 +15,7 @@ import {
   outDir,
 } from "./utils";
 
-describe.sequential("Plugin options", () => {
+describe("Plugin options", () => {
   describe("ignore option", () => {
     it("should not process ignored fonts", async () => {
       const { output } = await buildFixture({

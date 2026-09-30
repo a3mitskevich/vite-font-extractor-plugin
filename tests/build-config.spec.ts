@@ -191,7 +191,7 @@ const ASSET_FILE_NAME_CASES = [
   { title: "a function", pattern: fontAssetFileNames, expected: /^f\/[\w-]{8}\.\w+$/ },
 ];
 
-describe.sequential("Build configuration", () => {
+describe("Build configuration", () => {
   it("should rewrite the single CSS file of build.cssCodeSplit: false", async () => {
     const { output, messages } = await buildWithConfig({
       fixture: "css-code-split",

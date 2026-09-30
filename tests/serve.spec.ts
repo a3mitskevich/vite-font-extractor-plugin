@@ -82,7 +82,7 @@ const flushRejections = (): Promise<void> =>
     setTimeout(resolve, 100);
   });
 
-describe.sequential("Dev server", () => {
+describe("Dev server", () => {
   let server: ViteDevServer;
   let baseUrl: string;
   const logger = createFakeLogger();
@@ -173,7 +173,7 @@ describe.sequential("Dev server", () => {
   });
 });
 
-describe.sequential("Dev server: minification errors", () => {
+describe("Dev server: minification errors", () => {
   const rejections: unknown[] = [];
   const onRejection = (reason: unknown): void => {
     rejections.push(reason);
@@ -261,7 +261,7 @@ describe.sequential("Dev server: minification errors", () => {
   });
 });
 
-describe.sequential("Dev server: options", () => {
+describe("Dev server: options", () => {
   it(`should minify a manual target`, async () => {
     const options: PluginOption = {
       type: "manual",
@@ -381,7 +381,7 @@ describe.sequential("Dev server: options", () => {
   });
 });
 
-describe.sequential("Dev server: file shared by families with different options", () => {
+describe("Dev server: file shared by families with different options", () => {
   it(`should serve each family its own minified font`, async () => {
     const options: PluginOption = {
       type: "manual",
@@ -414,7 +414,7 @@ describe.sequential("Dev server: file shared by families with different options"
   });
 });
 
-describe.sequential("Dev server: non-root base", () => {
+describe("Dev server: non-root base", () => {
   it(`should minify fonts served under base`, async () => {
     const FontExtract = await plugin({
       type: "manual",
@@ -453,7 +453,7 @@ describe.sequential("Dev server: non-root base", () => {
 const ASSET_IMPORT_RE = /from\s+["']([^"']+\.woff2\?[^"']*)["']/;
 const EXPORTED_URL_RE = /export default\s+["']([^"']+)["']/;
 
-describe.sequential("Dev server: ?subset= outside of @font-face", () => {
+describe("Dev server: ?subset= outside of @font-face", () => {
   const SUBSET_OPTIONS: PluginOption = { type: "manual", cache: false, targets: [] };
 
   const expectAbcFont = (body: Buffer): void => {
@@ -495,7 +495,7 @@ describe.sequential("Dev server: ?subset= outside of @font-face", () => {
   });
 });
 
-describe.sequential("Dev server: auto mode glyph changes", () => {
+describe("Dev server: auto mode glyph changes", () => {
   it("should give the auto font a new url when another stylesheet adds glyphs", async () => {
     const options: PluginOption = { type: "auto", cache: false };
     await withDevServer(devFixtures.autoTwoCss.path, options, async (dev) => {

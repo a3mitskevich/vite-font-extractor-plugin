@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildFixture, fixtures } from "./utils";
 
-describe.sequential("Error handling", () => {
+describe("Error handling", () => {
   it("should warn when font has no minify options in manual mode", async () => {
     const { messages } = await buildFixture({
       fixture: fixtures.plain.path,

@@ -38,7 +38,7 @@ async function fetchDevFontSize(pluginOptions: PluginOption): Promise<number> {
   }
 }
 
-describe.sequential("Plugin options: apply and type", () => {
+describe("Plugin options: apply and type", () => {
   it('apply: "serve" should keep fonts untouched in build', async () => {
     const { output } = await buildFixture({
       fixture: fixtures.plain.path,

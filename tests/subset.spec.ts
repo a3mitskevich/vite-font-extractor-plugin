@@ -62,7 +62,7 @@ const expectCleanOutput = (output: OutputItem[]): void => {
     });
 };
 
-describe.sequential("Font subsetting", () => {
+describe("Font subsetting", () => {
   const build = async (fixture: string, pluginOptions: PluginOption) => {
     const { output, messages } = await buildFixture({ fixture, pluginOptions });
     expect(messages.filter((m) => m.type === "error" || m.type === "warn")).toEqual([]);
