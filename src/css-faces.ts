@@ -4,7 +4,8 @@
 const BLOCK_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
 // Sass/Less/Stylus line comments; `url(//cdn…)` and `https://` are not preceded by these characters
 const LINE_COMMENT_RE = /(?<=^|[\s;{}])\/\/[^\n]*/g;
-const FONT_FACE_RE = /@font-face\s*\{[^}]*\}/g;
+// The `}` of a Sass `#{…}` or Less `@{…}` interpolation does not close the block
+const FONT_FACE_RE = /@font-face\s*\{(?:[^}#@]|[#@](?!\{)|[#@]\{[^}]*\})*\}/g;
 const FONT_FAMILY_RE = /font-family\s*:\s*([^;}]+)/;
 const URL_RE = /url\(\s*(['"]?)(.*?)\1\s*\)/g;
 const URL_OPEN_LENGTH = "url(".length;

@@ -8,6 +8,7 @@ import {
   findOrphanFontAssets,
   fixtures,
   fixturesDir,
+  fontsLength,
   generateId,
   getFontAssets,
   getFontFilesByFamily,
@@ -69,6 +70,39 @@ describe("Edge cases", () => {
     const woff = fonts.find((asset) => asset.fileName.endsWith(".woff"))!;
     expect(woff2.source.length).toBeLessThan(textFontsLength.woff2);
     expect(woff.source.length).toBe(textFontsLength.woff);
+  });
+
+  it("should report the interpolated url of a face that also has a static one", async () => {
+    const { output, messages } = await buildFixture({
+      fixture: join(fixturesDir, "edge-mixed-interpolation"),
+      targets: ["Material Icons"],
+    });
+    const items = output as OutputItem[];
+
+    expect(findBrokenFontReferences(items)).toEqual([]);
+    expect(findOrphanFontAssets(items)).toEqual([]);
+    const fonts = getFontAssets(items);
+    const woff2 = fonts.find((asset) => asset.fileName.endsWith(".woff2"))!;
+    const woff = fonts.find((asset) => asset.fileName.endsWith(".woff"))!;
+    expect(woff2.source.length).toBeLessThan(fontsLength.woff2);
+    // No candidate names the interpolated path: the original stays and a warning says why
+    expect(woff.source.length).toBe(fontsLength.woff);
+    const warnings = problems(messages).map((m) => m.message);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(
+      /Font "Material Icons": the source of .*icon-font.*\.woff was not found/,
+    );
+  });
+
+  it("should not emit a font for a face of a mixin that is never included", async () => {
+    const { output, messages } = await buildFixture({
+      fixture: join(fixturesDir, "edge-unused-mixin"),
+      targets: ["Material Icons"],
+    });
+    const items = output as OutputItem[];
+
+    expect(problems(messages)).toEqual([]);
+    expect(getFontAssets(items)).toEqual([]);
   });
 
   it("should not serve a font outside server.fs.allow in dev", async () => {
