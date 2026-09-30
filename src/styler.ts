@@ -51,8 +51,3 @@ export function formatBar(ratio: number, width: number = DEFAULT_BAR_WIDTH): str
     color.dim("▎") + color.green("█".repeat(filled)) + color.dim("░".repeat(empty)) + color.dim("▎")
   );
 }
-
-export function formatSizeComparison(original: number, result: number): string {
-  const ratio = 1 - result / original;
-  return `${color.dim(formatSize(original))} → ${color.bold(formatSize(result))}  ${formatBar(ratio)} ${formatReduction(original, result)}`;
-}
