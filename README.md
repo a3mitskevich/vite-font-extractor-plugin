@@ -226,6 +226,27 @@ new file name.
   different results of one file (families with different options, a JS import of the original) — one of them gets the
   next free name (`icons2.woff2`).
 
+## Known limitations
+
+- **Two passes over CSS.** In Vite 8 a CSS `url()` never reaches plugin hooks (vitejs/vite#14686), so an
+  `@font-face` from a Sass/Less partial, a mixin or `@import` is handled after Vite compiled the stylesheet: the
+  plugin looks up the source file among the files the stylesheet imports. A path built by interpolation
+  (`url("#{$dir}/icons.woff2")`) may not be found — the face keeps its original and a warning names it. With
+  `assetFileNames` without `[hash]` such a face gets a numbered name (`icons2.woff2`).
+- **Auto mode waits for the module graph.** The stylesheet with the `@font-face` is minified after every other module
+  of the build is transformed. The plugin listens to every parsed module to know that (about 10 µs per module), and
+  a plugin that loads that stylesheet itself would hold the build until a 20-second watchdog — the build then fails
+  with the glyphs it missed instead of shipping broken icons.
+- **Auto mode and SSR.** Each build collects the glyphs of its own stylesheets; an SSR build that sees other CSS than
+  the client gets other auto fonts.
+- **Fonts outside `@font-face` stay original:** JS imports without `?subset=`, and a preload of a file several
+  families minify differently.
+- **Not processed:** fonts in `public/`, `.otf` output, eot-only faces, SVG output of the subset engine, remote
+  `@font-face` sources. Auto mode sees only CSS `content`, not glyphs used in HTML or JS.
+- **Vite internals:** the plugin relies on Vite 8 details that are not public API — the `__VITE_ASSET__` placeholder
+  of CSS, and `transformIndexHtml` (post) running before HTML asset placeholders are resolved. The test suite covers
+  them; a Vite minor that changes them needs a plugin update.
+
 ## Caching
 
 Enable disk cache to skip re-minification when fonts and config haven't changed:
