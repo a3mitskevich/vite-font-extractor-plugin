@@ -31,7 +31,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsdown",
     "test": "vitest run",
     "test:local": "TEST_TARGET=local npm run test",
     "test:dist": "TEST_TARGET=dist npm run test",
@@ -82,13 +82,14 @@
     "@tsconfig/node22": "^22.0.6",
     "@types/fontkit": "^2.0.9",
     "@types/node": "^25.9.8",
+    "esbuild": "^0.28.2",
     "lightningcss": "^1.33.0",
     "lint-staged": "^16.4.0",
     "oxfmt": "^0.70.0",
     "oxlint": "^1.85.0",
     "sass": "^1.105.0",
     "simple-git-hooks": "^2.14.0",
-    "tsup": "^8.5.1",
+    "tsdown": "^0.23.0",
     "typescript": "^5.9.3",
     "vite": "^8.3.1",
     "vitest": "^5.0.3"

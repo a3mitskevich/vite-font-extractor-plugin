@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { OutputAsset } from "rollup";
+import type { OutputAsset } from "./utils";
 import type { PluginOption } from "../src";
 import {
   buildFixture,

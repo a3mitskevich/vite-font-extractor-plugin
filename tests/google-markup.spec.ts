@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import type { RollupOutput } from "rollup";
+import type { RollupOutput } from "./utils";
 import { extractGoogleFontsUrls } from "../src/utils";
 import { getGoogleFontFamilies, getGoogleFontText, setGoogleFontText } from "../src/google-fonts";
 import { buildFixture, createFixture, type LoggerMessage } from "./utils";

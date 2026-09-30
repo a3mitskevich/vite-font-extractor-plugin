@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import type { OutputAsset, RollupOutput } from "rollup";
+import type { OutputAsset, RollupOutput } from "./utils";
 import * as fontkit from "fontkit";
 import { getSubsetKey, parseSubsetQuery } from "../src/utils";
 import { splitUrl, withoutSubsetParam } from "../src/font-emit";

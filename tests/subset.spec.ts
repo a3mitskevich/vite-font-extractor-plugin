@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { join } from "node:path";
 import { originalPositionFor, TraceMap } from "@jridgewell/trace-mapping";
-import type { OutputAsset } from "rollup";
+import type { OutputAsset } from "./utils";
 import type { PluginOption } from "../src";
 import {
   buildFixture,

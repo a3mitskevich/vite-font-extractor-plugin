@@ -12,9 +12,12 @@ import { readFileSync, rmSync } from "node:fs";
 import { stripVTControlCharacters } from "node:util";
 import * as fontkit from "fontkit";
 import type { FontExtractorPlugin, Target, PluginOption } from "../src";
-import type { OutputAsset, OutputChunk, RollupOutput } from "rollup";
+import type { Rolldown } from "vite";
 
 export type { InlineConfig, Logger, Plugin };
+export type OutputAsset = Rolldown.OutputAsset;
+export type OutputChunk = Rolldown.OutputChunk;
+export type RollupOutput = Rolldown.RolldownOutput;
 export interface LoggerMessage {
   type: "error" | "warn" | "info";
   message: string;

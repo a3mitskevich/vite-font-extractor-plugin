@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { OutputAsset, RollupOutput } from "rollup";
+import type { OutputAsset, RollupOutput } from "./utils";
 import * as fontkit from "fontkit";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

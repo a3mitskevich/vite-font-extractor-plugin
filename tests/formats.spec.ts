@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import type { OutputAsset, RollupOutput } from "rollup";
+import type { OutputAsset, RollupOutput } from "./utils";
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as fontkit from "fontkit";

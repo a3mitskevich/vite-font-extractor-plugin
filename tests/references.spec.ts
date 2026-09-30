@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { OutputAsset } from "rollup";
+import type { OutputAsset } from "./utils";
 import { createHash } from "node:crypto";
 import { basename, join } from "node:path";
 import type { PluginOption } from "../src";

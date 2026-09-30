@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createServer } from "vite";
-import type { OutputAsset } from "rollup";
+import type { OutputAsset } from "./utils";
 import type { PluginOption } from "../src";
 import { buildFixture, fixtures, fontsLength, plugin } from "./utils";
 

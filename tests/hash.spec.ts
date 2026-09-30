@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { extract, type Formats, type MinifyOption } from "fontext";
-import type { OutputAsset } from "rollup";
+import type { OutputAsset } from "./utils";
 import type { PluginOption } from "../src";
 import { buildFixture, fixtures, fixturesDir } from "./utils";
 

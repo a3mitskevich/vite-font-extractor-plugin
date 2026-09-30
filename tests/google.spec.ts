@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { OutputAsset } from "rollup";
+import type { OutputAsset } from "./utils";
 import { join } from "node:path";
 import { buildFixture, type BuildOptions, type CssMinify, fixtures, fixturesDir } from "./utils";
 

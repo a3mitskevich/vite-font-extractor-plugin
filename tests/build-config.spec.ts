@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { OutputAsset } from "rollup";
+import type { OutputAsset } from "./utils";
 import { readFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { build as viteBuild } from "vite";

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import type { OutputAsset } from "rollup";
+import type { OutputAsset } from "./utils";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "vite";
 import { join } from "node:path";
