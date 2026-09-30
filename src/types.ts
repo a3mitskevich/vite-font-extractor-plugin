@@ -39,16 +39,6 @@ export interface ImportResolvers {
   font: ResolveFn;
 }
 
-// A font asset referenced from CSS/JS, collected in `transform` and resolved in `generateBundle`
-export interface FontReference {
-  fontName: string;
-  options: OptionsWithCacheSid;
-  subset?: SubsetOptions;
-  referenceId: string;
-  // Assets sharing a groupId are formats of the same font source (one @font-face)
-  groupId: string;
-}
-
 export interface OptionsWithCacheSid<T extends Target = Target> {
   sid: string;
   target: T;

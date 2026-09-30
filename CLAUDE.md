@@ -10,8 +10,8 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 
 ## Commands
 
-- **Build:** `npm run build` (uses tsup, outputs CJS + ESM to `dist/`)
-- **Test:** `npm test` (Vitest, 310+ tests, files run in parallel, a few seconds)
+- **Build:** `npm run build` (uses tsdown, outputs CJS + ESM to `dist/`)
+- **Test:** `npm test` (Vitest, 320+ tests, files run in parallel, a few seconds)
 - **Test against dist:** `npm run test:dist` (sets `TEST_TARGET=dist`)
 - **Lint:** `npm run lint` (oxlint)
 - **Format:** `npm run fmt` (oxfmt)
@@ -50,7 +50,7 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 
 **`src/html.ts`** — Preloads: `transformIndexHtml` runs before Vite resolves the HTML's asset placeholders, so a preload gets the reference of the minified font.
 
-**`src/cleanup.ts`** — `generateBundle`: removes assets of minified sources and probes that no chunk (`viteMetadata.importedAssets`) or text output references.
+**`src/cleanup.ts`** — `generateBundle`: removes assets of minified sources, probes and minified fonts (a face the preprocessor dropped) that no chunk (`viteMetadata.importedAssets`) or text output references.
 
 **`src/context.ts`** — `PluginContext` and `createPluginContext()`: options, per-build state (emitted fonts, minifications, graph, stats), dev state. Getter-based auto target (no Proxy) — its `fontName` getter throws, never spread it; its `raws` are sorted. `resetBuildState` runs on every (re)build start; Rolldown's `build --watch` transforms every module again.
 
