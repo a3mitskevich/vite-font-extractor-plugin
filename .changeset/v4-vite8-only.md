@@ -30,3 +30,8 @@ Features and fixes:
 - Exact sourcemaps for chunks with a `?subset=` import
 - `report` option: the build writes a JSON report of the minified fonts (source, output file, sizes, cache hit, glyphs) and of the fonts kept original, as an asset of the bundle
 - `debug: true` (or `DEBUG=vite-font-extractor`) traces why each font is minified or kept: face options, the source lookup of compiled CSS, cache hits, emitted files, the auto-mode graph wait, preloads, removed files and dev-server requests; the README lists every warning with its cause and fix
+- Targets take `match` (a family name, a RegExp or a function of the face) and `ignore` takes RegExps and functions; `fontName` stays the unique name of a target
+- `resolveTarget(face, resolved)` decides every face in code — build, dev and Google Fonts — returning a target, `null` to skip it or `undefined` to keep the default; the `FontFaceInfo` type is exported
+- `include` / `exclude` (globs and RegExps on module ids) scope which stylesheets and JS modules get their fonts minified; auto mode still reads CSS `content` of every stylesheet
+- `strict: true` fails the build when a target font would keep its original file (failed minification, source not found, external url, unsupported format, a target that matches nothing)
+- The dev server serves the original of a target without any glyph option, like build, and shares cache entries with build for `?subset=` fonts

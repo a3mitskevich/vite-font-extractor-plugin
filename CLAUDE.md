@@ -27,7 +27,8 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 - main: `configResolved`, `configureServer` (dev middleware), `buildStart` (reset, auto-mode graph entries), `transform` of CSS langs after vite:css (L2 pass, auto glyphs, Google `@import`; dev: `transform.ts`), `watchChange` (dev: served urls of changed/deleted files, `serve-registry.ts`), `buildEnd` (auto-mode glyph check)
 - `:graph` (auto-mode builds only): `moduleParsed` feeds the graph wait. It has no hook filter, so Rolldown calls it for every module — never register it where it is not needed
 - `:html` (build): `transformIndexHtml` pre records the files HTML preloads
-- `:post` (enforce post): `transformIndexHtml` post (Google Fonts, preloads follow the CSS), `generateBundle` — removes originals nothing loads before Vite's native manifest runs, emits the `report`, logs the summary, prunes the cache
+- `:post` (enforce post): `transformIndexHtml` post (Google Fonts, preloads follow the CSS), `generateBundle` — strict mode: targets that matched nothing (client builds, after Google Fonts of HTML), removes originals nothing loads before Vite's native manifest runs, emits the `report`, logs the summary, prunes the cache
+- `include`/`exclude` (`isModuleIncluded`, Vite's `createFilter`): their RegExp excludes join the native filters of `:pre` transform and `:new-url`; handlers check the rest first. The L2 transform still collects auto glyphs of excluded stylesheets, `moduleParsed` is never filtered
 - `applyToEnvironment`: every build environment (client, SSR); dev serves the browser only
 
 **Why two CSS passes:** in Vite 8 CSS `url()` never reaches plugin `resolveId` (alias `customResolver` is deprecated). vite:css keeps urls that start with `__VITE_ASSET__`, and `css-post` resolves them when it renders the CSS, so the plugin can emit a font and write its placeholder.
@@ -40,7 +41,11 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 
 **`src/css-faces.ts`** — `@font-face` blocks with url offsets (comments blanked, `//` for preprocessors); `isDynamic` for values a preprocessor computes.
 
-**`src/face-options.ts`** — Options of a face: target, `?subset=` alone, ignored, remote urls; the L2 pass reports faces it can not minify.
+**`src/face-options.ts`** — The one decision on a face (`FontFaceInfo`: family, urls, module id), shared by build (L1, L2), dev (`transform.ts`) and Google Fonts (`google-rewrite.ts`): `resolveFaceTarget` — `include`/`exclude`, `ignore`, first matching target, auto, then the user's `resolveTarget`; `resolveFaceOptions` adds `?subset=` alone, remote urls, reports, and the face's `ProblemReport`. Never look targets up by family elsewhere.
+
+**`src/target-match.ts`** — Pure: targets compiled to matchers (`match` or `fontName`; RegExp without `g`/`y`), `ignore` predicates, target validation (unique `fontName`, removed options). `match` stays out of the sid, so it never changes output names.
+
+**`src/strict-report.ts`** — `createProblemReport`: problems that leave a font unminified are logged, or thrown as `StrictModeError` in strict builds for a target (not for `?subset=` alone, never in dev).
 
 **`src/font-emit.ts`** — `minifyFace` (formats of one face minified together per subset, memoized per build) and `emitFont` (emits like Vite: `name` = source basename, `originalFileName` = source path; inlined as `data:` where Vite would inline the original). `toCssUrl`/`toJsExpression`, `withoutSubsetParam`.
 
@@ -54,7 +59,7 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 
 **`src/cleanup.ts`** — `generateBundle`: removes assets of minified sources, probes and minified fonts (a face the preprocessor dropped) that no chunk (`viteMetadata.importedAssets`) or text output references.
 
-**`src/context.ts`** — `PluginContext` and `createPluginContext()`: options, per-build state (emitted fonts, minifications, graph, stats), dev state. Getter-based auto target (no Proxy) — its `fontName` getter throws, never spread it; its `raws` are sorted. `resetBuildState` runs on every (re)build start; Rolldown's `build --watch` transforms every module again.
+**`src/context.ts`** — `PluginContext` and `createPluginContext()`: options, per-build state (emitted fonts, minifications, graph, stats), dev state. Getter-based auto target (no Proxy) — its `fontName` getter throws, never spread or serialize it (`serve-registry.ts` keys requests by the options' sid); its `raws` are sorted. Target matchers, ignore matchers and `isModuleIncluded` are shared; `matchedTargets` (strict mode) is build state. `resetBuildState` runs on every (re)build start; Rolldown's `build --watch` transforms every module again.
 
 **`src/transform.ts`** — Dev: auto glyphs, Google `@import`, faces registered with the middleware and tagged per family (and per glyph set in auto mode).
 
@@ -74,7 +79,7 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 
 **`src/cache.ts`** — Async file-system cache in `<config.cacheDir>/.font-extractor-cache`; `.usage/<owner>.json` per build config or dev server; a build prunes entries no owner used within 30 days.
 
-**`src/inline-fonts.ts`**, **`src/utils.ts`** (regex helpers, `camelCase`, `stripCssComments`, `toError`), **`src/internal-logger.ts`** (phases, progress bars, summary; `debug(message | () => message, id?)` prints dim `[debug]` info lines only when `debug: true` or `DEBUG` names `vite-font-extractor` — `isDebugEnabled` — with paths relative to the root: pass a thunk for anything costly, check `logger.isDebug` before extra work; one line per decision), **`src/types.ts`** (`PluginOption` is a discriminated union on `type: 'auto' | 'manual'`).
+**`src/inline-fonts.ts`**, **`src/utils.ts`** (regex helpers, `camelCase`, `stripCssComments`, `toError`), **`src/internal-logger.ts`** (phases, progress bars, summary; `debug(message | () => message, id?)` prints dim `[debug]` info lines only when `debug: true` or `DEBUG` names `vite-font-extractor` — `isDebugEnabled` — with paths relative to the root: pass a thunk for anything costly, check `logger.isDebug` before extra work; one line per decision), **`src/types.ts`** (`PluginOption` is a discriminated union on `type: 'auto' | 'manual'`; public `FontFaceInfo`, `FaceMatcher`).
 
 **Core dependencies:** `fontext` (extraction/subsetting, ESM only), `fontkit` (glyph checks), `magic-string` (source maps of rewritten modules).
 
@@ -86,7 +91,7 @@ Test fixtures in `tests/fixtures/` — each subdirectory contains an `index.html
 
 Tests can import from `src/` (default) or `dist/` via `TEST_TARGET` env var.
 
-**Test files:** debug (trace lines, `DEBUG` env), goal (names follow the minified fonts), common, auto, auto-content, auto-graph, google, google-markup, hash (determinism), subset, subset-query, references (output references resolve, manifest, SSR), build-config (cssCodeSplit, assetFileNames, preload, inline, log), configs (base, CDN, renderBuiltUrl, sourcemap, lightningcss, multi-output, CSS modules…), target-options, formats, cache, serve (dev), apply, watch, errors, options, patterns, logger, log, minificators, safariFix, dist-cjs, utils.
+**Test files:** debug (trace lines, `DEBUG` env), goal (names follow the minified fonts), common, auto, auto-content, auto-graph, google, google-markup, hash (determinism), subset, subset-query, references (output references resolve, manifest, SSR), build-config (cssCodeSplit, assetFileNames, preload, inline, log), configs (base, CDN, renderBuiltUrl, sourcemap, lightningcss, multi-output, CSS modules…), target-options, face-resolution (match, ignore, resolveTarget), module-filter (include/exclude), strict, formats, cache, serve (dev), apply, watch, errors, options, patterns, logger, log, minificators, safariFix, dist-cjs, utils.
 
 ## Code Style
 

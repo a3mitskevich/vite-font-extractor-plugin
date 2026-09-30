@@ -42,6 +42,8 @@ themselves. See [Long-term caching](#long-term-caching).
 - **Text font subsetting** — keep only specific characters via `?subset=` query or target options
 - **Zero-config auto mode** — detects glyphs from CSS `content: "..."` of the whole build
 - **Google Fonts optimization** — appends the `text=` parameter for server-side subsetting
+- **Programmable** — choose fonts by pattern or in code, scope the modules, fail the build in strict mode
+  ([details](#choosing-fonts-in-code))
 - **Works in build and dev** — minifies fonts on-the-fly during development, including JS `?subset=` imports
 - **Respects your build config** — `assetFileNames`, `base`, `cssCodeSplit`, `assetsInlineLimit`, `build.lib`,
   manifest, HTML preloads, SSR builds
@@ -183,6 +185,74 @@ the browser loads the full Google font. The dev server transforms the HTML befor
 stylesheet as it transformed it, so a `text=` built from the glyphs known at that moment would miss the icons of
 stylesheets that load later. Families with a target keep their `text=` in dev; the build always adds it.
 
+## Choosing fonts in code
+
+A target applies to the `@font-face` rules whose `font-family` is its `fontName`, and `ignore` lists family names.
+Both also take patterns and functions, `include`/`exclude` scope the modules, and `resolveTarget` has the last word on
+every face:
+
+```js
+FontExtractor({
+    type: 'manual',
+    targets: [
+        // one target for every Material Symbols family; fontName names the target in logs and the cache
+        {fontName: 'symbols', match: /^Material Symbols/, ligatures: ['close', 'menu']},
+    ],
+    ignore: [/Emoji$/, (face) => face.urls.some((url) => url.includes('/legacy/'))],
+    // fonts of stylesheets from node_modules keep their original files
+    exclude: /\/node_modules\//,
+    resolveTarget(face, resolved) {
+        if (face.family === 'Brand Sans') {
+            return {fontName: 'brand', engine: 'subset', characters: 'ACME Corp 0123456789'}
+        }
+        return undefined // keep what targets and ignore decided (`resolved`)
+    },
+})
+```
+
+A face is described as `FontFaceInfo` (exported as a type):
+
+- `family` — the `font-family`, unquoted
+- `urls` — the `url()`s of the face as the plugin reads them: the stylesheet source, or, for a face Vite compiled from
+  a Sass/Less partial, a mixin or `@import`, the file name Vite gave the original (`assets/icons-B1c2.woff2`). Decide
+  by `family` or `id` when the rule must not depend on that. A family of a Google Fonts url gets the stylesheet url
+- `id` — the module id of the stylesheet, `""` for HTML
+
+Every face is decided in this order: `include`/`exclude` of its stylesheet, `ignore`, the first target whose `match`
+accepts it, auto mode. Then `resolveTarget(face, resolved)` gets the matching target (or `null`, also for an auto face)
+and returns:
+
+- a target — the face is minified with it; in auto mode instead of the detected glyphs
+- `null` — the face is left alone
+- `undefined` — the decision above stands
+
+The same decision is made in build, in dev and for the families of Google Fonts urls.
+
+**Keep these functions pure.** `match`, `ignore` functions and `resolveTarget` must give the same face the same answer
+on every run, and a returned target must be plain data: it is serialized into the cache key. Output names follow the
+minified bytes, so an answer that changes between builds renames files (see [Goal](#goal)). `match` is not an option of
+the minification: a target with `match` produces the same files as the same target applied by `fontName`.
+
+**`include` / `exclude`** take globs (relative to `root`) and regular expressions, like Vite's `createFilter`, and test
+the module id (it may carry a query, e.g. `?inline`). They decide which stylesheets get their fonts minified and which
+JS modules get their `?subset=` imports and `new URL()` minified. They do not limit auto mode: CSS `content` of every
+stylesheet still counts. HTML is not a module and is not filtered, and the dev server serves a JS `?subset=` request
+without knowing the module that imports it, so in dev only stylesheets are scoped.
+
+## Strict mode
+
+With `strict: true` a build fails instead of shipping the original file of a target font, when:
+
+- minification fails (e.g. a ligature the font does not have)
+- the source file of a face is not found, including a face Vite inlined as a `data:` URL
+- a face loads from another host
+- a format can not be minified (`.otf`) or no format can be read (eot only)
+- a target matches no `@font-face` or Google Fonts family of a client build (SSR builds often load no stylesheet)
+
+A target is a configured one, one `resolveTarget` returns, or the auto target of a face in auto mode. A `?subset=` url
+without a target decides only for itself and still just warns; so does an auto face whose font has none of the glyphs
+of CSS `content` (add it to `ignore`). The dev server never fails.
+
 ## Build Output
 
 - Minified fonts are emitted through the bundler like any Vite asset, so `build.rolldownOptions.output.assetFileNames`
@@ -277,6 +347,10 @@ A font the plugin finds but can not minify is named in the log with the reason:
 | ``Target "X": `withWhitespace` was removed in 4.0: …`` (config error)                                       | 4.0 minifies with fontext 2, which has no `withWhitespace`                                                                                                            | Remove the option and add `" "` to `characters` of a subset target                                                                                      |
 | `Ignore overlaps with targets: X`                                                                           | A family is both in `targets` and in `ignore`; `ignore` wins                                                                                                          | Remove it from one of the lists                                                                                                                         |
 | `type is not set, falling back to "manual"`                                                                 | An options object without `type`                                                                                                                                      | Set `type: 'manual'` or `type: 'auto'`                                                                                                                  |
+| `Strict mode: …` (build error)                                                                              | `strict: true` and a target font would keep its original file; the rest is one of the messages above                                                                  | Fix it as that row says, or leave the face out with `ignore`, `exclude` or `resolveTarget` returning `null`                                             |
+| `Strict mode: target "X" matched no @font-face or Google Fonts family of the build`                         | `strict: true` and no face of the client build has the target's `fontName` as its family, or its `match` accepts none                                                 | Correct `fontName`/`match`, or remove the target                                                                                                        |
+| `Two targets are named "X"…` (config error)                                                                 | `fontName` names a target in logs and the cache, so it must be unique                                                                                                 | Give each target its own `fontName` and select its faces with `match`                                                                                   |
+| ``resolveTarget for "X": a target needs a `fontName` string`` (build error)                                 | `resolveTarget` returned something that is not a target                                                                                                               | Return a target object with `fontName`, `null` or `undefined`                                                                                           |
 
 No message but the font is still big? Check that the font is loaded by an `@font-face` (a JS import without
 `?subset=` loads the original — see [Via JS import](#via-js-import)), that the file is not in `public/`, and that
@@ -293,7 +367,8 @@ decision, one line each, with the module it is about:
 DEBUG=vite-font-extractor npx vite build
 ```
 
-- **Options of a face** — its family, target, `?subset=` alone, auto glyphs, or why it is skipped (ignored, no target,
+- **Options of a face** — its family, the target it got (from `targets` or `resolveTarget`), `?subset=` alone, auto
+  glyphs, or why it is skipped (outside `include`/`exclude`, ignored, `resolveTarget` returned `null`, no target,
   remote urls).
 - **Before vite:css (L1)** — each `@font-face` written in the module and the file each url resolves to, or why the
   pass skips it (computed by the preprocessor or auto mode: left to the second pass; a `public/`, remote or `data:`
@@ -370,21 +445,28 @@ FontExtractor(options?: PluginOption): Plugin[]
 
 ### PluginOption
 
-| Option     | Type                                      | Default     | Description                               |
-|------------|-------------------------------------------|-------------|-------------------------------------------|
-| `type`     | `'auto' \| 'manual'`                      | see below   | Glyph detection strategy                  |
-| `targets`  | `Target \| Target[]`                      | —           | Fonts to process. Required in manual mode |
-| `cache`    | `boolean \| string`                       | —           | Enable disk cache (or custom path)        |
-| `logLevel` | `'info' \| 'warn' \| 'error' \| 'silent'` | Vite config | Log verbosity                             |
-| `apply`    | `'build' \| 'serve'`                      | both        | Restrict to build or dev mode             |
-| `ignore`   | `string[]`                                | —           | Font names to skip entirely               |
-| `report`   | `string`                                  | —           | Build: write a JSON report of the fonts   |
-| `debug`    | `boolean`                                 | `DEBUG` env | Trace why each font is (not) minified     |
+| Option          | Type                                                 | Default     | Description                                          |
+|-----------------|------------------------------------------------------|-------------|------------------------------------------------------|
+| `type`          | `'auto' \| 'manual'`                                 | see below   | Glyph detection strategy                             |
+| `targets`       | `Target \| Target[]`                                 | —           | Fonts to process. Required in manual mode            |
+| `cache`         | `boolean \| string`                                  | —           | Enable disk cache (or custom path)                   |
+| `logLevel`      | `'info' \| 'warn' \| 'error' \| 'silent'`            | Vite config | Log verbosity                                        |
+| `apply`         | `'build' \| 'serve'`                                 | both        | Restrict to build or dev mode                        |
+| `ignore`        | `Array<string \| RegExp \| (face) => boolean>`       | —           | Faces to skip entirely: family names, patterns, code |
+| `include`       | `string \| RegExp \| Array<string \| RegExp>`        | all modules | Modules whose fonts are minified (globs, RegExp)     |
+| `exclude`       | `string \| RegExp \| Array<string \| RegExp>`        | —           | Modules whose fonts stay original                    |
+| `resolveTarget` | `(face, resolved) => Target \| null \| undefined`    | —           | The last word on every face, in code                 |
+| `strict`        | `boolean`                                            | `false`     | Fail the build when a target font stays original     |
+| `report`        | `string`                                             | —           | Build: write a JSON report of the fonts              |
+| `debug`         | `boolean`                                            | `DEBUG` env | Trace why each font is (not) minified                |
 
 - `type`: `FontExtractor()` without arguments runs in `auto` mode. An options object without `type` falls back to
   `manual` and logs a warning — set `type` explicitly.
 - `logLevel` has no effect when Vite runs with a `customLogger`: messages go to that logger unfiltered.
-- `ignore` also applies to `@font-face` rules with `?subset=`.
+- `ignore` also applies to `@font-face` rules with `?subset=`. A string is an exact `font-family`, a RegExp is tested
+  against it, a function gets the whole face — see [Choosing fonts in code](#choosing-fonts-in-code).
+- `include`, `exclude`, `resolveTarget`: see [Choosing fonts in code](#choosing-fonts-in-code); `strict`: see
+  [Strict mode](#strict-mode).
 - `report`: see [Build report](#build-report).
 
 ### Build report
@@ -433,7 +515,8 @@ SSR) and each output writes its own report; an absolute path outside the output 
 
 | Option           | Type                 | Description                                              |
 |------------------|----------------------|----------------------------------------------------------|
-| `fontName`       | `string`             | Must match `font-family` in CSS (without quotes)         |
+| `fontName`       | `string`             | Name of the target, unique. Without `match`, the `font-family` it applies to (without quotes) |
+| `match`          | `string \| RegExp \| (face) => boolean` | Faces the target applies to: an exact `font-family`, a pattern of it, or a function of the face. The first matching target wins |
 | `ligatures`      | `string[]`           | Icon names to keep (e.g. `['close', 'menu']`)            |
 | `raws`           | `string[]`           | Raw Unicode characters to keep                           |
 | `characters`     | `string`             | Characters to keep; requires `engine: 'subset'`          |
