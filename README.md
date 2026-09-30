@@ -123,6 +123,9 @@ rive.load({fonts: [fontUrl]})
 
 `new URL('./fonts/Roboto.woff2?subset=…', import.meta.url)` is not supported — use an `import` as above.
 
+The dev server serves a JS `?subset=` import as the full font; it is subsetted in build only. Dev support is
+planned for 4.0.
+
 The `?subset=` query is removed from the url after the bundle is rendered, so with `build.sourcemap` the columns
 after it on the same line of a minified chunk are slightly off in the sourcemap.
 
@@ -161,7 +164,8 @@ form `family=Material+Icons|Roboto` and the css2 API with several `family=` para
 
 - Minified fonts are emitted through the bundler, so `build.rollupOptions.output.assetFileNames` (string or function)
   names them. Every reference is rewritten — CSS (including `cssCodeSplit: false` and inline `<style>`), JS chunks,
-  HTML preloads and the manifest; the original file is removed only when nothing references it anymore.
+  HTML preloads and the manifest (`file` and `assets`; keys and `src` stay source paths); the original file is
+  removed only when nothing references it anymore.
 - A font file shared by several `font-family` rules is minified per family options. A family without its own target
   keeps pointing at the full original file.
 - Fonts inlined as `data:` URLs (`build.lib`, large `build.assetsInlineLimit`) can't be minified — the plugin warns
@@ -170,7 +174,8 @@ form `family=Material+Icons|Roboto` and the css2 API with several `family=` para
 - Fonts in `public/` are copied as is and are not processed.
 - `.otf` can't be written by the minifier — other formats of the `@font-face` are minified and the `.otf` is kept
   original with a warning. A font available only as `.eot` is kept original too.
-- SSR builds are skipped: fonts are emitted by the client build.
+- SSR builds are skipped: fonts are emitted by the client build. The SSR bundle keeps the original font urls, which
+  the client build replaces with minified files — take font urls for preloads from the client build or its manifest.
 
 ## Long-term caching
 
@@ -193,8 +198,9 @@ new content always comes under a new file name.
 | Nothing changed, `cache` enabled and kept between builds                       | Same hash     |
 | Nothing changed, no cache                                                      | May change    |
 
-- The name carries a hash only when `assetFileNames` has `[hash]`. With `[name][extname]` it stays the same and the
-  CDN has to be invalidated.
+- The name carries a hash only when `assetFileNames` has `[hash]`. With `[name][extname]` the minified font is emitted
+  while the original still holds its name, so the bundler adds a number (`icons2.woff2`), and the CDN has to be
+  invalidated. Keeping the original name is planned for 4.0.
 - Icon fonts are built through svg2ttf, which writes the build time (one second resolution) into the font. Without a
   cache, two builds of the same glyphs in different seconds get different hashes — clients download the same font
   again, though a stale font is never served under an old name. Enable [`cache`](#caching) and keep its directory

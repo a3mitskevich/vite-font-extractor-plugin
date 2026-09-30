@@ -22,6 +22,13 @@ Development roadmap for `vite-font-extractor-plugin` — v3.1.
   CSS: re-emit the rewritten asset by content and update HTML, preload deps, `importedCss` and the manifest.
   JS: `augmentChunkHash` with the fonts' signature. This needs deterministic fontext output (see
   "Deterministic font hashing"); without it, the same inputs produce a new font name under an unchanged JS name
+- Dev server: minify JS `?subset=` imports (3.x subsets them in build only, documented)
+- `assetFileNames` without `[hash]`: keep the original file name for the minified font (3.x emits `icons2.woff2`)
+  and support that outcome in every reference and the manifest
+- Google Fonts: add `&text=` for `characters` targets and in auto mode. 3.x uses `ligatures` only — changing it in
+  3.x would start subsetting Google fonts of existing projects
+- Put the fontext version into the disk cache key, so a fontext upgrade never serves a stale result. Reading the
+  installed version needs the ESM-only build
 
 ---
 

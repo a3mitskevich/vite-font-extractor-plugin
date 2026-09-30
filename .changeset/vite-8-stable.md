@@ -22,8 +22,12 @@ Stabilize Vite 5–8 support; Vite 8 is no longer experimental. This is the last
 - Fix `?subset=` decoding (`%20`, `%2C`, lower-case `u+`) and `ignore` for `?subset=` faces
 - Fix `?subset=` next to other query params (`?v=2&subset=…`): the font is minified and the other params stay on the url
 - Fix a JS `?subset=` import pointing at the wrong font on Vite 8 with a relative `base`
-- Fix stale references between `build --watch` rebuilds
+- Fix stale references between `build --watch` rebuilds, and a stale font left after a JS `?subset=` import changes
+- Fix references to a file whose name ends with a minified font name (`x@icons.woff2`) with `assetFileNames` without `[hash]`
+- Manifest: keys and `src` stay source paths, `assets` lists the fonts a chunk actually loads (JS `?subset=` imports)
 - Implement the documented `apply` option; warn when `type` is not set (it falls back to `manual`)
-- Dev server: `?subset=` in CSS, `?v=` in font urls and EOT fonts are minified
+- Dev server: `?subset=` in CSS (also in auto mode), `?v=` in font urls and EOT fonts are minified; a failed font is retried on the next request
+- Fix fonts with an upper-case extension (`ICONS.WOFF2`) not being minified
+- Auto mode reads only `content` declarations, not selectors like `.content:hover` or `justify-content`
 - Keep `.otf` and eot-only fonts original with a warning instead of an error
-- Logs: reason of a failed minification, a warning for fonts inlined as `data:` URLs, cached fonts in the summary
+- Logs: reason of a failed minification, a warning for fonts inlined as `data:` URLs (also `?subset=` faces and imports), cached fonts in the summary

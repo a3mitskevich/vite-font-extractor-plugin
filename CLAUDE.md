@@ -50,6 +50,8 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 
 **`src/rewrite-refs.ts`** — Rewrites font file references (whole file-name tokens) in CSS/HTML assets and JS chunks per subset (`<name>?subset=X`, `"<name>" + "?subset=X"`, relative-base `new URL("<name>", import.meta.url).href + "?subset=X"`; other query params stay on the url) and per family inside @font-face; a family without its own result keeps the original; updates `viteMetadata.importedAssets` for the manifest.
 
+**`src/manifest.ts`** — Rewrites the Vite manifest after the originals are removed: `file` and `assets` follow the emitted fonts (`assets` = what the chunk actually loads), keys and `src` stay source paths.
+
 **`src/minify.ts`** — Core minification: calls `fontext.extract()`, manages disk cache, handles font resolution.
 
 **`src/serve.ts`** — Dev server middleware and lazy minification (manual, auto, `?subset=`, `?v=`, non-root `base`, per-family urls `?font-extractor-family=`). Minification errors are logged and the original font is served — the dev server must never crash.
