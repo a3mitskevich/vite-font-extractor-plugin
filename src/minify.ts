@@ -6,7 +6,7 @@ import type {
   OptionsWithCacheSid,
   Target,
 } from "./types";
-import { camelCase, getHash } from "./utils";
+import { camelCase, getHash, toError } from "./utils";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { SUPPORT_START_FONT_REGEX, SUPPORTED_RESULTS_FORMATS } from "./constants";
@@ -76,15 +76,29 @@ async function hasCachedFormats(
   return checks.every(Boolean);
 }
 
+// null when an entry can not be read: a build of another config may prune it after the check
 async function readCachedFormats(
   cache: Cache,
   cacheKey: string,
   fonts: MinifyFontOptions[],
-): Promise<Partial<ExtractedResult>> {
-  const entries = await Promise.all(
-    fonts.map(async (font) => [font.extension, await cache.get(`${cacheKey}.${font.extension}`)]),
-  );
-  return Object.fromEntries(entries);
+): Promise<Partial<ExtractedResult> | null> {
+  try {
+    const entries = await Promise.all(
+      fonts.map(async (font) => [font.extension, await cache.get(`${cacheKey}.${font.extension}`)]),
+    );
+    return Object.fromEntries(entries);
+  } catch {
+    return null;
+  }
+}
+
+async function readCache(
+  cache: Cache | null,
+  cacheKey: string,
+  fonts: MinifyFontOptions[],
+): Promise<Partial<ExtractedResult> | null> {
+  if (!cache || !(await hasCachedFormats(cache, cacheKey, fonts))) return null;
+  return readCachedFormats(cache, cacheKey, fonts);
 }
 
 async function writeCachedFormats(
@@ -226,9 +240,10 @@ export async function processMinify(
     warnings: [],
   };
 
-  if (ctx.cache && (await hasCachedFormats(ctx.cache, cacheKey, outputs))) {
+  const cached = await readCache(ctx.cache, cacheKey, outputs);
+  if (cached) {
     logger.cached(fontName);
-    return { ...emptyResult, ...(await readCachedFormats(ctx.cache, cacheKey, outputs)) };
+    return { ...emptyResult, ...cached };
   }
 
   const sourceBuffer = Buffer.from(source);
@@ -242,7 +257,10 @@ export async function processMinify(
     logger.warn(`Font "${fontName}": ${warning.message}`);
   }
   if (ctx.cache) {
-    await writeCachedFormats(ctx.cache, cacheKey, outputs, minifyResult);
+    // The result is valid without the cache: a failed write costs only the next extraction
+    await writeCachedFormats(ctx.cache, cacheKey, outputs, minifyResult).catch((error: unknown) => {
+      logger.warn(`Font "${fontName}": the result was not cached: ${toError(error).message}`);
+    });
   }
   return { ...emptyResult, ...minifyResult };
 }

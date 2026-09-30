@@ -67,8 +67,14 @@ export default class Cache {
     await mkdir(this.path, { recursive: true });
     // A build killed mid-write must not leave a truncated font behind a valid key
     const temporary = this.getPathTo(`.${key}.${process.pid}.${++this.writes}.tmp`);
-    await writeFile(temporary, data);
-    await rename(temporary, this.getPathTo(key));
+    try {
+      await writeFile(temporary, data);
+      await rename(temporary, this.getPathTo(key));
+    } catch (error) {
+      // A prune never removes temporary files
+      await rm(temporary, { force: true });
+      throw error;
+    }
   }
 
   // Called when a build starts: client and SSR builds of one config record their usage apart

@@ -4,7 +4,15 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync
 import { createServer } from "vite";
 import { join } from "node:path";
 import type { PluginOption, Target } from "../src";
-import { buildFixture, fixturesDir, fontsLength, generateId, outDir, plugin } from "./utils";
+import {
+  buildFixture,
+  fixturesDir,
+  fontsLength,
+  generateId,
+  type LoggerMessage,
+  outDir,
+  plugin,
+} from "./utils";
 
 const CACHE_DIR_NAME = ".font-extractor-cache";
 // The dev server writes its cache usage one second after the last minification
@@ -40,6 +48,9 @@ const cacheEntries = (parent: string): string[] =>
   readdirSync(join(parent, CACHE_DIR_NAME), { withFileTypes: true })
     .filter((entry) => entry.isFile())
     .map((entry) => entry.name);
+
+// The cache hit line of a font and the summary count, not other mentions of the cache
+const isCacheHit = (message: LoggerMessage): boolean => /cached "|\d+ cached/.test(message.message);
 
 const getWoff2 = (output: unknown[]): OutputAsset => {
   const asset = (output as OutputAsset[]).find((item) => item.fileName.endsWith(".woff2"));
@@ -189,6 +200,49 @@ describe("Disk cache", () => {
 
     await buildFixture({ fixture: project.root, pluginOptions: pluginOptions("play_arrow") });
     expect(cacheEntries(project.cacheDir)).toHaveLength(2);
+  });
+
+  it("should minify again when the cached files are gone", async () => {
+    const project = createTempProject();
+    projects.push(project);
+    project.useFont("icon-font.woff2");
+    const target: Target = { fontName: "Font Name", ligatures: ["close"] };
+    const first = getWoff2((await build(project, target)).output);
+    // Another config's prune removed the entries, its `.usage` stays
+    for (const name of cacheEntries(project.cacheDir)) {
+      rmSync(join(project.cacheDir, CACHE_DIR_NAME, name));
+    }
+    expect(existsSync(join(project.cacheDir, CACHE_DIR_NAME, ".usage"))).toBe(true);
+
+    const { output, messages } = await build(project, target);
+
+    expect(messages.filter((m) => m.type === "error")).toEqual([]);
+    expect(messages.filter(isCacheHit)).toEqual([]);
+    expect(Buffer.from(getWoff2(output).source).equals(Buffer.from(first.source))).toBe(true);
+    expect(cacheEntries(project.cacheDir)).toHaveLength(1);
+  });
+
+  it("should minify when a cache entry passes the check but can not be read", async () => {
+    const project = createTempProject();
+    projects.push(project);
+    project.useFont("icon-font.woff2");
+    const target: Target = { fontName: "Font Name", ligatures: ["close"] };
+    const first = getWoff2((await build(project, target)).output);
+    // A directory under the key: the check finds it, reading it fails like a pruned file
+    for (const name of cacheEntries(project.cacheDir)) {
+      const entry = join(project.cacheDir, CACHE_DIR_NAME, name);
+      rmSync(entry);
+      mkdirSync(entry);
+    }
+
+    const { output, messages } = await build(project, target);
+
+    expect(messages.filter((m) => m.message.includes("Failed to minify"))).toEqual([]);
+    expect(messages.filter(isCacheHit)).toEqual([]);
+    expect(Buffer.from(getWoff2(output).source).equals(Buffer.from(first.source))).toBe(true);
+    expect(readdirSync(join(project.cacheDir, CACHE_DIR_NAME))).not.toContainEqual(
+      expect.stringMatching(/\.tmp$/),
+    );
   });
 
   it("should remove the default and the 3.x cache directories when cache is disabled", async () => {
