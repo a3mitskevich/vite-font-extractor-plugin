@@ -74,7 +74,7 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 
 **`src/cache.ts`** — Async file-system cache in `<config.cacheDir>/.font-extractor-cache`; `.usage/<owner>.json` per build config or dev server; a build prunes entries no owner used within 30 days.
 
-**`src/inline-fonts.ts`**, **`src/utils.ts`** (regex helpers, `camelCase`, `stripCssComments`, `toError`), **`src/internal-logger.ts`** (phases, progress bars, summary), **`src/types.ts`** (`PluginOption` is a discriminated union on `type: 'auto' | 'manual'`).
+**`src/inline-fonts.ts`**, **`src/utils.ts`** (regex helpers, `camelCase`, `stripCssComments`, `toError`), **`src/internal-logger.ts`** (phases, progress bars, summary; `debug(message | () => message, id?)` prints dim `[debug]` info lines only when `debug: true` or `DEBUG` names `vite-font-extractor` — `isDebugEnabled` — with paths relative to the root: pass a thunk for anything costly, check `logger.isDebug` before extra work; one line per decision), **`src/types.ts`** (`PluginOption` is a discriminated union on `type: 'auto' | 'manual'`).
 
 **Core dependencies:** `fontext` (extraction/subsetting, ESM only), `fontkit` (glyph checks), `magic-string` (source maps of rewritten modules).
 
@@ -86,7 +86,7 @@ Test fixtures in `tests/fixtures/` — each subdirectory contains an `index.html
 
 Tests can import from `src/` (default) or `dist/` via `TEST_TARGET` env var.
 
-**Test files:** goal (names follow the minified fonts), common, auto, auto-content, auto-graph, google, google-markup, hash (determinism), subset, subset-query, references (output references resolve, manifest, SSR), build-config (cssCodeSplit, assetFileNames, preload, inline, log), configs (base, CDN, renderBuiltUrl, sourcemap, lightningcss, multi-output, CSS modules…), target-options, formats, cache, serve (dev), apply, watch, errors, options, patterns, logger, log, minificators, safariFix, dist-cjs, utils.
+**Test files:** debug (trace lines, `DEBUG` env), goal (names follow the minified fonts), common, auto, auto-content, auto-graph, google, google-markup, hash (determinism), subset, subset-query, references (output references resolve, manifest, SSR), build-config (cssCodeSplit, assetFileNames, preload, inline, log), configs (base, CDN, renderBuiltUrl, sourcemap, lightningcss, multi-output, CSS modules…), target-options, formats, cache, serve (dev), apply, watch, errors, options, patterns, logger, log, minificators, safariFix, dist-cjs, utils.
 
 ## Code Style
 

@@ -29,3 +29,4 @@ Features and fixes:
 - fontext warnings (`legacy-kern`) are logged
 - Exact sourcemaps for chunks with a `?subset=` import
 - `report` option: the build writes a JSON report of the minified fonts (source, output file, sizes, cache hit, glyphs) and of the fonts kept original, as an asset of the bundle
+- `debug: true` (or `DEBUG=vite-font-extractor`) traces why each font is minified or kept: face options, the source lookup of compiled CSS, cache hits, emitted files, the auto-mode graph wait, preloads, removed files and dev-server requests; the README lists every warning with its cause and fix

@@ -254,6 +254,64 @@ new file name.
   of CSS, and `transformIndexHtml` (post) running before HTML asset placeholders are resolved. The test suite covers
   them; a Vite minor that changes them needs a plugin update.
 
+## Troubleshooting
+
+A font the plugin finds but can not minify is named in the log with the reason:
+
+| Message                                                                                                     | Cause                                                                                                                                                                 | Fix                                                                                                                                                     |
+|-------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Font "X" has no minify options — add to targets or use ?subset=`                                           | An `@font-face` whose `font-family` matches no target and whose urls have no `?subset=`                                                                               | Add a target with `fontName` equal to the `font-family` (without quotes), add `?subset=` to its urls, or add the family to `ignore`                     |
+| `Font "X" has no minify options` (Google Fonts)                                                             | A Google Fonts family with no target, so there is nothing to put into `text=`                                                                                         | Add a target for the family (`fontName: 'Material Icons'`, with spaces, not `+`) or add it to `ignore`                                                  |
+| `Font "X" has external url sources: …`                                                                      | An `@font-face` loads the font from another host                                                                                                                      | Download the font into the project, or add the family to `ignore`                                                                                       |
+| `"auto" mode detected. "X" font is stubbed based on auto-detected glyphs…`                                  | Auto mode minifies every `@font-face` with the glyphs of CSS `content`                                                                                                | Nothing for an icon font; add a text font to `ignore` or give it a target                                                                               |
+| `Font "X": the source of … was not found among the files the stylesheet imports … — keeping original`       | An `@font-face` from a Sass/Less partial, mixin or `@import` whose path is built by interpolation (`url("#{$dir}/icons.woff2")`), so the plugin can not find the file | Write the path literally in the partial or the mixin argument, or move the `@font-face` into a plain CSS file ([Known limitations](#known-limitations)) |
+| `Font "X" is inlined as a data: URL and its source file was not found, so it is not minified…`              | Vite inlined the font of a compiled `@font-face` and none of the files the stylesheet imports has its bytes                                                           | Exclude font files from inlining: `build.assetsInlineLimit` (a function can return `false` for fonts)                                                   |
+| `Font "X": .otf is not supported for minification — keeping original .otf`                                  | fontext can not write that format                                                                                                                                     | List a `woff2`/`woff`/`ttf` url in the `@font-face`; the other urls are minified                                                                        |
+| `Font "X": .eot can not be read for minification — keeping original. Add a woff2, woff, ttf or otf source.` | Every url of the face is a format fontext can not read (eot, svg)                                                                                                     | Add a `woff2`, `woff`, `ttf` or `otf` url to the `@font-face`                                                                                           |
+| `Font "X" contains none of the glyphs used in CSS content — keeping original…`                              | Auto mode: no glyph of CSS `content` is in this font — usually a text font                                                                                            | Add the family to `ignore`                                                                                                                              |
+| `Font "X": skipped glyphs from CSS content not found in the font: …` (info)                                 | Auto mode: some `content` glyphs belong to another font                                                                                                               | Nothing, unless an icon of this font is listed — then check the font file                                                                               |
+| `auto mode: CSS content … was found after its font had been emitted…` (build error)                         | Auto mode could not wait for every stylesheet before the font was minified — usually a plugin that loads the stylesheet with the `@font-face` from another module     | Add the listed glyphs to a target of the font (auto mode uses a target when one is given) and report the setup in an issue                              |
+| `Failed to minify "X" — keeping original: …` (dev: `…, serving the original: …`)                            | fontext rejected the font; the reason follows the colon. Most often a ligature the font does not have (fontext 2 fails the whole font)                                | Fix the target (`ligatures`, `raws`, `characters`) as the reason says                                                                                   |
+| `Target "X": raws U+… are not icon glyphs of the font. Remove them or use unicodeRanges.`                   | A raw glyph of a manual icon target is not an icon of the font, fontext would reject the font                                                                         | Remove those raws, or keep them with `unicodeRanges`                                                                                                    |
+| `Font "X" found in multiple files: "a" and "b". Both will be processed.`                                    | The same Google Fonts family is linked from two files                                                                                                                 | Nothing if intended; load the family once to get one request                                                                                            |
+| ``Target "X": `withWhitespace` was removed in 4.0: …`` (config error)                                       | 4.0 minifies with fontext 2, which has no `withWhitespace`                                                                                                            | Remove the option and add `" "` to `characters` of a subset target                                                                                      |
+| `Ignore overlaps with targets: X`                                                                           | A family is both in `targets` and in `ignore`; `ignore` wins                                                                                                          | Remove it from one of the lists                                                                                                                         |
+| `type is not set, falling back to "manual"`                                                                 | An options object without `type`                                                                                                                                      | Set `type: 'manual'` or `type: 'auto'`                                                                                                                  |
+
+No message but the font is still big? Check that the font is loaded by an `@font-face` (a JS import without
+`?subset=` loads the original — see [Via JS import](#via-js-import)), that the file is not in `public/`, and that
+auto mode can see the glyphs: it reads only CSS `content: "…"`, so icons referenced by class name in HTML or JS need a
+manual target.
+
+### Debug trace
+
+`debug: true` in the plugin options, or `DEBUG=vite-font-extractor` in the environment (`*` and a comma-separated
+list work as in the [`debug`](https://www.npmjs.com/package/debug) package), prints `[debug]` lines that trace every
+decision, one line each, with the module it is about:
+
+```bash
+DEBUG=vite-font-extractor npx vite build
+```
+
+- **Options of a face** — its family, target, `?subset=` alone, auto glyphs, or why it is skipped (ignored, no target,
+  remote urls).
+- **Before vite:css (L1)** — each `@font-face` written in the module and the file each url resolves to, or why the
+  pass skips it (computed by the preprocessor or auto mode: left to the second pass; a `public/`, remote or `data:`
+  url).
+- **After vite:css (L2)** — the url kinds of the compiled face (Vite asset, `data:`), the candidate source files the
+  stylesheet imports, each probe and whether it matched, and each url swapped for the minified font.
+- **Minification** — whether a result of this build is reused, the cache key and hit/miss, each format's size
+  before and after, and whether the result is emitted as a file or inlined as `data:`.
+- **Auto mode** — the number of glyphs found per stylesheet, the start of the graph wait with the number of modules not parsed
+  yet, its release, or a timeout listing the modules it still waited for.
+- **Output** — each `<link rel="preload">` pointed at a minified font, and each file removed from the bundle.
+- **Dev server** — every font url registered for a family, and whether a request got a minified font or the
+  original.
+
+Debug lines are `info` messages: with `logLevel: 'warn'` Vite's logger hides them. `debug: false` turns the trace off
+even when `DEBUG` is set. Paths under the Vite root are printed relative to it; attach the trace when you report an
+issue.
+
 ## Caching
 
 Enable disk cache to skip re-minification when fonts and config haven't changed:
@@ -321,6 +379,7 @@ FontExtractor(options?: PluginOption): Plugin[]
 | `apply`    | `'build' \| 'serve'`                      | both        | Restrict to build or dev mode             |
 | `ignore`   | `string[]`                                | —           | Font names to skip entirely               |
 | `report`   | `string`                                  | —           | Build: write a JSON report of the fonts   |
+| `debug`    | `boolean`                                 | `DEBUG` env | Trace why each font is (not) minified     |
 
 - `type`: `FontExtractor()` without arguments runs in `auto` mode. An options object without `type` falls back to
   `manual` and logs a warning — set `type` explicitly.
@@ -367,6 +426,8 @@ SSR) and each output writes its own report; an absolute path outside the output 
 - `skipped`: fonts kept original, with the reason (minification failed, no smaller result, source of a compiled
   `@font-face` not found).
 - The same build writes the same report, apart from `cached`.
+- `debug`: on when `DEBUG` names `vite-font-extractor` (or `*`) and the option is not set. See
+  [Debug trace](#debug-trace).
 
 ### Target
 
@@ -380,36 +441,6 @@ SSR) and each output writes its own report; an absolute path outside the output 
 | `engine`         | `'icon' \| 'subset'` | `icon` for icon fonts (default), `subset` for text fonts |
 | `safariFix`      | `boolean`            | Align vertical metrics for Safari rendering              |
 | `silent`         | `boolean`            | Suppress minifier output for this font                   |
-
-## Troubleshooting
-
-**Font not being minified?**
-
-- Check that `fontName` exactly matches the `font-family` value in your CSS `@font-face` (without quotes)
-- Make sure the font isn't in the `ignore` list
-- The reason of a failed minification is printed after `Failed to minify "<font>" — keeping original:`
-- A font imported from JS without `?subset=` is loaded as is — see [Via JS import](#via-js-import)
-
-**Warning: "has no minify options"?**
-
-- The plugin found a `@font-face` but the font isn't in `targets`
-- Fonts with `?subset=` URLs don't trigger this warning — they're processed automatically
-- To silence: add the font to `targets`, use `?subset=`, or add to `ignore`
-
-**Error: "auto mode: CSS content … was found after its font had been emitted"?**
-
-- Auto mode could not wait for every stylesheet before the font was minified — usually a plugin that loads the
-  stylesheet with the `@font-face` from another module. Add the listed glyphs to a target of the font (auto mode uses
-  a target when one is given) and report the setup in an issue
-
-**Google Font URL not transformed?**
-
-- Use spaces in `fontName`: `'Material Icons'`, not `'Material+Icons'`
-
-**Auto mode missing glyphs?**
-
-- Auto mode only detects glyphs from CSS `content: "..."` properties
-- If icons are referenced by class name or JS, use `manual` mode instead
 
 ## License
 
