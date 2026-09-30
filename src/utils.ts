@@ -23,8 +23,9 @@ export const getHash = (text: Buffer | string, length = DEFAULT_HASH_LENGTH): st
 export const getExtension = <T extends string>(filename: string): T =>
   extname(filename).slice(1) as T;
 
+// `ICONS.WOFF2` is a woff2 font too
 export const getFontExtension = (fontFileName: string): Formats =>
-  getExtension<Formats>(fontFileName);
+  getExtension<Formats>(fontFileName).toLowerCase() as Formats;
 export function exists<T>(value: T): value is NonNullable<T> {
   return value !== null && value !== undefined;
 }

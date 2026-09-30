@@ -7,6 +7,7 @@ import {
   findUnicodeGlyphs,
   stripCssComments,
   camelCase,
+  getFontExtension,
 } from "../src/utils";
 
 describe("extractFontFaces", () => {
@@ -295,6 +296,13 @@ describe("findUnicodeGlyphs", () => {
 
   it("should ignore properties without strings", () => {
     expect(findUnicodeGlyphs(`.a{justify-content:center;align-content:space-between}`)).toEqual([]);
+  });
+});
+
+describe("getFontExtension", () => {
+  it("should return the extension in lower case", () => {
+    expect(getFontExtension("assets/ICONS.WOFF2")).toBe("woff2");
+    expect(getFontExtension("fonts/Icons.Ttf")).toBe("ttf");
   });
 });
 
