@@ -245,8 +245,8 @@ function reportMinified(
 
 // Called on every (re)build start; `build --watch` on Rolldown transforms every module again.
 // Dev keeps its state: there buildStart runs once
-export function resetBuildState(ctx: PluginContext): void {
-  ctx.cache?.resetUsage();
+export function resetBuildState(ctx: PluginContext, environment = ""): void {
+  ctx.cache?.resetUsage(environment);
   if (ctx.isServe) return;
   ctx.progress.clear();
   ctx.rawSources.clear();

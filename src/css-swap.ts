@@ -69,9 +69,10 @@ class SourceLocator {
     const sameFormat = (await this.getCandidates()).filter(
       (file) => extname(file).toLowerCase() === extension,
     );
+    // Same-named candidates first; a name alone proves nothing (`Roboto` is in `Roboto-Bold`)
     const named = sameFormat.filter((file) => basename(fileName).includes(stemOf(file)));
-    if (named.length === 1) return named[0];
-    for (const file of named.length ? named : sameFormat) {
+    const others = sameFormat.filter((file) => !named.includes(file));
+    for (const file of [...named, ...others]) {
       if (await this.probe(file, fileName)) return file;
     }
     return undefined;

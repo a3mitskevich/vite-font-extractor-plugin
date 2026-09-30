@@ -1,6 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import type { ResolvedConfig, ResolveFn } from "vite";
+import { normalizePath, type ResolvedConfig, type ResolveFn } from "vite";
 import { cleanUrl } from "./utils";
 import { blankComments } from "./css-faces";
 
@@ -95,7 +95,11 @@ async function resolveFontToken(
       Promise.resolve(resolve(dirname(importer), path)),
     ]),
   );
-  const files = [...new Set(found.filter((file): file is string => !!file).map(cleanUrl))];
+  const files = [
+    ...new Set(
+      found.filter((file): file is string => !!file).map((file) => normalizePath(cleanUrl(file))),
+    ),
+  ];
   const checked = await Promise.all(
     files.map(async (file) => ((await exists(file)) ? file : null)),
   );

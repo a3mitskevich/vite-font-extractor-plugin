@@ -183,7 +183,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       server.middlewares.use(createServeMiddleware(ctx, server));
     },
     async buildStart(options) {
-      resetBuildState(ctx);
+      resetBuildState(ctx, ctx.isServe ? "" : this.environment.name);
       if (!ctx.isServe) ctx.buildConfig = this.environment.config.build;
       ctx.cachedBefore = getLogger(ctx).cachedCount();
       if (ctx.isServe || ctx.mode !== "auto") return;
@@ -218,6 +218,8 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     buildEnd() {
       if (ctx.isServe) return;
       const problem = checkAutoGlyphs(ctx);
+      // An aborted build must not keep a waiting module or its timer alive
+      ctx.graph.reset();
       if (problem) this.error(problem);
     },
   };

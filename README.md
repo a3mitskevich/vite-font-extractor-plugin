@@ -195,7 +195,8 @@ multi-family form `family=Material+Icons|Roboto` and the css2 API with several `
 - Fonts Vite inlines as `data:` URLs (`build.lib`, `build.assetsInlineLimit`) are minified and inlined: the rule Vite
   applies to the original file decides.
 - SSR builds minify the same way, so an SSR bundle points at the fonts the client build emits (minification is
-  deterministic; in auto mode the glyphs of the SSR build decide).
+  deterministic). In auto mode each build collects the glyphs of its own stylesheets: when the SSR build sees other
+  CSS than the client, its auto fonts get other names — take font urls for preloads from the client build.
 - Fonts in `public/` are copied as is and are not processed.
 - `.otf` can't be written by the minifier — other formats of the `@font-face` are minified and the `.otf` is kept
   original with a warning. A font available only as `.eot` is kept original too. The subset engine does not write

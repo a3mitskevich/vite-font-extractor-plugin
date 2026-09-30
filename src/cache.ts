@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
-import { access, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { mergePath } from "./utils";
 
 export const CACHE_DIR_NAME = ".font-extractor-cache";
@@ -27,6 +27,9 @@ export default class Cache {
   // Keys read or written since the last resetUsage()
   private readonly usedKeys = new Set<string>();
   private usageTimer: NodeJS.Timeout | null = null;
+  private writes = 0;
+  // Owner of the running build: one per build environment of the config
+  private environmentOwner: string;
 
   /**
    * @param to directory the cache directory is created in
@@ -39,6 +42,7 @@ export default class Cache {
     private readonly owner: string,
     private readonly isLongRunning = false,
   ) {
+    this.environmentOwner = owner;
     this.path = mergePath(to, CACHE_DIR_NAME);
     this.usagePath = mergePath(this.path, USAGE_DIR_NAME);
     mkdirSync(this.path, { recursive: true });
@@ -61,11 +65,16 @@ export default class Cache {
   async set(key: string, data: Buffer | string): Promise<void> {
     this.use(key);
     await mkdir(this.path, { recursive: true });
-    await writeFile(this.getPathTo(key), data);
+    // A build killed mid-write must not leave a truncated font behind a valid key
+    const temporary = this.getPathTo(`.${key}.${process.pid}.${++this.writes}.tmp`);
+    await writeFile(temporary, data);
+    await rename(temporary, this.getPathTo(key));
   }
 
-  resetUsage(): void {
+  // Called when a build starts: client and SSR builds of one config record their usage apart
+  resetUsage(environment = ""): void {
     this.usedKeys.clear();
+    this.environmentOwner = environment ? `${this.owner}-${environment}` : this.owner;
   }
 
   // Removes entries that neither this build nor another recent owner used
@@ -76,7 +85,10 @@ export default class Cache {
     const entries = await readdir(this.path, { withFileTypes: true });
     await Promise.all(
       entries
-        .filter((entry) => entry.isFile() && !protectedKeys.has(entry.name))
+        .filter(
+          (entry) =>
+            entry.isFile() && !entry.name.endsWith(".tmp") && !protectedKeys.has(entry.name),
+        )
         .map((entry) => rm(this.getPathTo(entry.name), { force: true })),
     );
   }
@@ -99,7 +111,10 @@ export default class Cache {
   private async writeUsage(): Promise<void> {
     await mkdir(this.usagePath, { recursive: true });
     const usage: Usage = { keys: [...this.usedKeys].sort() };
-    await writeFile(mergePath(this.usagePath, `${this.owner}.json`), JSON.stringify(usage));
+    await writeFile(
+      mergePath(this.usagePath, `${this.environmentOwner}.json`),
+      JSON.stringify(usage),
+    );
   }
 
   // Keys of every owner that ran within the TTL; usage of owners gone for longer is removed

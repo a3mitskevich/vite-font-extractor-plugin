@@ -86,6 +86,7 @@ function armTimer(state: GraphState): void {
     state.timedOut = true;
     releaseWaiters(state);
   }, GRAPH_IDLE_TIMEOUT_MS);
+  state.timer.unref();
 }
 
 export function addEntries(state: GraphState, ids: Iterable<string>): void {

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { basename, join } from "node:path";
-import { type Connect, send, type ViteDevServer } from "vite";
+import { basename, resolve } from "node:path";
+import { type Connect, isFileLoadingAllowed, normalizePath, send, type ViteDevServer } from "vite";
 import { cleanUrl, createSubsetOptions, getFontExtension, stripBase, toError } from "./utils";
 import { type PluginContext, getLogger } from "./context";
 import type {
@@ -122,9 +122,9 @@ function fileOfRequest(ctx: PluginContext, path: string): string | null {
   } catch {
     return null;
   }
-  if (!pathname.startsWith(FS_PREFIX)) return join(ctx.root, pathname);
+  if (!pathname.startsWith(FS_PREFIX)) return normalizePath(resolve(ctx.root, `.${pathname}`));
   const file = pathname.slice(FS_PREFIX.length - 1);
-  return WINDOWS_DRIVE_RE.test(file) ? file.slice(1) : file;
+  return normalizePath(resolve(WINDOWS_DRIVE_RE.test(file) ? file.slice(1) : file));
 }
 
 /**
@@ -135,7 +135,9 @@ function registerSubsetRequest(ctx: PluginContext, url: string): ServeFontLoader
   if (!SUBSET_REQUEST_RE.test(url) || MODULE_REQUEST_RE.test(url)) return undefined;
   const { path, query } = splitUrl(url);
   const file = fileOfRequest(ctx, path);
-  if (!file || !existsSync(file)) return undefined;
+  // Only files Vite itself would serve (server.fs.allow / deny)
+  if (!file || !ctx.server || !isFileLoadingAllowed(ctx.server.config, file)) return undefined;
+  if (!existsSync(file)) return undefined;
   const loader = createServeFontLoader(ctx, {
     importer: file,
     url: file + query,

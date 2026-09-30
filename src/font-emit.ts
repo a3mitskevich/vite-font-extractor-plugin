@@ -86,6 +86,18 @@ const readSource = async (ctx: PluginContext, file: string): Promise<Buffer> => 
   return pending;
 };
 
+const GLYPH_LIST_OPTIONS = ["ligatures", "raws", "unicodeRanges"] as const;
+
+// `url(a.woff2?subset=AB), url(a.woff)` without a target: the plain url has nothing to keep
+function hasGlyphSelection({ auto, target }: OptionsWithCacheSid): boolean {
+  if (auto) return true;
+  const fields = target as Partial<Record<(typeof GLYPH_LIST_OPTIONS)[number], unknown[]>>;
+  return (
+    GLYPH_LIST_OPTIONS.some((option) => !!fields[option]?.length) ||
+    ("characters" in target && !!target.characters)
+  );
+}
+
 // Sources of one glyph set are minified together: formats of one @font-face share one source
 function groupBySubset(job: FaceJob): Map<string, FontSource[]> {
   const groups = new Map<string, FontSource[]>();
@@ -137,6 +149,7 @@ export async function minifyFace(ctx: PluginContext, job: FaceJob): Promise<Map<
   for (const sources of groupBySubset(job).values()) {
     const subset = parseUrlSubset(sources[0].query);
     const options = mergeSubsetOptions(job.options, subset, job.fontName);
+    if (!hasGlyphSelection(options)) continue;
     if (options.auto) ctx.autoGlyphSets.add(options.sid);
     const key = `${[...new Set(sources.map((source) => source.file))].join("|")}::${options.sid}`;
     let pending = ctx.minifications.get(key);
@@ -186,7 +199,7 @@ export async function emitFont(
     source: content,
   });
   ctx.emittedFonts.set(referenceId, {
-    file: source.file,
+    file: normalizePath(source.file),
     fileName: emitter.getFileName(referenceId),
     isPlain: !parseUrlSubset(source.query),
   });
