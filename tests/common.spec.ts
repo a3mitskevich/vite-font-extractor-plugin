@@ -3,12 +3,17 @@ import { extname } from "node:path";
 import type { OutputAsset } from "rollup";
 import {
   buildByVersion,
-  type BuildOptions,
   type ContainerVersion,
   type CssMinify,
+  findBrokenFontReferences,
+  findOrphanFontAssets,
   fixtures,
   type FixturesNames,
   fontsLength,
+  getReadableFontAssets,
+  openFont,
+  type OutputItem,
+  rendersLigature,
   viteBuild,
 } from "./utils";
 
@@ -19,15 +24,18 @@ describe("Common", () => {
         const fixture = fixtures[fixtureName];
         Array.from(["lightningcss", "esbuild"] as CssMinify[]).forEach((cssMinify) => {
           describe(`Build test for "${fixtureName}" fixture with "${cssMinify}" css minificator`, () => {
-            const build = async (options?: BuildOptions) =>
-              buildByVersion(version, {
-                ...options,
+            // Both tests inspect the same build
+            let result: ReturnType<typeof buildByVersion> | undefined;
+            const build = () =>
+              (result ??= buildByVersion(version, {
+                cssMinify,
                 fixture: fixture.path,
                 targets: fixture.fonts.map((font) => font.name),
-              });
+              }));
 
-            it("should return a bundle with minified fonts", async () => {
+            it("should return a bundle with minified fonts keeping the target ligatures", async () => {
               const { output } = await build();
+              const items = output as OutputItem[];
               const fontAssets = output.filter(
                 (asset): asset is OutputAsset =>
                   asset.type === "asset" && asset.fileName.includes("font-"),
@@ -47,13 +55,28 @@ describe("Common", () => {
               });
               cssAssets.forEach((asset) => {
                 const content = asset.source.toString();
-                expect(content).not.toContain(".fef");
                 if (content.includes("@font-face")) {
                   fontAssets.forEach((asset) => {
                     expect(content).toContain(asset.fileName);
                   });
                 }
               });
+
+              const readable = getReadableFontAssets(items);
+              expect(readable.length).toBeGreaterThan(0);
+              readable.forEach((asset) => {
+                const font = openFont(asset.source);
+                expect(rendersLigature(font, "close"), asset.fileName).toBe(true);
+                expect(rendersLigature(font, "play_arrow"), asset.fileName).toBe(true);
+                expect(rendersLigature(font, "star"), asset.fileName).toBe(false);
+              });
+            });
+
+            it("should reference only emitted fonts and leave no orphans", async () => {
+              const { output } = await build();
+              const items = output as OutputItem[];
+              expect(findBrokenFontReferences(items)).toEqual([]);
+              expect(findOrphanFontAssets(items)).toEqual([]);
             });
           });
         });
@@ -68,5 +91,4 @@ describe("Common", () => {
   };
 
   runAllTests();
-  // runCommonTest(versionV4, ['plain-html']) // for single debug
 });

@@ -1,0 +1,13 @@
+@font-face {
+    font-family: 'Ignored';
+    src: url("../fonts/text-font.woff2?subset=ABC") format("woff2");
+}
+
+@font-face {
+    font-family: 'Kept';
+    src: url("../fonts/text-font.woff?subset=XYZ") format("woff");
+}
+
+.test {
+    font-family: "Ignored", "Kept", serif;
+}

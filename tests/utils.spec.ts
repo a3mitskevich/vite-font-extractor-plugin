@@ -7,7 +7,7 @@ import {
   findUnicodeGlyphs,
   stripCssComments,
   camelCase,
-  groupBy,
+  getFontExtension,
 } from "../src/utils";
 
 describe("extractFontFaces", () => {
@@ -218,6 +218,102 @@ describe("findUnicodeGlyphs", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toBe(String.fromCharCode(0xe002));
   });
+
+  const cp = (hex: number): string => String.fromCodePoint(hex);
+
+  it("should find a literal glyph in single quotes", () => {
+    expect(findUnicodeGlyphs(`.a::before { content: '${cp(0xe5cd)}'; }`)).toEqual([cp(0xe5cd)]);
+  });
+
+  it("should read escapes of 1 to 6 hex digits", () => {
+    const css = `.a{content:"\\0e5cd"} .b{content:"\\E838"} .c{content:"\\41"} .d{content:"\\00E88A"}`;
+    expect(findUnicodeGlyphs(css)).toEqual([cp(0xe5cd), cp(0xe838), "A", cp(0xe88a)]);
+  });
+
+  it("should read a non-BMP escape as one code point", () => {
+    expect(findUnicodeGlyphs(`.a{content:"\\1F600"}`)).toEqual([cp(0x1f600)]);
+  });
+
+  it("should consume one whitespace after an escape", () => {
+    expect(findUnicodeGlyphs(`.a{content:"\\e5cd \\e838"}`)).toEqual([cp(0xe5cd), cp(0xe838)]);
+    expect(findUnicodeGlyphs(`.a{content:"\\41 B"}`)).toEqual(["A", "B"]);
+  });
+
+  it("should find every glyph of one value", () => {
+    expect(findUnicodeGlyphs(`.a{content:"\\e5cd\\e838"}`)).toEqual([cp(0xe5cd), cp(0xe838)]);
+    expect(findUnicodeGlyphs(`.a{content:"${cp(0xe5cd)}${cp(0xe838)}"}`)).toEqual([
+      cp(0xe5cd),
+      cp(0xe838),
+    ]);
+  });
+
+  it("should keep surrogate pairs and emoji whole", () => {
+    expect(findUnicodeGlyphs(`.a{content:"😀"}`)).toEqual(["😀"]);
+    expect(findUnicodeGlyphs(`.a{content:"${cp(0xf0001)}"}`)).toEqual([cp(0xf0001)]);
+  });
+
+  it("should read several strings and ignore functions", () => {
+    const css = `.a::before { content: counter(item) "\\e5cd" attr(data-icon) 'x' counters(n, ".") ; }`;
+    expect(findUnicodeGlyphs(css)).toEqual([cp(0xe5cd), "x"]);
+  });
+
+  it("should return ligature text as one entry", () => {
+    expect(findUnicodeGlyphs(`.a{content:"close"} .b{content:'play_arrow'}`)).toEqual([
+      "close",
+      "play_arrow",
+    ]);
+  });
+
+  it("should split ligature words separated by spaces", () => {
+    expect(findUnicodeGlyphs(`.a{content:"close  star"}`)).toEqual(["close", "star"]);
+  });
+
+  it("should ignore whitespace-only and empty values", () => {
+    expect(findUnicodeGlyphs(`.a{content:""} .b{content:" "} .c{content:"\\20"}`)).toEqual([]);
+  });
+
+  it("should read escaped quotes and non-hex escapes as literal characters", () => {
+    expect(findUnicodeGlyphs(`.a{content:"\\""} .b{content:'\\''} .c{content:"\\/"}`)).toEqual([
+      '"',
+      "'",
+      "/",
+    ]);
+  });
+
+  it("should not end a value at a semicolon inside a string", () => {
+    expect(findUnicodeGlyphs(`.a{content:";" "\\e5cd"}`)).toEqual([";", cp(0xe5cd)]);
+  });
+
+  it("should skip invalid code points", () => {
+    expect(
+      findUnicodeGlyphs(`.a{content:"\\0"} .b{content:"\\D800"} .c{content:"\\110000"}`),
+    ).toEqual([]);
+  });
+
+  it("should read custom properties holding a content value", () => {
+    expect(findUnicodeGlyphs(`:root{--icon-content:"\\e5cd"}`)).toEqual([cp(0xe5cd)]);
+  });
+
+  it("should ignore properties without strings", () => {
+    expect(findUnicodeGlyphs(`.a{justify-content:center;align-content:space-between}`)).toEqual([]);
+  });
+
+  it("should read only content declarations, not selectors or other properties", () => {
+    const css = `.content:hover { font-family: "Material Icons"; } .grid{justify-content:"a"}
+      .page-content::after{content:"close"} .b{color:red;content:"star"}`;
+    expect(findUnicodeGlyphs(css)).toEqual(["close", "star"]);
+  });
+
+  it("should read a content declaration at the start of the code", () => {
+    expect(findUnicodeGlyphs(`content: "close"`)).toEqual(["close"]);
+  });
+});
+
+describe("getFontExtension", () => {
+  it("should return the extension in lower case", () => {
+    expect(getFontExtension("assets/ICONS.WOFF2")).toBe("woff2");
+    expect(getFontExtension("fonts/Icons.Ttf")).toBe("ttf");
+  });
 });
 
 describe("camelCase", () => {
@@ -239,27 +335,5 @@ describe("camelCase", () => {
 
   it("should lowercase first letter of PascalCase", () => {
     expect(camelCase("FontName")).toBe("fontName");
-  });
-});
-
-describe("groupBy", () => {
-  it("should group items by key", () => {
-    const items = [
-      { type: "a", value: 1 },
-      { type: "b", value: 2 },
-      { type: "a", value: 3 },
-    ];
-    const result = groupBy(items, (i) => i.type);
-    expect(result).toEqual({
-      a: [
-        { type: "a", value: 1 },
-        { type: "a", value: 3 },
-      ],
-      b: [{ type: "b", value: 2 }],
-    });
-  });
-
-  it("should return empty object for empty array", () => {
-    expect(groupBy([], () => "key")).toEqual({});
   });
 });

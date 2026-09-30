@@ -1,0 +1,4 @@
+.icon-play::before {
+    font-family: "Font Name";
+    content: "\e037";
+}

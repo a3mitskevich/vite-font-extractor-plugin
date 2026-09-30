@@ -1,0 +1,11 @@
+@font-face {
+    font-family: 'Font Name';
+    font-style: normal;
+    src: url("../fonts/icon-font.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: 'Font Name';
+    font-style: italic;
+    src: url("../fonts/icon-font.woff2") format("woff2");
+}

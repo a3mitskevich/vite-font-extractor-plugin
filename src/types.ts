@@ -1,13 +1,14 @@
-import type { Format, MinifyOption } from "fontext";
+import type { Formats, IconOption, SubsetOption } from "fontext";
 
 export interface ServeFontStubResponse {
-  extension: Format;
+  extension: Formats;
   content: Buffer;
   id: string;
 }
 import type { InlineConfig, Logger, LogType, ResolveFn, Plugin } from "vite";
 
-export type Target = Omit<MinifyOption, "formats">;
+export type Target = Omit<IconOption, "formats"> | Omit<SubsetOption, "formats">;
+export type IconTarget = Omit<IconOption, "formats">;
 
 export interface PluginCommonConfig {
   cache?: string | boolean;
@@ -35,13 +36,22 @@ export interface SubsetOptions {
 }
 
 export interface ImportResolvers {
-  common: ResolveFn;
   font: ResolveFn;
 }
 
-export interface OptionsWithCacheSid {
+// A font asset referenced from CSS/JS, collected in `transform` and resolved in `generateBundle`
+export interface FontReference {
+  fontName: string;
+  options: OptionsWithCacheSid;
+  subset?: SubsetOptions;
+  referenceId: string;
+  // Assets sharing a groupId are formats of the same font source (one @font-face)
+  groupId: string;
+}
+
+export interface OptionsWithCacheSid<T extends Target = Target> {
   sid: string;
-  target: Target;
+  target: T;
   auto: boolean;
 }
 
@@ -63,7 +73,7 @@ export interface MinifyFontOptions {
   source?: Buffer | string;
   url: string;
   importer?: string;
-  extension: Format;
+  extension: Formats;
 }
 
 export interface MinifyStats {
@@ -80,6 +90,8 @@ export interface InternalLogger extends Pick<Logger, LogType> {
   found(type: string, name: string, detail?: string): void;
   minified(fontName: string, ext: string, original: number, result: number, isLast?: boolean): void;
   cached(fontName: string): void;
+  // Number of `cached()` calls so far — the build summary counts cache hits from it
+  cachedCount(): number;
   skipped(fontName: string, reason: string): void;
   summary(stats: MinifyStats): void;
 }
