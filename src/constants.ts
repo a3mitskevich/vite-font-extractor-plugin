@@ -5,6 +5,8 @@ export const CSS_LANGS_RE = /\.(css|less|sass|scss|styl|stylus|pcss|postcss|sss)
 // Stops at quotes, whitespace, parens and tag brackets: works for attributes in any order,
 // minified HTML and CSS url() without quotes
 export const GOOGLE_FONT_URL_RE = /(?:https?:)?\/\/fonts\.googleapis\.com\/[^\s"'`()<>]+/g;
+// Whether a text holds such a url at all, the host anchored like above
+export const HAS_GOOGLE_FONT_URL_RE = /(?:https?:)?\/\/fonts\.googleapis\.com\//;
 export const POSTFIX_URL_RE = /[?#].*$/s;
 export const FONT_URL_REGEX = /url\(['"]?(.*?)['"]?\)/g;
 export const FONT_FAMILY_RE = /font-family:\s*(.*?);/;

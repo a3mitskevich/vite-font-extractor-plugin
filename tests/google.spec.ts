@@ -3,6 +3,9 @@ import type { OutputAsset } from "./utils";
 import { join } from "node:path";
 import { buildFixture, type BuildOptions, type CssMinify, fixtures, fixturesDir } from "./utils";
 
+// A Google Fonts stylesheet url, host anchored
+const GOOGLE_STYLESHEET_RE = /\/\/fonts\.googleapis\.com\//;
+
 describe("Google", () => {
   describe(`Google font test`, () => {
     Array.from(["lightningcss", "esbuild"] as CssMinify[]).forEach((cssMinify) => {
@@ -24,7 +27,7 @@ describe("Google", () => {
                 (asset): asset is OutputAsset =>
                   asset.type === "asset" &&
                   typeof asset.source === "string" &&
-                  asset.source.includes("fonts.googleapis.com"),
+                  GOOGLE_STYLESHEET_RE.test(asset.source),
               )
               .map<string>((asset) => asset.source.toString());
 
@@ -58,7 +61,7 @@ describe("Google", () => {
                 (asset): asset is OutputAsset =>
                   asset.type === "asset" &&
                   typeof asset.source === "string" &&
-                  asset.source.includes("fonts.googleapis.com"),
+                  GOOGLE_STYLESHEET_RE.test(asset.source),
               )
               .map<string>((asset) => asset.source.toString());
 
@@ -93,7 +96,7 @@ describe("Google", () => {
                 (asset): asset is OutputAsset =>
                   asset.type === "asset" &&
                   typeof asset.source === "string" &&
-                  asset.source.includes("fonts.googleapis.com"),
+                  GOOGLE_STYLESHEET_RE.test(asset.source),
               )
               .map<string>((asset) => asset.source.toString());
 
@@ -114,7 +117,7 @@ const googleSources = (output: unknown[]): string[] =>
       (asset) =>
         asset.type === "asset" &&
         typeof asset.source === "string" &&
-        asset.source.includes("fonts.googleapis.com"),
+        GOOGLE_STYLESHEET_RE.test(asset.source),
     )
     .map((asset) => String(asset.source));
 

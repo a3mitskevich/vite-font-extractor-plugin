@@ -1,12 +1,12 @@
 import type { Target } from "./types";
 import { type PluginContext, getLogger } from "./context";
-import { GOOGLE_FONT_URL_RE } from "./constants";
+import { GOOGLE_FONT_URL_RE, HAS_GOOGLE_FONT_URL_RE } from "./constants";
 import { getGoogleFontFamilies, getGoogleFontText, setGoogleFontText } from "./google-fonts";
 import { checkFontProcessing } from "./minify";
 import styler from "./styler";
 import { exists, extractGoogleFontsUrls, stripCssComments, toError } from "./utils";
 
-export const hasGoogleFontUrl = (code: string): boolean => code.includes("fonts.googleapis.com");
+export const hasGoogleFontUrl = (code: string): boolean => HAS_GOOGLE_FONT_URL_RE.test(code);
 
 // Everything a target keeps: ligature names, raw glyphs and characters
 function getTargetTexts(target: Target): string[] {
