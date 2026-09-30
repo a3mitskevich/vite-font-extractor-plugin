@@ -4,8 +4,8 @@ import { createServer as createServerV6 } from "vite-6";
 import { createServer as createServerV7, type ViteDevServer } from "vite-7";
 import { createServer as createServerV8 } from "vite-8";
 import * as fontkit from "fontkit";
-import { join } from "node:path";
-import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { stripVTControlCharacters } from "node:util";
 import type { PluginOption } from "../src";
 import {
@@ -14,7 +14,9 @@ import {
   fixtures,
   fontsLength,
   createFixture,
+  generateId,
   type LoggerMessage,
+  outDir,
 } from "./utils";
 
 type CreateServer = typeof createServerV7;
@@ -249,6 +251,35 @@ describe.sequential("Dev server: minification errors", () => {
       });
     });
 
+    it(`${label}: should minify again once a broken font file is fixed`, async () => {
+      const workDir = join(outDir, `dev-retry-${generateId()}`);
+      const root = join(workDir, "project");
+      const fontPath = join(workDir, "fonts", "text-font.woff2");
+      cpSync(devFixtures.textFont.path, root, { recursive: true });
+      mkdirSync(dirname(fontPath), { recursive: true });
+      cpSync(join(fixturesDir, "log-levels", "broken.woff2"), fontPath);
+      const options: PluginOption = {
+        type: "manual",
+        cache: false,
+        targets: [{ fontName: "Text Font", engine: "subset", characters: "abc" }],
+      };
+      try {
+        await withDevServer(createServer, root, options, async (dev) => {
+          const [url] = fontUrlsOf(await fetchCss(dev.origin, "/index.css"));
+          expect((await fetchFont(dev.origin, url)).status).toBe(200);
+          expect(dev.messages.filter((m) => m.type === "error").length).toBeGreaterThan(0);
+
+          cpSync(join(fixturesDir, "fonts", "text-font.woff2"), fontPath);
+          const { status, body } = await fetchFont(dev.origin, url);
+          expect(status).toBe(200);
+          expect(body.byteLength).toBeLessThan(textFontSource.byteLength);
+          expect(openFont(body).hasGlyphForCodePoint("a".codePointAt(0)!)).toBe(true);
+        });
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
+      }
+    });
+
     it(`${label}: should serve the original font in auto mode before any glyph is found`, async () => {
       rejections.length = 0;
       await withDevServer(createServer, devFixtures.textFont.path, undefined, async (dev) => {
@@ -328,6 +359,24 @@ describe.sequential("Dev server: Vite 5–8 matrix", () => {
 
     it(`${label}: should minify a ?subset= face without a target like build`, async () => {
       const options: PluginOption = { type: "manual", cache: false, targets: [] };
+      await withDevServer(createServer, fixtures["subset-chars"].path, options, async (dev) => {
+        const urls = fontUrlsOf(await fetchCss(dev.origin, "/index.css"));
+        const woff2 = urls.find((url) => url.includes(".woff2"))!;
+
+        const { status, body } = await fetchFont(dev.origin, woff2);
+        expect(status).toBe(200);
+        expect(body.byteLength).toBeLessThan(textFontSource.byteLength);
+        const font = openFont(body);
+        for (const char of "ABC") {
+          expect(font.hasGlyphForCodePoint(char.codePointAt(0)!), char).toBe(true);
+        }
+        expect(font.hasGlyphForCodePoint("q".codePointAt(0)!)).toBe(false);
+        expect(problemsOf(dev.messages)).toEqual([]);
+      });
+    });
+
+    it(`${label}: should minify a ?subset= face in auto mode like build`, async () => {
+      const options: PluginOption = { type: "auto", cache: false };
       await withDevServer(createServer, fixtures["subset-chars"].path, options, async (dev) => {
         const urls = fontUrlsOf(await fetchCss(dev.origin, "/index.css"));
         const woff2 = urls.find((url) => url.includes(".woff2"))!;

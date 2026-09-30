@@ -31,7 +31,9 @@ function resolveServeOptions(
   subset: SubsetOptions | undefined,
 ): OptionsWithCacheSid | null {
   if (request.auto) {
-    // Nothing to extract until auto mode finds glyphs — the original is served meanwhile
+    // An explicit `?subset=` replaces the detected glyphs, like in build. Without it there is
+    // nothing to extract until auto mode finds glyphs — the original is served meanwhile
+    if (subset) return mergeSubsetOptions(ctx.autoProxyOption, subset, request.fontName);
     return ctx.autoProxyOption.target.raws?.length ? ctx.autoProxyOption : null;
   }
   const options = ctx.optionsMap.get(request.fontName);
@@ -93,8 +95,9 @@ export function createServeFontLoader(
       return null;
     }
     if (options.sid !== resultSid) {
-      resultSid = options.sid;
       result = await minifyForServe(ctx, request, fonts, options);
+      // A failure is not remembered: the next request retries, e.g. after the font file is fixed
+      resultSid = result ? options.sid : undefined;
     }
     return result;
   };
