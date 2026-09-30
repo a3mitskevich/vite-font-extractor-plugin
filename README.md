@@ -19,11 +19,27 @@ Before:  Material Icons   348 KB (all 2,000+ icons)
 After:   Material Icons    12 KB (only 3 icons you need)   → 97% smaller
 ```
 
+## Goal
+
+This is the outcome the plugin exists for, and every change is measured against it:
+
+- **Smaller fonts** — each font keeps only the glyphs the project needs.
+- **A new name for everything that changed** — when the minified result differs (another glyph set, another font
+  file, other options), the font and every file that depends on it (CSS, JS, HTML preloads, manifest) get new
+  content-hashed names. Nothing needs revalidation, nothing on a CDN needs invalidation.
+- **The old name for everything that did not change** — when the result is the same, every file keeps its name, so
+  browser and CDN caches keep working.
+
+> **Status in 3.x:** the font files follow this rule (with [`cache`](#caching) kept between builds). CSS and JS that
+> reference a font keep their names when only the font changes, so for now serve them with revalidation — see
+> [Long-term caching](#long-term-caching). 4.0 minifies fonts before the bundler hashes the output, so Rollup /
+> Rolldown rename the whole dependency chain themselves.
+
 ## Features
 
 - **Cache-friendly file names** — a minified font is named by the hash of its content, so a changed font or glyph set
   gets a new file name and cached fonts never need invalidation; CSS/JS referencing them are not renamed yet
-  ([details](#long-term-caching))
+  ([details](#long-term-caching), [goal](#goal))
 - **Icon font minification** — keep only the ligatures you use (Material Icons and other ligature icon fonts)
 - **Text font subsetting** — keep only specific characters via `?subset=` query or target options
 - **Zero-config auto mode** — detects glyphs from CSS `content: "..."` automatically

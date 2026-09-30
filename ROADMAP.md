@@ -17,11 +17,20 @@ Development roadmap for `vite-font-extractor-plugin` — v3.1.
 - Move the disk cache to `config.cacheDir`
 - Toolchain majors: vitest 5, TypeScript 6, tsup → tsdown, changesets 3, lint-staged 17
 - Dev server: invalidate auto-mode fonts on HMR (`?v=` and non-root `base` are handled since 3.1)
-- Rename CSS/JS that reference a minified font. They are hashed before `generateBundle` rewrites the font url, so
-  a changed glyph set keeps `index-<hash>.css` under the old name (documented in 3.1, "Long-term caching").
-  CSS: re-emit the rewritten asset by content and update HTML, preload deps, `importedCss` and the manifest.
-  JS: `augmentChunkHash` with the fonts' signature. This needs deterministic fontext output (see
-  "Deterministic font hashing"); without it, the same inputs produce a new font name under an unchanged JS name
+- **Main goal of the package (README → "Goal"):** a changed font result renames the font and every file that
+  depends on it (CSS, JS, HTML, manifest); an unchanged result keeps every name. 3.x meets it for font files only:
+  CSS/JS are hashed before `generateBundle` rewrites the font url, so a changed glyph set keeps `index-<hash>.css`
+  under the old name. Approach: minify before the bundler hashes the output and let Rolldown rename the chain
+  itself, not rewrite the finished bundle. Findings of the 2026-09-30 spike on Vite 5 and 8:
+  - JS `?subset=` imports: a `resolveId` that returns the minified file works — the bundler renames the font and
+    the JS chunk. The manifest key becomes the path of that file.
+  - CSS `url()`: Vite resolves it with its internal resolver (aliases + `vite:resolve`), plugin `resolveId` is not
+    called. Candidates: `resolve.alias` with `customResolver`, or swapping the asset reference in `transform`
+    after `vite:css`.
+  - Auto mode knows its glyph set only after all CSS is transformed, and Rolldown has no `setAssetSource`:
+    needs a source pre-scan in `buildStart` or stays on the post-processing path.
+  - Requires deterministic minification (fontext 2, see "Deterministic font hashing"), otherwise every build
+    renames every CSS/JS file
 - Dev server: minify JS `?subset=` imports (3.x subsets them in build only, documented)
 - `assetFileNames` without `[hash]`: keep the original file name for the minified font (3.x emits `icons2.woff2`)
   and support that outcome in every reference and the manifest

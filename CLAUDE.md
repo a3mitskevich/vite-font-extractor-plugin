@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Vite plugin that extracts and minifies font glyphs — both icon fonts (by ligatures) and text fonts (by character subsetting). Supports Vite 5, 6, 7, and 8 (3.x is the last line with Vite 5–7; 4.0 will be Vite 8 only). Two modes: `auto` (detects CSS `content: "."` properties) and `manual` (user specifies ligatures/characters). Also handles Google Font URL optimization and `?subset=` query parameters in CSS and JS imports.
 
+**Main goal — judge every change by it** (README → "Goal"): fonts keep only the glyphs the project needs; a changed minified result gives the font and every file depending on it (CSS, JS, HTML, manifest) new content-hashed names, so nothing needs revalidation; an unchanged result keeps every name, so caches survive. 3.x meets it for font files only (CSS/JS are hashed before `generateBundle` rewrites font urls); 4.0 moves minification before the bundler's own hashing. Prefer solutions inside Rollup/Rolldown mechanics over rewriting the finished bundle.
+
 ## Commands
 
 - **Build:** `npm run build` (uses tsup, outputs CJS + ESM to `dist/`)
