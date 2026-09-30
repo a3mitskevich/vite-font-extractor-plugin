@@ -23,6 +23,7 @@ const devFixtures = {
   textFont: createFixture("dev-text-font"),
   autoTwoCss: createFixture("dev-auto-two-css"),
   fontQuery: createFixture("dev-font-query"),
+  serveFollow: createFixture("dev-serve-follow"),
 };
 
 const CLOSE_CODE_POINT = 0xe5cd;
@@ -573,6 +574,100 @@ describe("Dev server: ?subset= outside of @font-face", () => {
       expect(status).toBe(200);
       expectAbcFont(body);
     });
+  });
+});
+
+const WAIT_TIMEOUT_MS = 10_000;
+const WAIT_INTERVAL_MS = 50;
+
+// The dev server sees a file change once its watcher reports it
+async function waitFor(check: () => Promise<boolean>, what: string): Promise<void> {
+  const deadline = Date.now() + WAIT_TIMEOUT_MS;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
+    await new Promise((resolve) => {
+      setTimeout(resolve, WAIT_INTERVAL_MS);
+    });
+  }
+}
+
+const iconFace = (family: string): string =>
+  `@font-face {\n  font-family: "${family}";\n  src: url("../fonts/icon-font.woff2") format("woff2");\n}\n`;
+
+describe("Dev server: served urls follow the stylesheet", () => {
+  const options: PluginOption = {
+    type: "manual",
+    cache: false,
+    targets: [
+      { fontName: "Icons A", ligatures: ["close"] },
+      { fontName: "Icons B", ligatures: ["star"] },
+    ],
+  };
+  const iconFontSource = readFileSync(join(fixturesDir, "fonts", "icon-font.woff2"));
+
+  // The fixture and its font are copied: the tests change the stylesheet on disk
+  const createProject = (): { workDir: string; root: string } => {
+    const workDir = join(outDir, `dev-follow-${generateId()}`);
+    const root = join(workDir, "project");
+    cpSync(devFixtures.serveFollow.path, root, { recursive: true });
+    mkdirSync(join(workDir, "fonts"), { recursive: true });
+    cpSync(
+      join(fixturesDir, "fonts", "icon-font.woff2"),
+      join(workDir, "fonts", "icon-font.woff2"),
+    );
+    return { workDir, root };
+  };
+
+  // `/@fs/…/icon-font.woff2?font-extractor-family=…` → `/@fs/…/icon-font.woff2`
+  const plainUrlOf = (css: string): string => fontUrlsOf(css)[0].replace(/\?.*$/, "");
+
+  it("should serve the plain url for the face of the last transform", async () => {
+    const { workDir, root } = createProject();
+    try {
+      await withDevServer(root, options, async (dev) => {
+        const plainUrl = plainUrlOf(await fetchCss(dev.origin, "/index.css"));
+        const before = openFont((await fetchFont(dev.origin, plainUrl)).body);
+        expect(rendersLigature(before, "close")).toBe(true);
+        expect(rendersLigature(before, "star")).toBe(false);
+
+        // Another family with other target options now comes first in the module
+        writeFileSync(join(root, "index.css"), iconFace("Icons B") + iconFace("Icons A"));
+        await waitFor(
+          async () => (await fetchCss(dev.origin, "/index.css")).includes("Icons B"),
+          "the changed stylesheet",
+        );
+        const after = openFont((await fetchFont(dev.origin, plainUrl)).body);
+        expect(rendersLigature(after, "star")).toBe(true);
+        expect(rendersLigature(after, "close")).toBe(false);
+        expect(problemsOf(dev.messages)).toEqual([]);
+      });
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should serve the original once the stylesheet is removed", async () => {
+    const { workDir, root } = createProject();
+    try {
+      await withDevServer(root, options, async (dev) => {
+        const css = await fetchCss(dev.origin, "/index.css");
+        const [taggedUrl] = fontUrlsOf(css);
+        const plainUrl = plainUrlOf(css);
+        const minified = await fetchFont(dev.origin, plainUrl);
+        expect(minified.body.byteLength).toBeLessThan(iconFontSource.byteLength);
+
+        rmSync(join(root, "index.css"));
+        await waitFor(
+          async () =>
+            (await fetchFont(dev.origin, plainUrl)).body.byteLength === iconFontSource.byteLength,
+          "the plain url to serve the original",
+        );
+        const tagged = await fetchFont(dev.origin, taggedUrl);
+        expect(tagged.body.equals(iconFontSource)).toBe(true);
+      });
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
   });
 });
 

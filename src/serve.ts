@@ -14,6 +14,7 @@ import { FONT_MIME_TYPES, SUPPORT_START_FONT_REGEX } from "./constants";
 import { mergeSubsetOptions, parseUrlSubset } from "./subset-options";
 import styler from "./styler";
 import { splitUrl } from "./font-emit";
+import { forgetServeModule } from "./serve-registry";
 
 // A font requested with `?subset=`, other params may come first
 const SUBSET_REQUEST_RE = /\.(?:woff2?|ttf|otf|eot)\?(?:[^#]*&)?subset=/i;
@@ -177,7 +178,10 @@ export function reloadAutoFonts(ctx: PluginContext, changedId: string): void {
     for (const id of ctx.autoFaceModules) {
       if (id === changedId) continue;
       const module = environment.moduleGraph.getModuleById(id);
-      if (!module) continue;
+      if (!module) {
+        forgetServeModule(ctx, id);
+        continue;
+      }
       environment.moduleGraph.invalidateModule(module);
       environment.reloadModule(module).catch((error: unknown) => {
         getLogger(ctx).error(`Failed to reload ${styler.path(id)}: ${toError(error).message}`);

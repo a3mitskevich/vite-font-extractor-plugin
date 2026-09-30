@@ -13,7 +13,8 @@ import {
 } from "./utils";
 import { type PluginContext, getLogger } from "./context";
 import { checkFontProcessing } from "./minify";
-import { createServeFontLoader, reloadAutoFonts, type ServeFontRequest } from "./serve";
+import { reloadAutoFonts, type ServeFontRequest } from "./serve";
+import { beginServeTransform, registerServeUrl } from "./serve-registry";
 import { hasSubsetParam } from "./subset-options";
 import { hasGoogleFontUrl, rewriteGoogleFontUrls } from "./google-rewrite";
 import { isRemoteUrl } from "./face-options";
@@ -47,16 +48,6 @@ function tagFamilyUrl(ctx: PluginContext, url: string, font: FontFaceMeta): stri
     : tagged;
 }
 
-function registerServeProxy(
-  ctx: PluginContext,
-  requestUrl: string,
-  request: ServeFontRequest,
-): void {
-  if (!ctx.fontServeProxy.has(requestUrl)) {
-    ctx.fontServeProxy.set(requestUrl, createServeFontLoader(ctx, request));
-  }
-}
-
 function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceMeta): string {
   checkFontProcessing(ctx, font.name, id);
   if (font.options.auto) ctx.autoFaceModules.add(id);
@@ -70,9 +61,9 @@ function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceM
       fontName: font.name,
       auto: font.options.auto,
     };
-    // The plain url keeps working (served for the first family that registered it)
-    registerServeProxy(ctx, url, request);
-    registerServeProxy(ctx, tagFamilyUrl(ctx, url, font), request);
+    // The plain url keeps working (served for the first family of the module's last transform)
+    registerServeUrl(ctx, id, url, request);
+    registerServeUrl(ctx, id, tagFamilyUrl(ctx, url, font), request);
   });
   // Face text differs from the source when it contains comments — keep plain urls then
   if (!code.includes(font.face)) {
@@ -109,6 +100,7 @@ function toServedFace(ctx: PluginContext, face: string): FontFaceMeta | null {
  * @font-face url of a font to minify is registered with the dev middleware, tagged per family.
  */
 export function transformServedCss(ctx: PluginContext, code: string, id: string): string {
+  beginServeTransform(ctx, id);
   if (collectContentGlyphs(ctx, code, id)) reloadAutoFonts(ctx, id);
   let result = rewriteCssGoogleFonts(ctx, code, id);
   const cleaned = stripCssComments(result);

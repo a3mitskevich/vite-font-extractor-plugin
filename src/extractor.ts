@@ -1,4 +1,10 @@
-import { type Plugin, type ResolvedConfig, type Rollup, perEnvironmentState } from "vite";
+import {
+  normalizePath,
+  type Plugin,
+  type ResolvedConfig,
+  type Rollup,
+  perEnvironmentState,
+} from "vite";
 import { resolve } from "node:path";
 import type { PluginOption } from "./types";
 import Cache from "./cache";
@@ -30,6 +36,7 @@ import { hasGoogleFontUrl, rewriteGoogleFontUrls } from "./google-rewrite";
 import { recordPreloadSources, redirectFontPreloads } from "./html";
 import { removeUnusedOriginals } from "./cleanup";
 import { createServeMiddleware } from "./serve";
+import { onServedFileChange } from "./serve-registry";
 
 // Modules vite:css skips: `?raw`, `?url`, workers
 const SPECIAL_QUERY_RE = /[?&](?:worker|sharedworker|raw|url)\b/;
@@ -235,6 +242,9 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         const withGoogle = rewriteCssGoogleFonts(ctx, current, id);
         return withGoogle === current ? swapped : { code: withGoogle, map: null };
       },
+    },
+    watchChange(file, change) {
+      if (shared.isServe) onServedFileChange(shared, normalizePath(file), change.event);
     },
     buildEnd() {
       if (shared.isServe) return;

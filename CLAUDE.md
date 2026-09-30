@@ -24,7 +24,7 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 **`src/extractor.ts`** — Returns plugin objects sharing one `PluginContext`. Every per-module hook has a Rolldown hook filter (checked natively, no JS call for unrelated modules; `tests/edge-cases.spec.ts` asserts it):
 - `:pre` (enforce pre): `resolveId`/`load` turn a JS `?subset=` font import into a module of the plugin (build); `transform` of CSS langs records the raw source and runs the L1 pass (build)
 - `:new-url` (enforce pre, build): rewrites `new URL('<font>?subset=…', import.meta.url)` into an import
-- main: `configResolved`, `configureServer` (dev middleware), `buildStart` (reset, auto-mode graph entries), `transform` of CSS langs after vite:css (L2 pass, auto glyphs, Google `@import`; dev: `transform.ts`), `buildEnd` (auto-mode glyph check)
+- main: `configResolved`, `configureServer` (dev middleware), `buildStart` (reset, auto-mode graph entries), `transform` of CSS langs after vite:css (L2 pass, auto glyphs, Google `@import`; dev: `transform.ts`), `watchChange` (dev: served urls of changed/deleted files, `serve-registry.ts`), `buildEnd` (auto-mode glyph check)
 - `:graph` (auto-mode builds only): `moduleParsed` feeds the graph wait. It has no hook filter, so Rolldown calls it for every module — never register it where it is not needed
 - `:html` (build): `transformIndexHtml` pre records the files HTML preloads
 - `:post` (enforce post): `transformIndexHtml` post (Google Fonts, preloads follow the CSS), `generateBundle` — removes originals nothing loads before Vite's native manifest runs, logs the summary, prunes the cache
@@ -57,6 +57,8 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 **`src/transform.ts`** — Dev: auto glyphs, Google `@import`, faces registered with the middleware and tagged per family (and per glyph set in auto mode).
 
 **`src/serve.ts`** — Dev middleware and lazy minification (manual, auto, `?subset=` in CSS and JS/`new URL`, `?v=`, non-root `base`, per-family urls); auto fonts reload through HMR when glyphs change. Minification errors are logged and the original font is served — the dev server must never crash.
+
+**`src/serve-registry.ts`** — Dev: the urls each module registered with the middleware (`ctx.servedModules`). Every transform of a module drops its previous urls and registers them anew (within one transform the first face keeps a url; the plain url and the tagged url of a face share one loader, reused while its request stays the same). `watchChange` (main plugin) drops the urls of a changed file until it is transformed again, and everything of a deleted one (auto glyphs included).
 
 **`src/content-glyphs.ts`** — Parses CSS `content` strings for auto mode (quotes, 1–6 hex escapes, literals, ligature words).
 

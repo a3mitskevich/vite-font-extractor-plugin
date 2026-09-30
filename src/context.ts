@@ -13,6 +13,7 @@ import type {
 } from "./types";
 import type { CssFileScans, CssResolvers } from "./css-candidates";
 import { createGraphState, type GraphState } from "./graph-wait";
+import type { ServedModule } from "./serve-registry";
 
 // A minified font emitted by the plugin
 export interface EmittedFont {
@@ -51,6 +52,8 @@ export interface SharedContext {
   base: string;
   publicDir: string | null;
   readonly fontServeProxy: Map<string, () => Promise<ServeFontStubResponse | null>>;
+  // Dev: module id → the urls its last transform registered in fontServeProxy
+  readonly servedModules: Map<string, ServedModule>;
 }
 
 /**
@@ -240,6 +243,7 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     base: "/",
     publicDir: null,
     fontServeProxy: new Map(),
+    servedModules: new Map(),
   };
   return Object.assign(shared, createBuildState(shared, null));
 }
