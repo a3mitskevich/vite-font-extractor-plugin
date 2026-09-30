@@ -65,7 +65,6 @@ function createAutoTarget(glyphsFindMap: Map<string, string[]>): IconTarget {
     get raws(): string[] {
       return Array.from(glyphsFindMap.values()).flat();
     },
-    withWhitespace: true,
     ligatures: [],
   };
 }
@@ -80,6 +79,24 @@ function createAutoOption(autoTarget: IconTarget): OptionsWithCacheSid<IconTarge
   };
 }
 
+// Options removed from targets, with what replaces them
+const REMOVED_TARGET_OPTIONS: Record<string, string> = {
+  withWhitespace:
+    'fontext 2 no longer adds a space glyph — add " " to `characters` (subset engine)',
+};
+
+function assertTargets(targets: Target[]): void {
+  for (const target of targets) {
+    for (const [option, replacement] of Object.entries(REMOVED_TARGET_OPTIONS)) {
+      if (option in target) {
+        throw new Error(
+          `[vite-font-extractor-plugin] Target "${target.fontName}": \`${option}\` was removed in 4.0: ${replacement}`,
+        );
+      }
+    }
+  }
+}
+
 export function createPluginContext(pluginOption: PluginOption): PluginContext {
   const mode: PluginOption["type"] = pluginOption.type ?? "manual";
 
@@ -92,6 +109,7 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
       ? pluginOption.targets
       : [pluginOption.targets]
     : [];
+  assertTargets(targets);
 
   const casualOptionsMap = new Map<string, OptionsWithCacheSid>(
     targets.map((target) => [

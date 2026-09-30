@@ -25,8 +25,6 @@ const CLOSE = 0xe5cd;
 const CLOSE_FULLSCREEN = 0xe5ce;
 const STAR = 0xe838;
 const DIGITS = "0123456789";
-const FIRST_BUILD_TIME = 1_577_836_800_000;
-const CLOCK_STEP_MS = 2_000;
 
 const iconBuild = (target: Target, options: BuildOptions = {}) =>
   buildFixture({
@@ -139,10 +137,16 @@ describe.sequential("Target and plugin options", () => {
     });
   });
 
-  it("withWhitespace: should add the space glyph only when enabled", async () => {
-    const target: Target = { fontName: "", engine: "subset", characters: "Hello" };
-    const withSpace = await textBuild({ ...target, withWhitespace: true });
-    const withoutSpace = await textBuild(target);
+  it("withWhitespace: should fail with a hint, the option was removed in 4.0", async () => {
+    const target = { fontName: "", engine: "subset", characters: "Hello", withWhitespace: true };
+    await expect(textBuild(target as Target)).rejects.toThrow(
+      /`withWhitespace` was removed in 4\.0: .*add " " to `characters`/,
+    );
+  });
+
+  it('characters: " " keeps the space glyph', async () => {
+    const withSpace = await textBuild({ fontName: "", engine: "subset", characters: "Hello " });
+    const withoutSpace = await textBuild({ fontName: "", engine: "subset", characters: "Hello" });
 
     readableFonts(withSpace.output).forEach(({ name, font }) => {
       expect(hasGlyphsFor(font, "Helo "), name).toBe(true);
@@ -208,25 +212,18 @@ describe.sequential("Target and plugin options", () => {
 
   it("cache: should reuse cached fonts in the second build with identical output", async () => {
     const cache = join(outDir, `target-options-cache-${generateId()}`);
-    // A fresh minification in another second differs (svg2ttf timestamps, see hash.spec)
-    const buildAt = async (time: number) => {
-      vi.useFakeTimers({ toFake: ["Date"], now: time });
-      try {
-        return await buildFixture({
-          fixture: fixtures.plain.path,
-          pluginOptions: {
-            type: "manual",
-            targets: [{ fontName: "Font Name", ligatures: ["close"] }],
-            cache,
-          },
-        });
-      } finally {
-        vi.useRealTimers();
-      }
-    };
+    const cachedBuild = () =>
+      buildFixture({
+        fixture: fixtures.plain.path,
+        pluginOptions: {
+          type: "manual",
+          targets: [{ fontName: "Font Name", ligatures: ["close"] }],
+          cache,
+        },
+      });
     try {
-      const first = await buildAt(FIRST_BUILD_TIME);
-      const second = await buildAt(FIRST_BUILD_TIME + CLOCK_STEP_MS);
+      const first = await cachedBuild();
+      const second = await cachedBuild();
 
       // Per-font "cached" lines; the build summary also mentions "N cached"
       const cachedLog = (messages: LoggerMessage[]) =>

@@ -73,7 +73,10 @@ describe.sequential("Font references in build output", () => {
     expect(woff2).toHaveLength(2);
     expect(contentHash(woff2[0])).not.toBe(contentHash(woff2[1]));
     expect(findBrokenFontReferences(items)).toEqual([]);
-    expect(messages.filter((m) => m.type === "error")).toEqual([]);
+    // The text font has no "close" ligature: fontext 2 rejects it, that face keeps its original file
+    const errors = messages.filter((m) => m.type === "error").map((m) => m.message);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/keeping original: Font does not contain a ligature for "close"/);
   });
 
   it("should rewrite every occurrence of a font url in CSS", async () => {

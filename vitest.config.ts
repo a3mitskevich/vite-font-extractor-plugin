@@ -7,7 +7,5 @@ export default defineConfig({
       reporter: ["lcovonly"],
     },
     testTimeout: 30_000,
-    // fontext native encoders are nondeterministic under parallel execution
-    fileParallelism: false,
   },
 });

@@ -50,7 +50,6 @@ function createExtractOption(
         characters: target.characters,
         ligatures: target.ligatures,
         unicodeRanges: target.unicodeRanges,
-        withWhitespace: target.withWhitespace,
       }
     : {
         ...base,
@@ -58,7 +57,6 @@ function createExtractOption(
         raws: glyphs?.raws ?? target.raws,
         ligatures: glyphs?.ligatures ?? target.ligatures,
         unicodeRanges: target.unicodeRanges,
-        withWhitespace: target.withWhitespace,
       };
 }
 
@@ -217,7 +215,11 @@ export async function processMinify(
     camelCase(fontName).replace(UNSAFE_FILE_NAME_CHARS_RE, "_") +
     "-" +
     getHash(options.sid + sourceHash);
-  const emptyResult: ExtractedResult = { meta: [], report: { originalSize: 0, formats: {} } };
+  const emptyResult: ExtractedResult = {
+    meta: [],
+    report: { originalSize: 0, formats: {} },
+    warnings: [],
+  };
 
   if (ctx.cache && (await hasCachedFormats(ctx.cache, cacheKey, outputs))) {
     logger.cached(fontName);
@@ -231,6 +233,9 @@ export async function processMinify(
   }
   const extractOption = createExtractOption(fontName, outputs, options.target, glyphs);
   const minifyResult = await extract(sourceBuffer, extractOption);
+  for (const warning of minifyResult.warnings) {
+    logger.warn(`Font "${fontName}": ${warning.message}`);
+  }
   if (ctx.cache) {
     await writeCachedFormats(ctx.cache, cacheKey, outputs, minifyResult);
   }
