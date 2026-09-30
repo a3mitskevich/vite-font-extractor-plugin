@@ -234,9 +234,11 @@ new file name.
   (`url("#{$dir}/icons.woff2")`) may not be found — the face keeps its original and a warning names it. With
   `assetFileNames` without `[hash]` such a face gets a numbered name (`icons2.woff2`).
 - **Auto mode waits for the module graph.** The stylesheet with the `@font-face` is minified after every other module
-  of the build is transformed. The plugin listens to every parsed module to know that (about 10 µs per module), and
+  of the build is transformed. The plugin listens to every parsed module to know that (20–30 µs per module), and
   a plugin that loads that stylesheet itself would hold the build until a 20-second watchdog — the build then fails
-  with the glyphs it missed instead of shipping broken icons.
+  with the glyphs it missed instead of shipping broken icons. A chunk another plugin emits (`this.emitFile`) joins the
+  graph only when it loads: glyphs its stylesheets bring after a font was emitted fail the build the same way — add
+  them to a target of the font.
 - **Auto mode and SSR.** Each build collects the glyphs of its own stylesheets; an SSR build that sees other CSS than
   the client gets other auto fonts.
 - **Fonts outside `@font-face` stay original:** JS imports without `?subset=`, and a preload of a file several

@@ -10,7 +10,8 @@ import { isAbsolute } from "node:path";
 export const GRAPH_IDLE_TIMEOUT_MS = 20_000;
 
 export interface GraphState {
-  readonly discovered: Set<string>;
+  // Discovered modules that are not parsed yet; externals and waiting modules stay here
+  readonly unparsed: Set<string>;
   readonly parsed: Set<string>;
   readonly waiting: Set<string>;
   release: (() => void) | null;
@@ -32,7 +33,7 @@ interface ParsedModule {
 
 export function createGraphState(): GraphState {
   const state: GraphState = {
-    discovered: new Set(),
+    unparsed: new Set(),
     parsed: new Set(),
     waiting: new Set(),
     release: null,
@@ -42,7 +43,7 @@ export function createGraphState(): GraphState {
     reset() {
       if (state.timer) clearTimeout(state.timer);
       state.release?.();
-      state.discovered.clear();
+      state.unparsed.clear();
       state.parsed.clear();
       state.waiting.clear();
       state.release = null;
@@ -60,10 +61,14 @@ export function createGraphState(): GraphState {
 const isExternal = (lookup: ModuleLookup, id: string): boolean =>
   !isAbsolute(id) && !id.startsWith("\0") && lookup.getModuleInfo(id) === null;
 
-// Parsed in this build, waiting itself or external. A module with `code` but no moduleParsed
-// yet is not settled: its imports are not known
-const isSettled = (state: GraphState, lookup: ModuleLookup, id: string): boolean =>
-  state.parsed.has(id) || state.waiting.has(id) || isExternal(lookup, id);
+// A module that is not parsed yet holds the wait unless it waits itself or is external. A module
+// with `code` but no moduleParsed yet is not settled: its imports are not known
+const isPending = (state: GraphState, lookup: ModuleLookup, id: string): boolean =>
+  !state.waiting.has(id) && !isExternal(lookup, id);
+
+const discover = (state: GraphState, id: string): void => {
+  if (!state.parsed.has(id)) state.unparsed.add(id);
+};
 
 function releaseWaiters(state: GraphState): void {
   if (state.timer) clearTimeout(state.timer);
@@ -76,8 +81,11 @@ function releaseWaiters(state: GraphState): void {
 
 function checkGraph(state: GraphState, lookup: ModuleLookup): void {
   if (!state.release) return;
-  const hasPending = [...state.discovered].some((id) => !isSettled(state, lookup, id));
-  if (!hasPending) releaseWaiters(state);
+  // Only unparsed modules are scanned, so the check does not grow with the graph
+  for (const id of state.unparsed) {
+    if (isPending(state, lookup, id)) return;
+  }
+  releaseWaiters(state);
 }
 
 function armTimer(state: GraphState): void {
@@ -90,15 +98,15 @@ function armTimer(state: GraphState): void {
 }
 
 export function addEntries(state: GraphState, ids: Iterable<string>): void {
-  for (const id of ids) state.discovered.add(id);
+  for (const id of ids) discover(state, id);
 }
 
 // moduleParsed: records the module and everything it imports
 export function onModuleParsed(state: GraphState, lookup: ModuleLookup, info: ParsedModule): void {
   state.parsed.add(info.id);
-  state.discovered.add(info.id);
-  info.importedIds.forEach((id) => state.discovered.add(id));
-  info.dynamicallyImportedIds.forEach((id) => state.discovered.add(id));
+  state.unparsed.delete(info.id);
+  info.importedIds.forEach((id) => discover(state, id));
+  info.dynamicallyImportedIds.forEach((id) => discover(state, id));
   if (state.release) {
     armTimer(state);
     checkGraph(state, lookup);
