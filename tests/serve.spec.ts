@@ -16,6 +16,7 @@ import {
   generateId,
   type LoggerMessage,
   outDir,
+  toFsUrl,
 } from "./utils";
 
 const devFixtures = {
@@ -122,7 +123,7 @@ describe("Dev server", () => {
     const originalSize = readFileSync(fontPath).length;
 
     // Request font through Vite's /@fs/ prefix
-    const response = await fetch(`${baseUrl}/@fs${fontPath}`);
+    const response = await fetch(`${baseUrl}${toFsUrl(fontPath)}`);
     expect(response.ok).toBeTruthy();
 
     const body = await response.arrayBuffer();
@@ -134,7 +135,7 @@ describe("Dev server", () => {
   it("should serve every font format minified", async () => {
     for (const ext of ["woff2", "woff", "ttf", "eot"] as const) {
       const fontPath = join(fixturesDir, "fonts", `icon-font.${ext}`);
-      const { status, body } = await fetchFont(baseUrl, `/@fs${fontPath}`);
+      const { status, body } = await fetchFont(baseUrl, toFsUrl(fontPath));
       expect(status).toBe(200);
       expect(body.byteLength).toBeGreaterThan(0);
       expect(body.byteLength).toBeLessThan(fontsLength[ext]);
@@ -162,10 +163,10 @@ describe("Dev server", () => {
   it("should cache minification result between requests", async () => {
     const fontPath = join(fixturesDir, "fonts", "icon-font.woff2");
 
-    const response1 = await fetch(`${baseUrl}/@fs${fontPath}`);
+    const response1 = await fetch(`${baseUrl}${toFsUrl(fontPath)}`);
     const body1 = await response1.arrayBuffer();
 
-    const response2 = await fetch(`${baseUrl}/@fs${fontPath}`);
+    const response2 = await fetch(`${baseUrl}${toFsUrl(fontPath)}`);
     const body2 = await response2.arrayBuffer();
 
     // Same size = cached result reused

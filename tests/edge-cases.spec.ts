@@ -17,6 +17,7 @@ import {
   type OutputItem,
   plugin,
   textFontsLength,
+  toFsUrl,
 } from "./utils";
 
 const problems = (messages: LoggerMessage[]) =>
@@ -125,7 +126,7 @@ describe("Edge cases", () => {
       const port = typeof address === "object" && address ? address.port : 5173;
       const outsideName = outside.slice(outDir.length + 1);
       for (const path of [
-        `/@fs${outside}/secret.woff2?subset=ABC`,
+        `${toFsUrl(join(outside, "secret.woff2"))}?subset=ABC`,
         `/%2e%2e/${outsideName}/secret.woff2?subset=ABC`,
       ]) {
         const response = await fetch(`http://localhost:${port}${path}`);

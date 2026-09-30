@@ -3,6 +3,7 @@ import {
   type InlineConfig,
   type Logger,
   mergeConfig,
+  normalizePath,
   type Plugin,
   type ResolvedConfig,
 } from "vite";
@@ -90,6 +91,9 @@ export const textFontsLength = {
 };
 
 export const outDir = join(dir, "dist");
+
+// Dev url Vite serves a file outside the root at: `/@fs/home/…`, `/@fs/C:/…` on Windows
+export const toFsUrl = (file: string): string => `/@fs/${normalizePath(file).replace(/^\//, "")}`;
 
 export const DEFAULT_FONT: Font = {
   name: "Font Name",
