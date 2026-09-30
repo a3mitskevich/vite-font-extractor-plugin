@@ -12,14 +12,19 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # npm trusted publishing (OIDC): no long-lived token, provenance is generated automatically
+      id-token: write
 
     steps:
     - uses: actions/checkout@v4
+    # No `registry-url`: it writes `_authToken=${NODE_AUTH_TOKEN}` to .npmrc, and an empty token there
+    # makes npm skip the OIDC exchange. registry.npmjs.org is npm's default registry anyway
     - uses: actions/setup-node@v4
       with:
         node-version-file: '.nvmrc'
         cache: 'npm'
-        registry-url: 'https://registry.npmjs.org'
+    # Trusted publishing needs npm 11.5.1+, the npm bundled with Node may be older
+    - run: npm install -g npm@11
     - run: npm ci
     - run: npm run build
 
@@ -33,5 +38,3 @@ jobs:
         commit: 'chore: version packages'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
