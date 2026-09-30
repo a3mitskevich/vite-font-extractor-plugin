@@ -10,6 +10,7 @@ import type {
   Target,
   TargetOptionsMap,
 } from "./types";
+import { getReferenceKey } from "./asset-refs";
 
 export interface PluginContext {
   readonly mode: PluginOption["type"];
@@ -30,8 +31,9 @@ export interface PluginContext {
   readonly glyphsFindMap: Map<string, string[]>;
   // Keyed by `${referenceId}:${subsetKey}:${fontName}`
   readonly transformMap: Map<string, FontReference>;
-  // Build: asset reference ids of each transformed module. `vite build --watch` re-transforms
-  // only changed modules, so entries of transformMap are replaced per module
+  // Build: asset reference keys (`${referenceId}:${subsetKey}`) of each transformed module.
+  // `vite build --watch` re-transforms only changed modules, so entries of transformMap are
+  // replaced per module. A key, not the id: every `?subset=` of one file shares its reference id
   readonly moduleReferences: Map<string, ReadonlySet<string>>;
   readonly fontServeProxy: Map<string, () => Promise<ServeFontStubResponse | null>>;
   readonly progress: Map<string, string>;
@@ -134,12 +136,12 @@ export function resetBuildState(ctx: PluginContext): void {
   }
 }
 
-const isHeldByOtherModule = (ctx: PluginContext, referenceId: string, id: string): boolean =>
-  [...ctx.moduleReferences].some(([moduleId, refs]) => moduleId !== id && refs.has(referenceId));
+const isHeldByOtherModule = (ctx: PluginContext, referenceKey: string, id: string): boolean =>
+  [...ctx.moduleReferences].some(([moduleId, refs]) => moduleId !== id && refs.has(referenceKey));
 
-function deleteReferences(ctx: PluginContext, referenceIds: ReadonlySet<string>): void {
+function deleteReferences(ctx: PluginContext, referenceKeys: ReadonlySet<string>): void {
   for (const [key, reference] of ctx.transformMap) {
-    if (referenceIds.has(reference.referenceId)) {
+    if (referenceKeys.has(getReferenceKey(reference))) {
       ctx.transformMap.delete(key);
     }
   }
@@ -150,11 +152,11 @@ function deleteReferences(ctx: PluginContext, referenceIds: ReadonlySet<string>)
 export function replaceModuleReferences(
   ctx: PluginContext,
   id: string,
-  referenceIds: ReadonlySet<string>,
+  referenceKeys: ReadonlySet<string>,
 ): void {
   const previous = ctx.moduleReferences.get(id) ?? new Set<string>();
-  ctx.moduleReferences.set(id, referenceIds);
-  const owned = [...previous, ...referenceIds].filter((ref) => !isHeldByOtherModule(ctx, ref, id));
+  ctx.moduleReferences.set(id, referenceKeys);
+  const owned = [...previous, ...referenceKeys].filter((ref) => !isHeldByOtherModule(ctx, ref, id));
   deleteReferences(ctx, new Set(owned));
 }
 

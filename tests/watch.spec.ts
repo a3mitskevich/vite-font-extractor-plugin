@@ -13,6 +13,7 @@ import {
   plugin,
   viteBuild,
 } from "./utils";
+import type { PluginOption } from "../src";
 
 const watchFixture = createFixture("watch-rebuild");
 const FONT_FILES = ["icon-font.woff2", "icon-font.woff"];
@@ -112,31 +113,46 @@ function expectMinified(snapshot: Snapshot): void {
   }
 }
 
+const ICON_TARGET_OPTIONS: PluginOption = {
+  type: "manual",
+  cache: false,
+  targets: [{ fontName: "Font Name", ligatures: ["close"] }],
+};
+
+async function startWatcher(
+  version: ContainerVersion,
+  root: string,
+  out: string,
+  logger: unknown,
+): Promise<Watcher> {
+  const build = viteBuild[version] as (config: object) => Promise<unknown>;
+  return (await build({
+    root,
+    configFile: false,
+    logLevel: "silent",
+    customLogger: logger,
+    plugins: [await plugin(ICON_TARGET_OPTIONS)],
+    build: { outDir: out, emptyOutDir: true, watch: {} },
+  })) as Watcher;
+}
+
+const settle = (): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, WATCH_SETTLE_MS);
+  });
+
+const subsetImportJs = (characters: string): string =>
+  `import "./index.css";\nimport font from "../fonts/text-font.woff2?subset=${characters}";\n\ndocument.title = font;\n`;
+
 describe.sequential("Build watch mode", () => {
   Object.keys(viteBuild).forEach((version) => {
     it(`vite@${version}: should keep fonts minified and references intact across rebuilds`, async () => {
       const { root, out, workDir } = createProject();
       const { logger, messages } = createMessageLogger();
-      const build = viteBuild[version as ContainerVersion] as (config: object) => Promise<unknown>;
-      const watcher = (await build({
-        root,
-        configFile: false,
-        logLevel: "silent",
-        customLogger: logger,
-        plugins: [
-          await plugin({
-            type: "manual",
-            cache: false,
-            targets: [{ fontName: "Font Name", ligatures: ["close"] }],
-          }),
-        ],
-        build: { outDir: out, emptyOutDir: true, watch: {} },
-      })) as Watcher;
+      const watcher = await startWatcher(version as ContainerVersion, root, out, logger);
       const nextBuild = createBuildQueue(watcher);
       const rebuildAfter = async (file: string, content: string): Promise<Snapshot> => {
-        await new Promise((resolve) => {
-          setTimeout(resolve, WATCH_SETTLE_MS);
-        });
+        await settle();
         writeFileSync(join(root, file), content);
         await nextBuild();
         return takeSnapshot(out, messages);
@@ -154,6 +170,39 @@ describe.sequential("Build watch mode", () => {
         expect(withoutFace.fontRefs).toEqual([]);
 
         expectMinified(await rebuildAfter("index.css", FONT_FACE));
+      } finally {
+        await watcher.close();
+        rmSync(workDir, { recursive: true, force: true });
+      }
+    }, 60_000);
+
+    it(`vite@${version}: should drop the result of a ?subset= import changed between rebuilds`, async () => {
+      const { root, out, workDir } = createProject();
+      cpSync(
+        join(fixturesDir, "fonts", "text-font.woff2"),
+        join(workDir, "fonts", "text-font.woff2"),
+      );
+      writeFileSync(join(root, "main.js"), subsetImportJs("XY"));
+      const { logger, messages } = createMessageLogger();
+      const watcher = await startWatcher(version as ContainerVersion, root, out, logger);
+      const nextBuild = createBuildQueue(watcher);
+
+      try {
+        await nextBuild();
+        await settle();
+        writeFileSync(join(root, "main.js"), subsetImportJs("XYZ"));
+        await nextBuild();
+
+        const snapshot = takeSnapshot(out, messages);
+        expect(snapshot.problems).toEqual([]);
+        const textFonts = Object.entries(snapshot.fonts).filter(([file]) =>
+          file.includes("text-font"),
+        );
+        expect(textFonts.map(([file]) => file)).toHaveLength(1);
+        const font = fontkit.create(textFonts[0][1]) as fontkit.Font;
+        for (const char of "XYZ") {
+          expect(font.hasGlyphForCodePoint(char.codePointAt(0)!), char).toBe(true);
+        }
       } finally {
         await watcher.close();
         rmSync(workDir, { recursive: true, force: true });

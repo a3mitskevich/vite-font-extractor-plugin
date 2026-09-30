@@ -14,7 +14,7 @@ import {
 import { transformHook } from "./transform";
 import { generateBundleHook } from "./bundle";
 import { createServeMiddleware } from "./serve";
-import { extractAssetReferences } from "./asset-refs";
+import { extractAssetReferences, getReferenceKey } from "./asset-refs";
 import { getManifestFileName } from "./manifest";
 
 export default function FontExtractor(pluginOption: PluginOption = { type: "auto" }): Plugin {
@@ -82,7 +82,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
           return null;
         }
         if (!ctx.isServe) {
-          const references = extractAssetReferences(code).map((ref) => ref.referenceId);
+          const references = extractAssetReferences(code).map(getReferenceKey);
           replaceModuleReferences(ctx, id, new Set(references));
         }
         const result = await transformHook(ctx, code, id);
