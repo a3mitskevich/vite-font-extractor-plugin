@@ -62,6 +62,8 @@ export interface PluginContext {
   readonly minifications: Map<string, Promise<Map<string, Buffer>>>;
   // Reference id → minified font emitted by the plugin
   readonly emittedFonts: Map<string, EmittedFont>;
+  // HTML file → source files its `<link rel="preload">` tags load
+  readonly preloadSources: Map<string, Set<string>>;
   // Hashes of data: URLs the plugin inlined minified fonts as
   readonly inlinedFonts: Set<string>;
   // Reference ids emitted only to find which source file an asset of Vite was read from
@@ -196,6 +198,7 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     minifications: new Map(),
     emittedFonts: new Map(),
     inlinedFonts: new Set(),
+    preloadSources: new Map(),
     probeAssets: new Set(),
     graph: createGraphState(),
     autoGlyphSets: new Set(),
@@ -244,6 +247,7 @@ export function resetBuildState(ctx: PluginContext): void {
   ctx.minifications.clear();
   ctx.emittedFonts.clear();
   ctx.inlinedFonts.clear();
+  ctx.preloadSources.clear();
   ctx.probeAssets.clear();
   ctx.glyphsFindMap.clear();
   ctx.graph.reset();

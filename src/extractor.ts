@@ -20,7 +20,7 @@ import {
 } from "./subset-import";
 import { collectContentGlyphs, rewriteCssGoogleFonts, transformServedCss } from "./transform";
 import { hasGoogleFontUrl, rewriteGoogleFontUrls } from "./google-rewrite";
-import { redirectFontPreloads } from "./html";
+import { recordPreloadSources, redirectFontPreloads } from "./html";
 import { removeUnusedOriginals } from "./cleanup";
 import { createServeMiddleware } from "./serve";
 
@@ -200,6 +200,18 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
   };
 
+  const htmlPre: Plugin = {
+    name: `${PLUGIN_NAME}:html`,
+    apply: applyToBuild(apply),
+    applyToEnvironment: isClient,
+    transformIndexHtml: {
+      order: "pre",
+      handler(html, htmlContext) {
+        recordPreloadSources(ctx, html, htmlContext.filename);
+      },
+    },
+  };
+
   const post: Plugin = {
     name: `${PLUGIN_NAME}:post`,
     enforce: "post",
@@ -217,6 +229,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         return redirectFontPreloads(
           ctx,
           withGoogle,
+          htmlContext.filename,
           (referenceId) => pluginContext.getFileName(referenceId),
           htmlContext.bundle,
         );
@@ -233,5 +246,5 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
   };
 
-  return [pre, newUrl, main, post];
+  return [pre, newUrl, main, htmlPre, post];
 }
