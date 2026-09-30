@@ -265,6 +265,32 @@ describe.sequential("Build configuration", () => {
         expect(warnings[0].message).toMatch(/inlined/);
       });
 
+      it("should warn that an inlined ?subset= face is not minified", async () => {
+        const { messages } = await buildWithConfig(version, {
+          fixture: "subset-chars",
+          pluginOptions: { type: "manual", targets: [] },
+          build: { assetsInlineLimit: 100_000_000 },
+        });
+
+        const warnings = problems(messages);
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0].message).toMatch(/inlined/);
+        expect(warnings[0].message).not.toMatch(/no minify options/);
+      });
+
+      it("should warn that an inlined ?subset= import is not minified", async () => {
+        const { messages } = await buildWithConfig(version, {
+          fixture: "subset-js",
+          pluginOptions: { type: "manual", targets: [] },
+          build: { assetsInlineLimit: 100_000_000 },
+        });
+
+        const warnings = problems(messages);
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0].message).toContain("text-font.woff2");
+        expect(warnings[0].message).toMatch(/inlined/);
+      });
+
       it("should log the reason when a font fails to minify", async () => {
         const { output, messages } = await buildWithConfig(version, {
           fixture: "plain",

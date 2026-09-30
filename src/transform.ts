@@ -1,6 +1,7 @@
 import { isCSSRequest } from "vite";
 import type { FontFaceMeta, OptionsWithCacheSid, SubsetOptions } from "./types";
 import {
+  cleanUrl,
   exists,
   extractFontFaces,
   extractFontName,
@@ -27,6 +28,7 @@ import {
   getStandaloneGroupId,
 } from "./asset-refs";
 import { hasSubsetParam } from "./subset-options";
+import { getInlinedFontMessage, isDataUrl } from "./inline-fonts";
 
 interface RegisterOptions {
   fontName: string;
@@ -98,6 +100,10 @@ function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceM
   return code.replace(font.face, taggedFace);
 }
 
+// `import font from './font.woff2?subset=AB'` that Vite inlined: no asset is emitted to minify
+const isInlinedSubsetImport = (code: string, id: string): boolean =>
+  hasSubsetParam(id) && code.includes("data:") && !extractAssetReferences(code).length;
+
 async function processFont(
   ctx: PluginContext,
   code: string,
@@ -127,6 +133,11 @@ async function processFont(
 
 // Font face without target options — minified only when its sources use `?subset=`
 function registerSubsetFace(ctx: PluginContext, name: string, aliases: string[]): void {
+  // Vite inlined the sources and dropped their `?subset=`
+  if (aliases.length && aliases.every(isDataUrl)) {
+    getLogger(ctx).warn(getInlinedFontMessage(`Font "${name}"`));
+    return;
+  }
   if (!aliases.some(hasSubsetParam)) {
     getLogger(ctx).warn(`Font "${name}" has no minify options — add to targets or use ?subset=`);
     return;
@@ -264,6 +275,9 @@ export async function transformHook(ctx: PluginContext, code: string, id: string
 
   if (!ctx.isServe && hasSubsetParam(code)) {
     registerStandaloneSubsets(ctx, code);
+  }
+  if (!ctx.isServe && isInlinedSubsetImport(code, id)) {
+    logger.warn(getInlinedFontMessage(styler.path(cleanUrl(id))));
   }
 
   return code;

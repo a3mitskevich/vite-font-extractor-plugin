@@ -4,6 +4,13 @@ import { FONT_FACE_BLOCK_RE, getBlockFamily } from "./output-font-face";
 
 const DATA_URL_SOURCE_RE = /url\(\s*["']?data:/;
 
+export const isDataUrl = (url: string): boolean => url.startsWith("data:");
+
+// `subject`: `Font "Icons"` or a font path
+export const getInlinedFontMessage = (subject: string): string =>
+  `${subject} is inlined as a data: URL (build.lib or build.assetsInlineLimit) and is not minified. ` +
+  "Exclude font files from inlining to minify them";
+
 const textOf = (item: Rollup.OutputAsset | Rollup.OutputChunk): string | null => {
   if (item.type === "chunk") return item.code;
   return typeof item.source === "string" ? item.source : null;
@@ -35,9 +42,6 @@ export function warnInlinedFonts(
   warn: (message: string) => void,
 ): void {
   for (const family of findInlinedFamilies(ctx, bundle)) {
-    warn(
-      `Font "${family}" is inlined as a data: URL (build.lib or build.assetsInlineLimit) and is not minified. ` +
-        "Exclude font files from inlining to minify them",
-    );
+    warn(getInlinedFontMessage(`Font "${family}"`));
   }
 }
