@@ -124,6 +124,32 @@ const settle = (): Promise<void> =>
     setTimeout(resolve, WATCH_SETTLE_MS);
   });
 
+// Text outputs of the build: a rebuild that changed nothing gives the same text
+const readOutputText = (out: string): string =>
+  readdirSync(out, { recursive: true })
+    .map(String)
+    .filter((file) => /\.(?:css|js)$/.test(file))
+    .sort()
+    .map((file) => `${file}\n${readFileSync(join(out, file), "utf8")}`)
+    .join("\n");
+
+// One file change may trigger several rebuilds (Windows reports it twice): waits until the
+// output reflects the change, not until the next build event
+const MAX_REBUILDS_PER_CHANGE = 4;
+
+async function rebuildUntilChanged(
+  out: string,
+  nextBuild: () => Promise<void>,
+  write: () => void,
+): Promise<void> {
+  const before = readOutputText(out);
+  write();
+  for (let rebuilds = 0; rebuilds < MAX_REBUILDS_PER_CHANGE; rebuilds++) {
+    await nextBuild();
+    if (readOutputText(out) !== before) return;
+  }
+}
+
 const subsetImportJs = (characters: string): string =>
   `import "./index.css";\nimport font from "../fonts/text-font.woff2?subset=${characters}";\n\ndocument.title = font;\n`;
 
@@ -136,8 +162,7 @@ describe("Build watch mode", () => {
     const nextBuild = createBuildQueue(watcher);
     const rebuildAfter = async (file: string, content: string): Promise<Snapshot> => {
       await settle();
-      writeFileSync(join(root, file), content);
-      await nextBuild();
+      await rebuildUntilChanged(out, nextBuild, () => writeFileSync(join(root, file), content));
       return takeSnapshot(out, messages);
     };
 
@@ -174,8 +199,9 @@ describe("Build watch mode", () => {
     try {
       await nextBuild();
       await settle();
-      writeFileSync(join(root, "main.js"), subsetImportJs("XYZ"));
-      await nextBuild();
+      await rebuildUntilChanged(out, nextBuild, () =>
+        writeFileSync(join(root, "main.js"), subsetImportJs("XYZ")),
+      );
 
       const snapshot = takeSnapshot(out, messages);
       expect(snapshot.problems).toEqual([]);
