@@ -40,6 +40,11 @@ export function beginServeTransform(ctx: PluginContext, id: string): void {
   ctx.autoFaceModules.delete(id);
 }
 
+// Options by identity: the auto target is live (never serialize it, its fontName throws), a
+// target is its sid
+const toRequestKey = ({ options, ...request }: ServeFontRequest): string =>
+  JSON.stringify({ ...request, options: options.auto ? "auto" : options.sid });
+
 /**
  * Registers a font url of a face with the middleware. Within one transform the first face keeps
  * a url (a plain url shared by several families is served for the first of them); a later
@@ -54,7 +59,7 @@ export function registerServeUrl(
   const served = ctx.servedModules.get(id) ?? createServedModule();
   ctx.servedModules.set(id, served);
   if (served.urls.has(url)) return;
-  const key = JSON.stringify(request);
+  const key = toRequestKey(request);
   const loader =
     served.loaders.get(key) ?? served.previous.get(key) ?? createServeFontLoader(ctx, request);
   served.loaders.set(key, loader);

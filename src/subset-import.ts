@@ -10,6 +10,7 @@ import {
   splitUrl,
   toJsExpression,
 } from "./font-emit";
+import { createProblemReport } from "./strict-report";
 import { createSubsetOptions } from "./utils";
 
 // `import url from './font.woff2?subset=ABC'`, other params may come first
@@ -45,10 +46,12 @@ export async function loadSubsetImport(
   pluginContext.addWatchFile(file);
   const fontName = `subset (${basename(file)})`;
   const source: FontSource = { file, query };
+  // `?subset=` of an import is the choice of that url alone: never a strict-mode failure
   const minified = await minifyFace(ctx, {
     fontName,
     options: createSubsetOptions(fontName, {}),
     sources: [source],
+    reportProblem: createProblemReport(ctx, false),
   });
   // A failed minification keeps the original file, as for an @font-face
   const content = minified.get(file + query) ?? (await readFontSource(ctx, file));

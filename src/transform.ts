@@ -1,6 +1,5 @@
 import type { FontFaceMeta } from "./types";
 import {
-  exists,
   extractFontFaces,
   extractFontName,
   extractFonts,
@@ -9,15 +8,13 @@ import {
   stripBase,
   stripCssComments,
   toError,
-  createSubsetOptions,
 } from "./utils";
 import { type PluginContext, getLogger } from "./context";
 import { checkFontProcessing } from "./minify";
 import { reloadAutoFonts, type ServeFontRequest } from "./serve";
 import { beginServeTransform, registerServeUrl } from "./serve-registry";
-import { hasSubsetParam } from "./subset-options";
 import { hasGoogleFontUrl, rewriteGoogleFontUrls } from "./google-rewrite";
-import { isRemoteUrl } from "./face-options";
+import { resolveFaceOptions } from "./face-options";
 
 const FAMILY_QUERY_PARAM = "font-extractor-family";
 const GLYPHS_QUERY_PARAM = "font-extractor-glyphs";
@@ -37,7 +34,7 @@ export function collectContentGlyphs(ctx: PluginContext, code: string, id: strin
 // CSS `@import` of a Google Fonts stylesheet
 export const rewriteCssGoogleFonts = (ctx: PluginContext, code: string, id: string): string =>
   code.includes("@import") && hasGoogleFontUrl(stripCssComments(code))
-    ? rewriteGoogleFontUrls(ctx, code, id)
+    ? rewriteGoogleFontUrls(ctx, code, { file: id, moduleId: id })
     : code;
 
 // Dev: a file shared by several families is requested once per family; an auto font once per
@@ -61,7 +58,7 @@ function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceM
       url: sourceUrls[index],
       aliases: sourceUrls,
       fontName: font.name,
-      auto: font.options.auto,
+      options: font.options,
     };
     // The plain url keeps working (served for the first family of the module's last transform)
     registerServeUrl(ctx, id, url, request);
@@ -82,29 +79,14 @@ function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceM
   return code.replace(font.face, () => taggedFace);
 }
 
-// A face the dev server minifies: a target, or `?subset=` without one
-function toServedFace(ctx: PluginContext, face: string): FontFaceMeta | null {
-  const logger = getLogger(ctx);
+// A face the dev server minifies: a target, or `?subset=` without one — decided like in build
+// (face-options.ts traces the decision)
+function toServedFace(ctx: PluginContext, face: string, id: string): FontFaceMeta | null {
   const name = extractFontName(face);
-  if (ctx.pluginOption.ignore?.includes(name)) {
-    logger.debug(`dev: "${name}" is ignored`);
-    return null;
-  }
   const aliases = extractFonts(face);
-  const options = ctx.optionsMap.get(name);
-  if (!options) {
-    const hasSubset = aliases.some(hasSubsetParam);
-    logger.debug(
-      `dev: "${name}" has no target${hasSubset ? ", minified by its ?subset=" : " and no ?subset= — served as is"}`,
-    );
-    return hasSubset ? { name, face, aliases, options: createSubsetOptions(name, {}) } : null;
-  }
-  const remote = aliases.filter(isRemoteUrl);
-  if (remote.length) {
-    getLogger(ctx).warn(`Font "${name}" has external url sources: ${remote.toString()}`);
-    return null;
-  }
-  return { name, face, aliases, options };
+  getLogger(ctx).debug(() => `dev: @font-face "${name}" ${aliases.join(", ")}`, id);
+  const resolved = resolveFaceOptions(ctx, { family: name, urls: aliases, id, report: "remote" });
+  return resolved ? { name, face, aliases, options: resolved.options } : null;
 }
 
 /**
@@ -117,14 +99,15 @@ export function transformServedCss(ctx: PluginContext, code: string, id: string)
   let result = rewriteCssGoogleFonts(ctx, code, id);
   const cleaned = stripCssComments(result);
   if (!cleaned.includes("@font-face")) return result;
-  const faces = extractFontFaces(cleaned)
-    .map((face) => toServedFace(ctx, face))
-    .filter(exists);
-  for (const face of faces) {
+  for (const face of extractFontFaces(cleaned)) {
     try {
-      result = serveFont(ctx, result, id, face);
+      // `match` and `resolveTarget` are user code: a throw must not break the stylesheet
+      const served = toServedFace(ctx, face, id);
+      if (served) result = serveFont(ctx, result, id, served);
     } catch (e) {
-      getLogger(ctx).error(`Process ${face.name} local font is failed`, { error: toError(e) });
+      const error = toError(e);
+      const message = `Process ${extractFontName(face)} local font is failed: ${error.message}`;
+      getLogger(ctx).error(message, { error });
     }
   }
   return result;

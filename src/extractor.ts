@@ -1,4 +1,5 @@
 import {
+  createFilter,
   normalizePath,
   type Plugin,
   type ResolvedConfig,
@@ -6,7 +7,7 @@ import {
   perEnvironmentState,
 } from "vite";
 import { resolve } from "node:path";
-import type { PluginOption } from "./types";
+import type { ModuleFilterPattern, PluginOption } from "./types";
 import Cache from "./cache";
 import { createResolvers, getHash, intersection, mergePath } from "./utils";
 import { CSS_LANGS_RE, PLUGIN_NAME } from "./constants";
@@ -42,7 +43,33 @@ import { createReport, emitReport } from "./report";
 // Modules vite:css skips: `?raw`, `?url`, workers
 const SPECIAL_QUERY_RE = /[?&](?:worker|sharedworker|raw|url)\b/;
 const CSS_FILTER = { id: { include: CSS_LANGS_RE, exclude: SPECIAL_QUERY_RE } };
-const JS_CODE_FILTER = { id: { exclude: CSS_LANGS_RE }, code: NEW_URL_CODE_RE };
+
+const toPatternList = (pattern: ModuleFilterPattern | undefined): Array<string | RegExp> =>
+  pattern === undefined ? [] : Array.isArray(pattern) ? pattern : [pattern];
+
+// Without include/exclude every module counts: createFilter would also drop `\0` virtual ids
+function createModuleFilter(
+  { include, exclude }: PluginOption,
+  root: string,
+): (id: string) => boolean {
+  if (include === undefined && exclude === undefined) return () => true;
+  return createFilter(include, exclude, { resolve: root });
+}
+
+/**
+ * Hook filters of the hooks that minify: a RegExp of `exclude` is checked natively as well. An
+ * include can not be combined with the language filter (a filter's includes are alternatives) and
+ * globs are relative to `root`, known only later — the handlers check `isModuleIncluded` for them.
+ */
+function createMinifyFilters(pluginOption: PluginOption) {
+  const excluded = toPatternList(pluginOption.exclude).filter(
+    (pattern): pattern is RegExp => pattern instanceof RegExp,
+  );
+  return {
+    css: { id: { include: CSS_LANGS_RE, exclude: [SPECIAL_QUERY_RE, ...excluded] } },
+    newUrl: { id: { exclude: [CSS_LANGS_RE, ...excluded] }, code: NEW_URL_CODE_RE },
+  };
+}
 
 // Builds of every environment minify the same way, so an SSR bundle points at the files the
 // client build emits; the dev middleware serves the browser only
@@ -74,8 +101,8 @@ function configureContext(ctx: SharedContext, config: ResolvedConfig): void {
   logger.debug(() => `targets: ${ctx.targets.map((target) => `"${target.fontName}"`).join(", ")}`);
 
   const ignoredTargets = intersection(
-    pluginOption.ignore ?? [],
-    ctx.targets.map((target) => target.fontName),
+    (pluginOption.ignore ?? []).filter((matcher) => typeof matcher === "string"),
+    ctx.targets.filter((target) => !target.match).map((target) => target.fontName),
   );
   if (ignoredTargets.length) {
     logger.warn(`Ignore overlaps with targets: ${ignoredTargets.toString()}`);
@@ -83,6 +110,7 @@ function configureContext(ctx: SharedContext, config: ResolvedConfig): void {
 
   ctx.importResolvers = createResolvers(config);
   ctx.cssResolvers = createCssResolvers(config);
+  ctx.isModuleIncluded = createModuleFilter(pluginOption, config.root);
   ctx.root = config.root;
   ctx.base = config.base;
   ctx.publicDir = config.publicDir || null;
@@ -145,6 +173,15 @@ function checkAutoGlyphs(ctx: PluginContext): string | null {
   );
 }
 
+// Strict mode: a target no face resolved to would ship its font as it is, if the font is used at
+// all. Client builds only: an SSR build often loads no stylesheet
+function checkUnmatchedTargets(ctx: PluginContext): string | null {
+  const unmatched = ctx.targets.filter((target) => !ctx.matchedTargets.has(target.fontName));
+  if (!unmatched.length) return null;
+  const names = unmatched.map((target) => `"${target.fontName}"`).join(", ");
+  return `Strict mode: target ${names} matched no @font-face or Google Fonts family of the build`;
+}
+
 const toInputList = (input: Rollup.NormalizedInputOptions["input"]): string[] =>
   Array.isArray(input) ? input : Object.values(input);
 
@@ -161,6 +198,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
   assertReportOption(pluginOption);
   const shared = createPluginContext(pluginOption);
   const { apply } = pluginOption;
+  const filters = createMinifyFilters(pluginOption);
   // Builds of a builder may run in parallel (client and SSR): each environment has its own build
   // state, so a buildStart never resets another build. Dev keeps the state of the shared context.
   // No `sharedDuringBuild`: a shared instance gets configResolved for the config of every
@@ -180,7 +218,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       filter: { id: SUBSET_IMPORT_RE },
       async handler(source, importer) {
         // Dev serves `?subset=` imports through the middleware
-        if (shared.isServe) return null;
+        if (shared.isServe || (importer && !shared.isModuleIncluded(importer))) return null;
         return resolveSubsetImport(this, source, importer);
       },
     },
@@ -192,9 +230,9 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       },
     },
     transform: {
-      filter: CSS_FILTER,
+      filter: filters.css,
       async handler(code, id) {
-        if (shared.isServe) return null;
+        if (shared.isServe || !shared.isModuleIncluded(id)) return null;
         const ctx = contextOf(this);
         ctx.rawSources.set(id, code);
         return transformFaceSources(this, ctx, code, id);
@@ -208,8 +246,9 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     apply: applyToBuild(apply),
     applyToEnvironment: isAppliedTo,
     transform: {
-      filter: JS_CODE_FILTER,
+      filter: filters.newUrl,
       handler(code, id) {
+        if (!shared.isModuleIncluded(id)) return null;
         return rewriteNewUrlSubsets(code, id);
       },
     },
@@ -248,7 +287,12 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
           const served = transformServedCss(ctx, code, id);
           return served === code ? null : served;
         }
+        // Auto glyphs come from every stylesheet, `include`/`exclude` scope only the fonts
         collectContentGlyphs(ctx, code, id);
+        if (!ctx.isModuleIncluded(id)) {
+          getLogger(ctx).debug("L2: outside include/exclude — fonts left as they are", id);
+          return null;
+        }
         const waitForGlyphs = createGlyphWait(ctx, this, id);
         const swapped = await swapCompiledFaces(this, ctx, code, id, waitForGlyphs);
         const current = swapped?.code ?? code;
@@ -306,7 +350,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         const pluginContext = asBuildHookContext(this);
         const ctx = contextOf(pluginContext);
         const withGoogle = hasGoogleFontUrl(html)
-          ? rewriteGoogleFontUrls(ctx, html, htmlContext.filename)
+          ? rewriteGoogleFontUrls(ctx, html, { file: htmlContext.filename, moduleId: "" })
           : html;
         if (ctx.isServe || !htmlContext.bundle) return withGoogle;
         return redirectFontPreloads(
@@ -320,6 +364,11 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
     async generateBundle(outputOptions, bundle) {
       const ctx = contextOf(this);
+      // After Vite's HTML plugin: Google Fonts urls of HTML resolve their targets there
+      if (pluginOption.strict && this.environment.config.consumer === "client") {
+        const unmatched = checkUnmatchedTargets(ctx);
+        if (unmatched) this.error(unmatched);
+      }
       removeUnusedOriginals(ctx, bundle, (referenceId) => this.getFileName(referenceId));
       // After the cleanup: the report lists only fonts of the output, and it is not a font
       if (pluginOption.report) {

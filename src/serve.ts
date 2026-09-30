@@ -13,7 +13,7 @@ import { processMinify } from "./minify";
 import { FONT_MIME_TYPES, SUPPORT_START_FONT_REGEX } from "./constants";
 import { mergeSubsetOptions, parseUrlSubset } from "./subset-options";
 import styler from "./styler";
-import { splitUrl } from "./font-emit";
+import { hasGlyphSelection, splitUrl } from "./font-emit";
 import { forgetServeModule } from "./serve-registry";
 
 // A font requested with `?subset=`, other params may come first
@@ -37,7 +37,8 @@ export interface ServeFontRequest {
   // Other local urls of the same @font-face, without base
   aliases: string[];
   fontName: string;
-  auto: boolean;
+  // Options of the face (face-options.ts): its target, the auto target, or `?subset=` alone
+  options: OptionsWithCacheSid;
 }
 
 function resolveServeOptions(
@@ -45,18 +46,15 @@ function resolveServeOptions(
   request: ServeFontRequest,
   subset: SubsetOptions | undefined,
 ): OptionsWithCacheSid | null {
-  if (request.auto) {
+  if (request.options.auto) {
     // An explicit `?subset=` replaces the detected glyphs, like in build. Without it there is
     // nothing to extract until auto mode finds glyphs — the original is served meanwhile
     if (subset) return mergeSubsetOptions(ctx.autoProxyOption, subset, request.fontName);
     return ctx.autoProxyOption.target.raws?.length ? ctx.autoProxyOption : null;
   }
-  const options = ctx.optionsMap.get(request.fontName);
-  if (options) {
-    return mergeSubsetOptions(options, subset, request.fontName);
-  }
-  // A face without target options is minified by its `?subset=` alone, like in build
-  return subset ? createSubsetOptions(request.fontName, subset) : null;
+  // Like in build: a plain url of a face without a target has nothing to keep
+  const options = mergeSubsetOptions(request.options, subset, request.fontName);
+  return hasGlyphSelection(options) ? options : null;
 }
 
 // EOT and SVG can not be a minification source — another format of the @font-face is used
@@ -145,12 +143,13 @@ function registerSubsetRequest(
   // Only files Vite itself would serve (server.fs.allow / deny)
   if (!file || !ctx.server || !isFileLoadingAllowed(ctx.server.config, file)) return undefined;
   if (!existsSync(file)) return undefined;
+  const fontName = `subset (${basename(file)})`;
   const loader = createServeFontLoader(ctx, {
     importer: file,
     url: file + query,
     aliases: [],
-    fontName: `subset (${basename(file)})`,
-    auto: false,
+    fontName,
+    options: createSubsetOptions(fontName, {}),
   });
   ctx.fontServeProxy.set(url, loader);
   registered.add(url);

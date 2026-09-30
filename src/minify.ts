@@ -14,6 +14,7 @@ import styler from "./styler";
 import type Cache from "./cache";
 import { type PluginContext, getLogger, getResolvers } from "./context";
 import { checkIconGlyphs, formatGlyphs, type IconGlyphs, splitGlyphTexts } from "./glyph-filter";
+import { createProblemReport, type ProblemReport } from "./strict-report";
 
 const SHA256_HEX_LENGTH = 64;
 // Part of the cache key: another fontext may write other bytes for the same input
@@ -172,7 +173,7 @@ const listExtensions = (fonts: MinifyFontOptions[]): string =>
 
 // fontext can not write every format a @font-face may list (otf) — such files stay as they are
 function selectOutputFormats(
-  logger: InternalLogger,
+  reportProblem: ProblemReport,
   fontName: string,
   fonts: MinifyFontOptions[],
 ): MinifyFontOptions[] {
@@ -181,9 +182,8 @@ function selectOutputFormats(
   const unsupported = fonts.filter((font) => !isSupported(font));
   if (unsupported.length) {
     const extensions = listExtensions(unsupported);
-    logger.warn(
-      `Font "${fontName}": ${extensions} is not supported for minification — keeping original ${extensions}`,
-    );
+    const problem = `Font "${fontName}": ${extensions} is not supported for minification`;
+    reportProblem(`${problem} — keeping original ${extensions}`, { strictMessage: problem });
   }
   return fonts.filter(isSupported);
 }
@@ -191,16 +191,16 @@ function selectOutputFormats(
 // Any readable file is a source, even one whose format can not be written back
 async function readSource(
   ctx: PluginContext,
+  reportProblem: ProblemReport,
   fontName: string,
   fonts: MinifyFontOptions[],
 ): Promise<Buffer | string | null> {
   const logger = getLogger(ctx);
   const entryPoint = fonts.find((font) => SUPPORT_START_FONT_REGEX.test(font.extension));
   if (!entryPoint) {
-    logger.warn(
-      `Font "${fontName}": ${listExtensions(fonts)} can not be read for minification — keeping original.` +
-        " Add a woff2, woff, ttf or otf source.",
-    );
+    const problem = `Font "${fontName}": ${listExtensions(fonts)} can not be read for minification`;
+    const hint = " Add a woff2, woff, ttf or otf source.";
+    reportProblem(`${problem} — keeping original.${hint}`, { strictMessage: `${problem}.${hint}` });
     return null;
   }
   const source =
@@ -219,14 +219,15 @@ export async function processMinify(
   fontName: string,
   fonts: MinifyFontOptions[],
   options: OptionsWithCacheSid,
+  reportProblem: ProblemReport = createProblemReport(ctx, false),
 ): Promise<MinifyResult | null> {
   const logger = getLogger(ctx);
 
-  const outputs = selectOutputFormats(logger, fontName, fonts);
+  const outputs = selectOutputFormats(reportProblem, fontName, fonts);
   if (!outputs.length) {
     return null;
   }
-  const source = await readSource(ctx, fontName, fonts);
+  const source = await readSource(ctx, reportProblem, fontName, fonts);
   if (!source) {
     return null;
   }

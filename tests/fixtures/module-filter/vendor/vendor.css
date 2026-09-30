@@ -1,0 +1,10 @@
+/* Another format of the same font: the output tells the two faces apart by extension */
+@font-face {
+  font-family: "Vendor Icons";
+  src: url("../../fonts/icon-font.woff") format("woff");
+}
+
+.vendor-icon::before {
+  font-family: "Vendor Icons";
+  content: "play_arrow";
+}

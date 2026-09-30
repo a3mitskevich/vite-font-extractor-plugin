@@ -5,6 +5,7 @@ import type { OptionsWithCacheSid } from "./types";
 import { type PluginContext, getLogger } from "./context";
 import { FONT_MIME_TYPES } from "./constants";
 import { processMinify } from "./minify";
+import { type ProblemReport, StrictModeError } from "./strict-report";
 import { mergeSubsetOptions, parseUrlSubset } from "./subset-options";
 import { getFontExtension, getHash, getSubsetKey, toError } from "./utils";
 import { describeMinified, glyphsOf, INLINE_OUTPUT, reportEmitted, toReportSource } from "./report";
@@ -19,6 +20,8 @@ export interface FaceJob {
   fontName: string;
   options: OptionsWithCacheSid;
   sources: FontSource[];
+  // Where a failure goes: the log, or a strict build error for a target
+  reportProblem: ProblemReport;
 }
 
 export type EmitContext = Pick<Rollup.PluginContext, "emitFile" | "getFileName">;
@@ -85,7 +88,7 @@ const shorten = (text: string): string =>
 const GLYPH_LIST_OPTIONS = ["ligatures", "raws", "unicodeRanges"] as const;
 
 // `url(a.woff2?subset=AB), url(a.woff)` without a target: the plain url has nothing to keep
-function hasGlyphSelection({ auto, target }: OptionsWithCacheSid): boolean {
+export function hasGlyphSelection({ auto, target }: OptionsWithCacheSid): boolean {
   if (auto) return true;
   const fields = target as Partial<Record<(typeof GLYPH_LIST_OPTIONS)[number], unknown[]>>;
   return (
@@ -106,10 +109,11 @@ function groupBySubset(job: FaceJob): Map<string, FontSource[]> {
 
 async function minifyGroup(
   ctx: PluginContext,
-  fontName: string,
+  job: FaceJob,
   options: OptionsWithCacheSid,
   sources: FontSource[],
 ): Promise<Map<string, Buffer>> {
+  const { fontName } = job;
   const files = [...new Set(sources.map((source) => source.file))];
   const fonts = await Promise.all(
     files.map(async (file) => ({
@@ -123,7 +127,7 @@ async function minifyGroup(
     getLogger(ctx).fix();
     getLogger(ctx).phase("✂ ", "Minify");
   }
-  const result = await processMinify(ctx, fontName, fonts, options);
+  const result = await processMinify(ctx, fontName, fonts, options, job.reportProblem);
   const minified = new Map<string, Buffer>();
   for (const font of fonts) {
     const buffer = result?.[font.extension];
@@ -188,7 +192,8 @@ export async function minifyFace(ctx: PluginContext, job: FaceJob): Promise<Map<
         `${sources.map((source) => getFontExtension(source.file)).join(", ")}, options ${shorten(options.sid)}`,
     );
     if (!pending) {
-      pending = minifyGroup(ctx, job.fontName, options, sources).catch((error: unknown) => {
+      pending = minifyGroup(ctx, job, options, sources).catch((error: unknown) => {
+        if (error instanceof StrictModeError) throw error;
         const reason = toError(error);
         for (const file of new Set(sources.map((source) => source.file))) {
           ctx.addReportRecord({
@@ -199,10 +204,12 @@ export async function minifyFace(ctx: PluginContext, job: FaceJob): Promise<Map<
           });
         }
         // Vite's logger does not print `options.error`, so the reason goes into the message
-        getLogger(ctx).error(
+        job.reportProblem(
           `Failed to minify "${job.fontName}" — keeping original: ${reason.message}`,
           {
-            error: reason as Rollup.RollupError,
+            level: "error",
+            error: reason,
+            strictMessage: `Failed to minify "${job.fontName}": ${reason.message}`,
           },
         );
         return new Map<string, Buffer>();

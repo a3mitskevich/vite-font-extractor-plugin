@@ -9,12 +9,17 @@ import type {
   ServeFontStubResponse,
   IconTarget,
   Target,
-  TargetOptionsMap,
 } from "./types";
 import type { CssFileScans, CssResolvers } from "./css-candidates";
 import { createGraphState, type GraphState } from "./graph-wait";
 import type { ServedModule } from "./serve-registry";
 import type { ReportRecord } from "./report";
+import {
+  compileTargets,
+  type FacePredicate,
+  type TargetMatcher,
+  toFacePredicate,
+} from "./target-match";
 
 // A minified font emitted by the plugin
 export interface EmittedFont {
@@ -37,6 +42,11 @@ export interface SharedContext {
   readonly mode: PluginOption["type"];
   readonly pluginOption: PluginOption;
   readonly targets: Target[];
+  // Targets in config order: the first that matches a face minifies it
+  readonly targetMatchers: readonly TargetMatcher[];
+  readonly ignoreMatchers: readonly FacePredicate[];
+  // `include`/`exclude` of the options; set once the config is resolved
+  isModuleIncluded: (id: string) => boolean;
 
   cache: Cache | null;
   importResolvers: ImportResolvers | null;
@@ -67,7 +77,6 @@ export interface BuildState {
   // Auto mode: glyphs of CSS `content` per module id; the auto target keeps the glyphs of its build
   readonly glyphsFindMap: Map<string, string[]>;
   readonly autoProxyOption: OptionsWithCacheSid<IconTarget>;
-  readonly optionsMap: TargetOptionsMap;
   // font-family → id of the module that declared it, for the "found in multiple files" warning
   readonly progress: Map<string, string>;
   // CSS module sources before vite:css — imports of a module lead to the fonts it received
@@ -90,6 +99,8 @@ export interface BuildState {
   readonly graph: GraphState;
   // Auto mode: glyph sets (option sids) fonts were minified with, checked in buildEnd
   readonly autoGlyphSets: Set<string>;
+  // fontName of every target a face was resolved to; strict builds fail for the others
+  readonly matchedTargets: Set<string>;
   readonly stats: MinifyStats;
   isMinifyPhaseLogged: boolean;
   // Logger's cached count when the build started, the summary reports the difference
@@ -152,44 +163,6 @@ function createAutoOption(autoTarget: IconTarget): OptionsWithCacheSid<IconTarge
   };
 }
 
-// Options removed from targets, with what replaces them
-const REMOVED_TARGET_OPTIONS: Record<string, string> = {
-  withWhitespace:
-    'fontext 2 no longer adds a space glyph — add " " to `characters` (subset engine)',
-};
-
-function assertTargets(targets: Target[]): void {
-  for (const target of targets) {
-    for (const [option, replacement] of Object.entries(REMOVED_TARGET_OPTIONS)) {
-      if (option in target) {
-        throw new Error(
-          `[vite-font-extractor-plugin] Target "${target.fontName}": \`${option}\` was removed in 4.0: ${replacement}`,
-        );
-      }
-    }
-  }
-}
-
-function createOptionsMap(
-  shared: SharedContext,
-  autoProxyOption: OptionsWithCacheSid<IconTarget>,
-): TargetOptionsMap {
-  const casualOptionsMap = new Map<string, OptionsWithCacheSid>(
-    shared.targets.map((target) => [
-      target.fontName,
-      { sid: JSON.stringify(target), target, auto: false },
-    ]),
-  );
-  const isAuto = shared.mode === "auto";
-  return {
-    get: (key: string) => {
-      const option = casualOptionsMap.get(key);
-      return isAuto ? (option ?? autoProxyOption) : option;
-    },
-    has: (key: string) => isAuto || casualOptionsMap.has(key),
-  };
-}
-
 function createBuildState(
   shared: SharedContext,
   buildConfig: ResolvedBuildOptions | null,
@@ -202,7 +175,6 @@ function createBuildState(
     buildConfig,
     glyphsFindMap,
     autoProxyOption,
-    optionsMap: createOptionsMap(shared, autoProxyOption),
     progress: new Map(),
     rawSources: new Map(),
     sourceReads: new Map(),
@@ -215,6 +187,7 @@ function createBuildState(
     cssFileScans: new Map(),
     graph: createGraphState(),
     autoGlyphSets: new Set(),
+    matchedTargets: new Set(),
     stats,
     isMinifyPhaseLogged: false,
     cachedBefore: 0,
@@ -234,12 +207,14 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
       ? pluginOption.targets
       : [pluginOption.targets]
     : [];
-  assertTargets(targets);
 
   const shared: SharedContext = {
     mode: pluginOption.type ?? "manual",
     pluginOption,
     targets,
+    targetMatchers: compileTargets(targets),
+    ignoreMatchers: (pluginOption.ignore ?? []).map(toFacePredicate),
+    isModuleIncluded: () => true,
     cache: null,
     importResolvers: null,
     cssResolvers: null,
@@ -313,6 +288,7 @@ export function resetBuildState(ctx: PluginContext, environment = ""): void {
   ctx.glyphsFindMap.clear();
   ctx.graph.reset();
   ctx.autoGlyphSets.clear();
+  ctx.matchedTargets.clear();
   ctx.reportRecords.length = 0;
   Object.assign(ctx.stats, { minified: 0, cached: 0, saved: 0 });
   ctx.isMinifyPhaseLogged = false;

@@ -77,9 +77,9 @@ export async function transformFaceSources(
       logger.debug(`L1: "${face.family}" is computed by the preprocessor — left to L2`, id);
       continue;
     }
-    const options = resolveFaceOptions(ctx, { family: face.family, urls, report: false });
-    if (!options) continue;
-    if (options.auto) {
+    const faceOptions = resolveFaceOptions(ctx, { family: face.family, urls, id, report: "none" });
+    if (!faceOptions) continue;
+    if (faceOptions.options.auto) {
       logger.debug(`L1: "${face.family}" is auto — left to L2 (waits for the glyphs)`, id);
       continue;
     }
@@ -89,7 +89,7 @@ export async function transformFaceSources(
       logger.debug(`L1: "${face.family}" has no local source — left to L2`, id);
       continue;
     }
-    const minified = await minifyFace(ctx, { fontName: face.family, options, sources });
+    const minified = await minifyFace(ctx, { fontName: face.family, sources, ...faceOptions });
     for (const [index, url] of face.urls.entries()) {
       const source = resolved[index];
       const content = source && minified.get(source.file + source.query);

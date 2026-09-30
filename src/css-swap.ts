@@ -36,6 +36,10 @@ function describeCompiledUrl(pluginContext: SwapContext, url: CompiledUrl): stri
   return `other ${url.url.url}`;
 }
 
+// A url as `resolveTarget` and `match` see it: an asset of Vite by the file name Vite gave it
+const toFaceUrl = (pluginContext: SwapContext, url: CompiledUrl): string =>
+  url.kind === "asset" ? pluginContext.getFileName(url.referenceId) + url.postfix : url.url.url;
+
 const stemOf = (file: string): string => basename(file, extname(file));
 
 // Hash of the whole source: modules of one file (`?inline`, Vue style blocks) share a key only
@@ -170,10 +174,15 @@ export async function swapCompiledFaces(
       logger.debug(`L2: "${face.family}" was minified before vite:css (L1)`, id);
       continue;
     }
-    const plain = face.urls.map((url) => url.url);
-    const options = resolveFaceOptions(ctx, { family: face.family, urls: plain, report: true });
+    const faceOptions = resolveFaceOptions(ctx, {
+      family: face.family,
+      urls: urls.map((url) => toFaceUrl(pluginContext, url)),
+      id,
+      report: "all",
+    });
     const located = urls.filter((url) => url.kind !== "other");
-    if (!options) continue;
+    if (!faceOptions) continue;
+    const { options, reportProblem } = faceOptions;
     if (!located.length) {
       logger.debug(`L2: "${face.family}" has no asset or data: url — left as is`, id);
       continue;
@@ -181,29 +190,34 @@ export async function swapCompiledFaces(
     if (options.auto) await waitForGlyphs();
     const sources = await Promise.all(located.map((url) => locator.locate(url)));
     if (located.some((url, index) => url.kind === "data" && !sources[index])) {
-      getLogger(ctx).warn(getInlinedFontMessage(`Font "${face.family}"`));
       ctx.addReportRecord({
         kind: "skipped",
         fontName: face.family,
         reason: "the source of an inlined data: URL was not found — keeping original",
       });
+      reportProblem(getInlinedFontMessage(`Font "${face.family}"`));
     }
     for (const [index, url] of located.entries()) {
       if (url.kind !== "asset" || sources[index]) continue;
       const fileName = pluginContext.getFileName(url.referenceId);
-      getLogger(ctx).warn(
-        `Font "${face.family}": the source of ${fileName} was not` +
-          " found among the files the stylesheet imports (a path built by interpolation?) — keeping original",
-      );
       ctx.addReportRecord({
         kind: "skipped",
         fontName: face.family,
         reason: `the source of ${fileName} was not found — keeping original`,
       });
+      const problem =
+        `Font "${face.family}": the source of ${fileName} was not found among the files the` +
+        " stylesheet imports (a path built by interpolation?)";
+      reportProblem(`${problem} — keeping original`, { strictMessage: problem });
     }
     const found = sources.filter((source): source is FontSource => !!source);
     if (!found.length) continue;
-    const minified = await minifyFace(ctx, { fontName: face.family, options, sources: found });
+    const minified = await minifyFace(ctx, {
+      fontName: face.family,
+      options,
+      sources: found,
+      reportProblem,
+    });
     for (const [index, url] of located.entries()) {
       const source = sources[index];
       const content = source && minified.get(source.file + source.query);

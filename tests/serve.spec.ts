@@ -464,6 +464,76 @@ describe("Dev server: generated projects", () => {
   });
 });
 
+describe("Dev server: choosing fonts like build", () => {
+  const ICONS = { ligatures: ["close"] };
+  // The woff2 of plain.css as the dev server answers it
+  const fetchWoff2 = async (options: PluginOption) => {
+    let result: { body: Buffer; messages: LoggerMessage[] } | undefined;
+    await withDevServer(fixtures.plain.path, { cache: false, ...options }, async (dev) => {
+      const urls = fontUrlsOf(await fetchCss(dev.origin, "/plain.css"));
+      const { status, body } = await fetchFont(
+        dev.origin,
+        urls.find((url) => url.includes(".woff2"))!,
+      );
+      expect(status).toBe(200);
+      result = { body, messages: dev.messages };
+    });
+    return result!;
+  };
+
+  it(`should minify a face a target matches by RegExp`, async () => {
+    const { body, messages } = await fetchWoff2({
+      type: "manual",
+      targets: [{ fontName: "Icons", match: /^font name$/i, ...ICONS }],
+    });
+    expect(body.byteLength).toBeLessThan(fontsLength.woff2);
+    expect(rendersLigature(openFont(body), "close")).toBe(true);
+    expect(problemsOf(messages)).toEqual([]);
+  });
+
+  it(`should serve the original of a face an ignore RegExp matches`, async () => {
+    const { body } = await fetchWoff2({
+      type: "manual",
+      targets: [{ fontName: "Font Name", ...ICONS }],
+      ignore: [/^Font/],
+    });
+    expect(body.byteLength).toBe(fontsLength.woff2);
+  });
+
+  it(`should minify with the target resolveTarget returns`, async () => {
+    const { body } = await fetchWoff2({
+      type: "manual",
+      targets: [],
+      resolveTarget: (face) => ({ fontName: face.family, ...ICONS }),
+    });
+    expect(body.byteLength).toBeLessThan(fontsLength.woff2);
+    expect(rendersLigature(openFont(body), "close")).toBe(true);
+  });
+
+  it(`should serve the original when resolveTarget returns null`, async () => {
+    const { body } = await fetchWoff2({
+      type: "manual",
+      targets: [{ fontName: "Font Name", ...ICONS }],
+      resolveTarget: () => null,
+    });
+    expect(body.byteLength).toBe(fontsLength.woff2);
+  });
+
+  it(`should keep serving when resolveTarget throws`, async () => {
+    const { body, messages } = await fetchWoff2({
+      type: "manual",
+      targets: [{ fontName: "Font Name", ...ICONS }],
+      resolveTarget: () => {
+        throw new Error("broken resolver");
+      },
+    });
+    expect(body.byteLength).toBe(fontsLength.woff2);
+    expect(messages.some((m) => m.type === "error" && m.message.includes("broken resolver"))).toBe(
+      true,
+    );
+  });
+});
+
 describe("Dev server: file shared by families with different options", () => {
   it(`should serve each family its own minified font`, async () => {
     const options: PluginOption = {
