@@ -1,5 +1,7 @@
+import { existsSync } from "node:fs";
+import { basename, join } from "node:path";
 import { type Connect, send, type ViteDevServer } from "vite";
-import { cleanUrl, createSubsetOptions, getFontExtension, toError } from "./utils";
+import { cleanUrl, createSubsetOptions, getFontExtension, stripBase, toError } from "./utils";
 import { type PluginContext, getLogger } from "./context";
 import type {
   MinifyFontOptions,
@@ -11,6 +13,16 @@ import { processMinify } from "./minify";
 import { SUPPORT_START_FONT_REGEX } from "./constants";
 import { mergeSubsetOptions, parseUrlSubset } from "./subset-options";
 import styler from "./styler";
+import { splitUrl } from "./font-emit";
+
+// A font requested with `?subset=`, other params may come first
+const SUBSET_REQUEST_RE = /\.(?:woff2?|ttf|otf|eot)\?(?:[^#]*&)?subset=/i;
+// Module requests of Vite (`import url from './font.woff2?subset=A'` is fetched with `&import`)
+const MODULE_REQUEST_RE = /[?&](?:import|url|raw|inline|worker|sharedworker)\b/;
+const FS_PREFIX = "/@fs/";
+const WINDOWS_DRIVE_RE = /^\/[A-Za-z]:/;
+// Coalesces the reloads of auto-mode fonts while many stylesheets load
+const AUTO_RELOAD_DELAY_MS = 50;
 
 export type ServeFontLoader = () => Promise<ServeFontStubResponse | null>;
 
@@ -103,6 +115,62 @@ export function createServeFontLoader(
   };
 }
 
+function fileOfRequest(ctx: PluginContext, path: string): string | null {
+  let pathname: string;
+  try {
+    pathname = decodeURIComponent(stripBase(path, ctx.base));
+  } catch {
+    return null;
+  }
+  if (!pathname.startsWith(FS_PREFIX)) return join(ctx.root, pathname);
+  const file = pathname.slice(FS_PREFIX.length - 1);
+  return WINDOWS_DRIVE_RE.test(file) ? file.slice(1) : file;
+}
+
+/**
+ * Dev: a font requested with `?subset=` that no @font-face registered — a JS import or
+ * `new URL()`. Vite serves its asset url with the query, the plugin minifies it like build.
+ */
+function registerSubsetRequest(ctx: PluginContext, url: string): ServeFontLoader | undefined {
+  if (!SUBSET_REQUEST_RE.test(url) || MODULE_REQUEST_RE.test(url)) return undefined;
+  const { path, query } = splitUrl(url);
+  const file = fileOfRequest(ctx, path);
+  if (!file || !existsSync(file)) return undefined;
+  const loader = createServeFontLoader(ctx, {
+    importer: file,
+    url: file + query,
+    aliases: [],
+    fontName: `subset (${basename(file)})`,
+    auto: false,
+  });
+  ctx.fontServeProxy.set(url, loader);
+  return loader;
+}
+
+/**
+ * Dev, auto mode: the glyphs of a stylesheet changed, so the fonts of auto @font-face rules change
+ * too. Their modules are transformed again with the new glyph version in the font urls, and HMR
+ * sends the stylesheets to the browser, which then loads the new fonts.
+ */
+export function reloadAutoFonts(ctx: PluginContext, changedId: string): void {
+  const server = ctx.server;
+  if (!server) return;
+  if (ctx.autoReloadTimer) clearTimeout(ctx.autoReloadTimer);
+  ctx.autoReloadTimer = setTimeout(() => {
+    ctx.autoReloadTimer = null;
+    const environment = server.environments.client;
+    for (const id of ctx.autoFaceModules) {
+      if (id === changedId) continue;
+      const module = environment.moduleGraph.getModuleById(id);
+      if (!module) continue;
+      environment.moduleGraph.invalidateModule(module);
+      environment.reloadModule(module).catch((error: unknown) => {
+        getLogger(ctx).error(`Failed to reload ${styler.path(id)}: ${toError(error).message}`);
+      });
+    }
+  }, AUTO_RELOAD_DELAY_MS);
+}
+
 // Serves minified fonts; on a miss or any failure Vite serves the original file
 export function createServeMiddleware(
   ctx: PluginContext,
@@ -123,7 +191,9 @@ export function createServeMiddleware(
 
   return (req, res, next) => {
     const url = req.url;
-    const loader = url ? ctx.fontServeProxy.get(url) : undefined;
+    const loader = url
+      ? (ctx.fontServeProxy.get(url) ?? registerSubsetRequest(ctx, url))
+      : undefined;
     if (!url || !loader) {
       next();
       return;

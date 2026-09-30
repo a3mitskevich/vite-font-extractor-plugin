@@ -159,6 +159,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
     configureServer(server) {
       ctx.isServe = true;
+      ctx.server = server;
       server.middlewares.use(createServeMiddleware(ctx, server));
     },
     async buildStart(options) {

@@ -13,19 +13,22 @@ import {
 } from "./utils";
 import { type PluginContext, getLogger } from "./context";
 import { checkFontProcessing } from "./minify";
-import { createServeFontLoader, type ServeFontRequest } from "./serve";
+import { createServeFontLoader, reloadAutoFonts, type ServeFontRequest } from "./serve";
 import { hasSubsetParam } from "./subset-options";
 import { hasGoogleFontUrl, rewriteGoogleFontUrls } from "./google-rewrite";
 import { isRemoteUrl } from "./face-options";
 
 const FAMILY_QUERY_PARAM = "font-extractor-family";
+const GLYPHS_QUERY_PARAM = "font-extractor-glyphs";
 const FACE_URL_RE = /url\((['"]?)(.*?)\1\)/g;
 
-// Auto mode: glyphs of CSS `content` in the module (build: compiled CSS, dev: served CSS)
-export function collectContentGlyphs(ctx: PluginContext, code: string, id: string): void {
-  if (ctx.mode === "auto") {
-    ctx.glyphsFindMap.set(id, findUnicodeGlyphs(stripCssComments(code)));
-  }
+// Auto mode: glyphs of CSS `content` in the module (build: compiled CSS, dev: served CSS).
+// Returns whether the glyphs of the build changed
+export function collectContentGlyphs(ctx: PluginContext, code: string, id: string): boolean {
+  if (ctx.mode !== "auto") return false;
+  const before = ctx.autoProxyOption.sid;
+  ctx.glyphsFindMap.set(id, findUnicodeGlyphs(stripCssComments(code)));
+  return ctx.autoProxyOption.sid !== before;
 }
 
 // CSS `@import` of a Google Fonts stylesheet
@@ -34,9 +37,15 @@ export const rewriteCssGoogleFonts = (ctx: PluginContext, code: string, id: stri
     ? rewriteGoogleFontUrls(ctx, code, id)
     : code;
 
-// Dev: a file shared by several families is requested once per family
-const tagFamilyUrl = (url: string, fontName: string): string =>
-  `${url}${url.includes("?") ? "&" : "?"}${FAMILY_QUERY_PARAM}=${getHash(fontName)}`;
+// Dev: a file shared by several families is requested once per family; an auto font once per
+// glyph set, so the browser loads it again when the glyphs change
+function tagFamilyUrl(ctx: PluginContext, url: string, font: FontFaceMeta): string {
+  const separator = url.includes("?") ? "&" : "?";
+  const tagged = `${url}${separator}${FAMILY_QUERY_PARAM}=${getHash(font.name)}`;
+  return font.options.auto
+    ? `${tagged}&${GLYPHS_QUERY_PARAM}=${getHash(ctx.autoProxyOption.sid)}`
+    : tagged;
+}
 
 function registerServeProxy(
   ctx: PluginContext,
@@ -50,6 +59,7 @@ function registerServeProxy(
 
 function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceMeta): string {
   checkFontProcessing(ctx, font.name, id);
+  if (font.options.auto) ctx.autoFaceModules.add(id);
   const localUrls = font.aliases.filter((url) => !url.startsWith("data:"));
   const sourceUrls = localUrls.map((url) => stripBase(url, ctx.base));
   localUrls.forEach((url, index) => {
@@ -62,14 +72,14 @@ function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceM
     };
     // The plain url keeps working (served for the first family that registered it)
     registerServeProxy(ctx, url, request);
-    registerServeProxy(ctx, tagFamilyUrl(url, font.name), request);
+    registerServeProxy(ctx, tagFamilyUrl(ctx, url, font), request);
   });
   // Face text differs from the source when it contains comments — keep plain urls then
   if (!code.includes(font.face)) {
     return code;
   }
   const taggedFace = font.face.replace(FACE_URL_RE, (match, quote: string, url: string) =>
-    localUrls.includes(url) ? `url(${quote}${tagFamilyUrl(url, font.name)}${quote})` : match,
+    localUrls.includes(url) ? `url(${quote}${tagFamilyUrl(ctx, url, font)}${quote})` : match,
   );
   return code.replace(font.face, taggedFace);
 }
@@ -98,7 +108,7 @@ function toServedFace(ctx: PluginContext, face: string): FontFaceMeta | null {
  * @font-face url of a font to minify is registered with the dev middleware, tagged per family.
  */
 export function transformServedCss(ctx: PluginContext, code: string, id: string): string {
-  collectContentGlyphs(ctx, code, id);
+  if (collectContentGlyphs(ctx, code, id)) reloadAutoFonts(ctx, id);
   let result = rewriteCssGoogleFonts(ctx, code, id);
   const cleaned = stripCssComments(result);
   if (!cleaned.includes("@font-face")) return result;

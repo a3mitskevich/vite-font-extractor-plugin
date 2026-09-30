@@ -1,4 +1,4 @@
-import type { ResolvedBuildOptions } from "vite";
+import type { ResolvedBuildOptions, ViteDevServer } from "vite";
 import type Cache from "./cache";
 import type {
   ImportResolvers,
@@ -42,6 +42,10 @@ export interface PluginContext {
   logger: InternalLogger | null;
 
   isServe: boolean;
+  server: ViteDevServer | null;
+  // Dev, auto mode: modules with an auto @font-face, reloaded when the glyphs change
+  readonly autoFaceModules: Set<string>;
+  autoReloadTimer: NodeJS.Timeout | null;
   root: string;
   // Resolved `config.base`; dev urls carry it and must be stripped before resolving files
   base: string;
@@ -186,6 +190,9 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     cssResolvers: null,
     logger: null,
     isServe: false,
+    server: null,
+    autoFaceModules: new Set(),
+    autoReloadTimer: null,
     root: process.cwd(),
     base: "/",
     publicDir: null,

@@ -468,3 +468,71 @@ describe.sequential("Dev server: non-root base", () => {
     }
   });
 });
+
+// `import url from './font.woff2?subset=ABC'` and `new URL(…)`: Vite serves the url with the query
+const ASSET_IMPORT_RE = /from\s+["']([^"']+\.woff2\?[^"']*)["']/;
+const EXPORTED_URL_RE = /export default\s+["']([^"']+)["']/;
+
+describe.sequential("Dev server: ?subset= outside of @font-face", () => {
+  const SUBSET_OPTIONS: PluginOption = { type: "manual", cache: false, targets: [] };
+
+  const expectAbcFont = (body: Buffer): void => {
+    expect(body.byteLength).toBeLessThan(textFontSource.byteLength);
+    const font = openFont(body);
+    expect(["A", "B", "C"].every((char) => font.hasGlyphForCodePoint(char.codePointAt(0)!))).toBe(
+      true,
+    );
+    expect(font.hasGlyphForCodePoint("a".codePointAt(0)!)).toBe(false);
+  };
+
+  it("should minify a JS ?subset= import", async () => {
+    await withDevServer(fixtures["subset-js"].path, SUBSET_OPTIONS, async (dev) => {
+      const js = await (await fetch(`${dev.origin}/index.js`)).text();
+      const moduleUrl = ASSET_IMPORT_RE.exec(js)?.[1];
+      expect(moduleUrl).toBeDefined();
+      const assetModule = await (await fetch(`${dev.origin}${moduleUrl}`)).text();
+      const fontUrl = EXPORTED_URL_RE.exec(assetModule)?.[1];
+      expect(fontUrl).toMatch(/text-font\.woff2\?subset=ABC$/);
+
+      const { status, body } = await fetchFont(dev.origin, fontUrl!);
+      expect(status).toBe(200);
+      expectAbcFont(body);
+      expect(problemsOf(dev.messages)).toEqual([]);
+    });
+  });
+
+  it("should minify a new URL() with ?subset=", async () => {
+    await withDevServer(join(fixturesDir, "subset-new-url"), SUBSET_OPTIONS, async (dev) => {
+      // Vite rewrites new URL() to the served path of the file, query included
+      const js = await (await fetch(`${dev.origin}/index.js`)).text();
+      const fontUrl = /new URL\("([^"]+)"/.exec(js)?.[1];
+      expect(fontUrl).toMatch(/text-font\.woff2\?subset=ABC$/);
+
+      const { status, body } = await fetchFont(dev.origin, fontUrl!);
+      expect(status).toBe(200);
+      expectAbcFont(body);
+    });
+  });
+});
+
+describe.sequential("Dev server: auto mode glyph changes", () => {
+  it("should give the auto font a new url when another stylesheet adds glyphs", async () => {
+    const options: PluginOption = { type: "auto", cache: false };
+    await withDevServer(devFixtures.autoTwoCss.path, options, async (dev) => {
+      const [before] = fontUrlsOf(await fetchCss(dev.origin, "/font.css"));
+
+      await fetchCss(dev.origin, "/icons.css");
+      // The font module is transformed again once the glyph change settles
+      await new Promise((resolve) => {
+        setTimeout(resolve, 200);
+      });
+      const [after] = fontUrlsOf(await fetchCss(dev.origin, "/font.css"));
+      expect(after).not.toBe(before);
+
+      const font = openFont((await fetchFont(dev.origin, after)).body);
+      expect(font.hasGlyphForCodePoint(CLOSE_CODE_POINT)).toBe(true);
+      expect(font.hasGlyphForCodePoint(PLAY_ARROW_CODE_POINT)).toBe(true);
+      expect(dev.messages.filter((m) => m.type === "error")).toEqual([]);
+    });
+  });
+});
