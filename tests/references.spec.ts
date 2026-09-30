@@ -1,21 +1,27 @@
 import { describe, it, expect } from "vitest";
-import type { OutputAsset } from "./utils";
+import { createBuilder, type ViteBuilder } from "vite";
+import type { LoggerMessage, OutputAsset, Plugin, RollupOutput } from "./utils";
 import { createHash } from "node:crypto";
+import { rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { PluginOption } from "../src";
 import {
   buildFixture,
   collectFontReferences,
+  createFakeLogger,
   findBrokenFontReferences,
   findOrphanFontAssets,
   fixtures,
   fixturesDir,
   fontsLength,
+  generateId,
   getEntryChunk,
   getFontAssets,
   getFontFilesByFamily,
   openFont,
+  outDir,
   type OutputItem,
+  plugin,
   rendersLigature,
   textFontsLength,
 } from "./utils";
@@ -343,5 +349,166 @@ describe("Font references in build output", () => {
     expect(clientFonts).toHaveLength(1);
     expect(namesOf(ssr.output)).toEqual(clientFonts);
     expect(ssr.messages.filter((m) => m.type === "warn" || m.type === "error")).toEqual([]);
+  });
+});
+
+// How the builder runs the client and SSR builds
+type BuildOrder = "parallel" | "sequential" | "ssr-after-client-css";
+
+interface EnvironmentOutputs {
+  client: OutputItem[];
+  ssr: OutputItem[];
+  messages: LoggerMessage[];
+}
+
+const ENVIRONMENTS_FIXTURE = join(fixturesDir, "builder-environments");
+
+// Resolves once the client build has transformed the stylesheet (after the plugin's swap)
+function createCssProbe(): { plugin: Plugin; transformed: Promise<void> } {
+  let resolve!: () => void;
+  const transformed = new Promise<void>((done) => {
+    resolve = done;
+  });
+  const plugin: Plugin = {
+    name: "test:css-probe",
+    enforce: "post",
+    transform(_, id) {
+      if (this.environment.name === "client" && id.endsWith("style.scss")) resolve();
+    },
+  };
+  return { plugin, transformed };
+}
+
+const MANUAL_OPTIONS: PluginOption = { type: "manual", targets: [ICON_TARGET], cache: false };
+
+async function buildEnvironments(
+  order: BuildOrder,
+  pluginOptions: PluginOption = MANUAL_OPTIONS,
+): Promise<EnvironmentOutputs> {
+  const out = join(outDir, generateId());
+  const customLogger = createFakeLogger();
+  const probe = createCssProbe();
+  const outputs = new Map<string, OutputItem[]>();
+  const buildOne = async (builder: ViteBuilder, name: string): Promise<void> => {
+    const result = (await builder.build(builder.environments[name])) as RollupOutput;
+    outputs.set(name, result.output);
+  };
+  const builder = await createBuilder({
+    root: ENVIRONMENTS_FIXTURE,
+    configFile: false,
+    logLevel: "silent",
+    customLogger,
+    plugins: [await plugin(pluginOptions), probe.plugin],
+    build: { outDir: out, emptyOutDir: true, write: false },
+    environments: {
+      client: {},
+      ssr: {
+        build: {
+          ssr: true,
+          outDir: join(out, "server"),
+          rolldownOptions: { input: join(ENVIRONMENTS_FIXTURE, "server.js") },
+        },
+      },
+    },
+    builder: {
+      async buildApp(app) {
+        if (order === "sequential") {
+          await buildOne(app, "client");
+          await buildOne(app, "ssr");
+          return;
+        }
+        const client = buildOne(app, "client");
+        // The SSR build starts while the client build is past its first transforms
+        if (order === "ssr-after-client-css") await probe.transformed;
+        await Promise.all([client, buildOne(app, "ssr")]);
+      },
+    },
+  });
+  await builder.buildApp();
+  rmSync(out, { recursive: true, force: true });
+  return {
+    client: outputs.get("client") ?? [],
+    ssr: outputs.get("ssr") ?? [],
+    messages: customLogger.messages,
+  };
+}
+
+const fontNamesOf = (output: OutputItem[]): string[] =>
+  getFontAssets(output)
+    .map((asset) => basename(asset.fileName))
+    .sort();
+
+const referencedNamesOf = (output: OutputItem[]): string[] =>
+  [...new Set(collectFontReferences(output).map((ref) => basename(ref.path)))].sort();
+
+const AUTO_MODE_WARNING_RE = /"auto" mode detected/;
+
+function expectMinifiedEnvironments({ client, ssr, messages }: EnvironmentOutputs): void {
+  const problems = messages.filter(
+    (m) => (m.type === "warn" || m.type === "error") && !AUTO_MODE_WARNING_RE.test(m.message),
+  );
+  expect(problems).toEqual([]);
+  // Icon font (woff2, woff) of the imported @font-face and the JS `?subset=` font, all minified
+  const originalSizes: Record<string, number> = {
+    "icon-font.woff2": fontsLength.woff2,
+    "icon-font.woff": fontsLength.woff,
+    "text-font.woff2": textFontsLength.woff2,
+  };
+  // `icon-font-<hash>.woff2` → `icon-font.woff2`
+  const sourceNameOf = (asset: OutputAsset): string | undefined => {
+    const fileName = basename(asset.fileName);
+    return Object.keys(originalSizes).find((name) => {
+      const [stem, extension] = name.split(".");
+      return fileName.startsWith(`${stem}-`) && fileName.endsWith(`.${extension}`);
+    });
+  };
+  const fonts = getFontAssets(client);
+  expect(fonts.map(sourceNameOf).sort()).toEqual(Object.keys(originalSizes).sort());
+  for (const asset of fonts) {
+    expect(Buffer.from(asset.source).length).toBeLessThan(originalSizes[sourceNameOf(asset)!]);
+  }
+  expect(findBrokenFontReferences(client)).toEqual([]);
+  expect(findOrphanFontAssets(client)).toEqual([]);
+  // The SSR chunk points at the file the client build emits for the `?subset=` import
+  const ssrNames = referencedNamesOf(ssr.filter((item) => item.type === "chunk"));
+  expect(ssrNames).toHaveLength(1);
+  expect(fontNamesOf(client)).toContain(ssrNames[0]);
+}
+
+describe("Environments of one builder", () => {
+  it("should minify client and SSR builds that run in parallel", async () => {
+    expectMinifiedEnvironments(await buildEnvironments("parallel"));
+  });
+
+  it("should keep each build's state when the SSR build starts mid client build", async () => {
+    expectMinifiedEnvironments(await buildEnvironments("ssr-after-client-css"));
+  });
+
+  it.each(["parallel", "ssr-after-client-css"] as const)(
+    "should collect auto glyphs and wait for the graph per environment (%s)",
+    async (order) => {
+      const outputs = await buildEnvironments(order, { type: "auto", cache: false });
+      expectMinifiedEnvironments(outputs);
+      const icon = getFontAssets(outputs.client).find(
+        (asset) =>
+          asset.fileName.endsWith(".woff2") && basename(asset.fileName).startsWith("icon-font-"),
+      );
+      expect(rendersLigature(openFont(icon!.source), "close")).toBe(true);
+    },
+  );
+
+  it("should keep every name across builds of the builder", async () => {
+    const first = await buildEnvironments("sequential");
+    const second = await buildEnvironments("sequential");
+    const parallel = await buildEnvironments("parallel");
+    expectMinifiedEnvironments(first);
+    expectMinifiedEnvironments(second);
+
+    const namesOf = (outputs: EnvironmentOutputs) => ({
+      client: outputs.client.map((item) => item.fileName).sort(),
+      ssr: outputs.ssr.map((item) => item.fileName).sort(),
+    });
+    expect(namesOf(second)).toEqual(namesOf(first));
+    expect(namesOf(parallel)).toEqual(namesOf(first));
   });
 });

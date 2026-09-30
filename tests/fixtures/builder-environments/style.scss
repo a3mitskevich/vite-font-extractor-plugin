@@ -1,0 +1,9 @@
+@use "./faces";
+
+.icon {
+  font-family: "Font Name";
+}
+
+.icon-close::before {
+  content: "close";
+}

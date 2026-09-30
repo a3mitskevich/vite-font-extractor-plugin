@@ -1,11 +1,18 @@
-import type { Plugin, ResolvedConfig, Rollup } from "vite";
+import { type Plugin, type ResolvedConfig, type Rollup, perEnvironmentState } from "vite";
 import { resolve } from "node:path";
 import type { PluginOption } from "./types";
 import Cache from "./cache";
 import { createResolvers, getHash, intersection, mergePath } from "./utils";
 import { CSS_LANGS_RE, PLUGIN_NAME } from "./constants";
 import { createInternalLogger } from "./internal-logger";
-import { type PluginContext, createPluginContext, getLogger, resetBuildState } from "./context";
+import {
+  type PluginContext,
+  type SharedContext,
+  createEnvironmentContext,
+  createPluginContext,
+  getLogger,
+  resetBuildState,
+} from "./context";
 import { createCssResolvers } from "./css-candidates";
 import { transformFaceSources } from "./css-pre-transform";
 import { swapCompiledFaces } from "./css-swap";
@@ -42,7 +49,7 @@ const applyToBuild =
     return typeof apply === "function" ? apply(config, env) : apply !== "serve";
   };
 
-function configureContext(ctx: PluginContext, config: ResolvedConfig): void {
+function configureContext(ctx: SharedContext, config: ResolvedConfig): void {
   const { pluginOption } = ctx;
   ctx.logger = createInternalLogger(pluginOption.logLevel ?? config.logLevel, config.customLogger);
   const logger = ctx.logger;
@@ -67,7 +74,6 @@ function configureContext(ctx: PluginContext, config: ResolvedConfig): void {
   ctx.root = config.root;
   ctx.base = config.base;
   ctx.publicDir = config.publicDir || null;
-  ctx.buildConfig = config.command === "build" ? config.build : null;
 
   configureCache(ctx, config);
 }
@@ -87,7 +93,7 @@ const getCacheOwner = (config: ResolvedConfig): string =>
     ]),
   );
 
-function configureCache(ctx: PluginContext, config: ResolvedConfig): void {
+function configureCache(ctx: SharedContext, config: ResolvedConfig): void {
   const { cache } = ctx.pluginOption;
   if (cache) {
     const parent = typeof cache === "string" ? resolve(config.root, cache) : config.cacheDir;
@@ -126,9 +132,22 @@ function checkAutoGlyphs(ctx: PluginContext): string | null {
 const toInputList = (input: Rollup.NormalizedInputOptions["input"]): string[] =>
   Array.isArray(input) ? input : Object.values(input);
 
+// transformIndexHtml runs within the hooks of vite:build-html, whose context has the environment
+const asBuildHookContext = (context: unknown): Rollup.PluginContext =>
+  context as Rollup.PluginContext;
+
 export default function FontExtractor(pluginOption: PluginOption = { type: "auto" }): Plugin[] {
-  const ctx = createPluginContext(pluginOption);
+  const shared = createPluginContext(pluginOption);
   const { apply } = pluginOption;
+  // Builds of a builder may run in parallel (client and SSR): each environment has its own build
+  // state, so a buildStart never resets another build. Dev keeps the state of the shared context.
+  // No `sharedDuringBuild`: a shared instance gets configResolved for the config of every
+  // environment, the last one wins the logger, resolvers and cache (its owner has the outDir)
+  const environmentContext = perEnvironmentState((environment) =>
+    createEnvironmentContext(shared, environment.config.build),
+  );
+  const contextOf = (hookContext: Rollup.PluginContext): PluginContext =>
+    shared.isServe ? shared : environmentContext(hookContext);
 
   const pre: Plugin = {
     name: `${PLUGIN_NAME}:pre`,
@@ -139,21 +158,22 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       filter: { id: SUBSET_IMPORT_RE },
       async handler(source, importer) {
         // Dev serves `?subset=` imports through the middleware
-        if (ctx.isServe) return null;
+        if (shared.isServe) return null;
         return resolveSubsetImport(this, source, importer);
       },
     },
     load: {
       filter: { id: VIRTUAL_ID_RE },
       async handler(id) {
-        const code = await loadSubsetImport(this, ctx, id);
+        const code = await loadSubsetImport(this, contextOf(this), id);
         return { code, moduleType: "js", moduleSideEffects: false };
       },
     },
     transform: {
       filter: CSS_FILTER,
       async handler(code, id) {
-        if (ctx.isServe) return null;
+        if (shared.isServe) return null;
+        const ctx = contextOf(this);
         ctx.rawSources.set(id, code);
         return transformFaceSources(this, ctx, code, id);
       },
@@ -178,16 +198,16 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     apply,
     applyToEnvironment: isAppliedTo,
     configResolved(config) {
-      configureContext(ctx, config);
+      configureContext(shared, config);
     },
     configureServer(server) {
-      ctx.isServe = true;
-      ctx.server = server;
-      server.middlewares.use(createServeMiddleware(ctx, server));
+      shared.isServe = true;
+      shared.server = server;
+      server.middlewares.use(createServeMiddleware(shared, server));
     },
     async buildStart(options) {
+      const ctx = contextOf(this);
       resetBuildState(ctx, ctx.isServe ? "" : this.environment.name);
-      if (!ctx.isServe) ctx.buildConfig = this.environment.config.build;
       ctx.cachedBefore = getLogger(ctx).cachedCount();
       if (ctx.isServe || ctx.mode !== "auto") return;
       const resolved = await Promise.all(
@@ -201,6 +221,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     transform: {
       filter: CSS_FILTER,
       async handler(code, id) {
+        const ctx = contextOf(this);
         if (ctx.isServe) {
           const served = transformServedCss(ctx, code, id);
           return served === code ? null : served;
@@ -216,7 +237,8 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       },
     },
     buildEnd() {
-      if (ctx.isServe) return;
+      if (shared.isServe) return;
+      const ctx = contextOf(this);
       const problem = checkAutoGlyphs(ctx);
       // An aborted build must not keep a waiting module or its timer alive
       ctx.graph.reset();
@@ -231,7 +253,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     apply: applyToBuild(apply),
     applyToEnvironment: isAppliedTo,
     moduleParsed(info) {
-      onModuleParsed(ctx.graph, this, info);
+      onModuleParsed(contextOf(this).graph, this, info);
     },
   };
 
@@ -242,7 +264,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     transformIndexHtml: {
       order: "pre",
       handler(html, htmlContext) {
-        recordPreloadSources(ctx, html, htmlContext.filename);
+        recordPreloadSources(contextOf(asBuildHookContext(this)), html, htmlContext.filename);
       },
     },
   };
@@ -255,12 +277,13 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     transformIndexHtml: {
       order: "post",
       handler(html, htmlContext) {
+        // Vite calls it from its own generateBundle, with the bundle's plugin context
+        const pluginContext = asBuildHookContext(this);
+        const ctx = contextOf(pluginContext);
         const withGoogle = hasGoogleFontUrl(html)
           ? rewriteGoogleFontUrls(ctx, html, htmlContext.filename)
           : html;
         if (ctx.isServe || !htmlContext.bundle) return withGoogle;
-        // Vite calls it from its own generateBundle, with the bundle's plugin context
-        const pluginContext = this as unknown as Pick<Rollup.PluginContext, "getFileName">;
         return redirectFontPreloads(
           ctx,
           withGoogle,
@@ -271,6 +294,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       },
     },
     async generateBundle(_, bundle) {
+      const ctx = contextOf(this);
       removeUnusedOriginals(ctx, bundle, (referenceId) => this.getFileName(referenceId));
       const logger = getLogger(ctx);
       const cached = logger.cachedCount() - ctx.cachedBefore;
@@ -281,5 +305,5 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
   };
 
-  return [pre, newUrl, main, ...(ctx.mode === "auto" ? [graph] : []), htmlPre, post];
+  return [pre, newUrl, main, ...(shared.mode === "auto" ? [graph] : []), htmlPre, post];
 }

@@ -29,12 +29,12 @@ export interface MinifiedSource {
   source: Buffer;
 }
 
-export interface PluginContext {
+// Shared by every environment of a plugin instance. Written only on the shared context itself
+// (configResolved, configureServer, the dev server), never through an environment's context
+export interface SharedContext {
   readonly mode: PluginOption["type"];
   readonly pluginOption: PluginOption;
   readonly targets: Target[];
-  readonly optionsMap: TargetOptionsMap;
-  readonly autoProxyOption: OptionsWithCacheSid<IconTarget>;
 
   cache: Cache | null;
   importResolvers: ImportResolvers | null;
@@ -50,15 +50,22 @@ export interface PluginContext {
   // Resolved `config.base`; dev urls carry it and must be stripped before resolving files
   base: string;
   publicDir: string | null;
-  // Build options of the environment, null in dev
-  buildConfig: ResolvedBuildOptions | null;
-  // Auto mode: glyphs of CSS `content` per module id
-  readonly glyphsFindMap: Map<string, string[]>;
   readonly fontServeProxy: Map<string, () => Promise<ServeFontStubResponse | null>>;
+}
+
+/**
+ * State of one build, reset on every (re)build. Each build environment has its own: the builds of
+ * a builder may run in parallel. Dev has one, on the shared context.
+ */
+export interface BuildState {
+  // Build options of the environment, null in dev
+  readonly buildConfig: ResolvedBuildOptions | null;
+  // Auto mode: glyphs of CSS `content` per module id; the auto target keeps the glyphs of its build
+  readonly glyphsFindMap: Map<string, string[]>;
+  readonly autoProxyOption: OptionsWithCacheSid<IconTarget>;
+  readonly optionsMap: TargetOptionsMap;
   // font-family → id of the module that declared it, for the "found in multiple files" warning
   readonly progress: Map<string, string>;
-
-  // Build state, reset on every (re)build
   // CSS module sources before vite:css — imports of a module lead to the fonts it received
   readonly rawSources: Map<string, string>;
   readonly sourceReads: Map<string, Promise<Buffer>>;
@@ -82,7 +89,9 @@ export interface PluginContext {
   reportMinified(fontName: string, fonts: MinifiedSource[], minified: Map<string, Buffer>): void;
 }
 
-export function getLogger(ctx: PluginContext): InternalLogger {
+export type PluginContext = SharedContext & BuildState;
+
+export function getLogger(ctx: SharedContext): InternalLogger {
   if (!ctx.logger) {
     throw new Error(
       "[vite-font-extractor-plugin] Logger not initialized. configResolved not called yet.",
@@ -91,7 +100,7 @@ export function getLogger(ctx: PluginContext): InternalLogger {
   return ctx.logger;
 }
 
-export function getResolvers(ctx: PluginContext): ImportResolvers {
+export function getResolvers(ctx: SharedContext): ImportResolvers {
   if (!ctx.importResolvers) {
     throw new Error(
       "[vite-font-extractor-plugin] Import resolvers not initialized. configResolved not called yet.",
@@ -100,7 +109,7 @@ export function getResolvers(ctx: PluginContext): ImportResolvers {
   return ctx.importResolvers;
 }
 
-export function getCssResolvers(ctx: PluginContext): CssResolvers {
+export function getCssResolvers(ctx: SharedContext): CssResolvers {
   if (!ctx.cssResolvers) {
     throw new Error(
       "[vite-font-extractor-plugin] CSS resolvers not initialized. configResolved not called yet.",
@@ -150,13 +159,58 @@ function assertTargets(targets: Target[]): void {
   }
 }
 
-export function createPluginContext(pluginOption: PluginOption): PluginContext {
-  const mode: PluginOption["type"] = pluginOption.type ?? "manual";
+function createOptionsMap(
+  shared: SharedContext,
+  autoProxyOption: OptionsWithCacheSid<IconTarget>,
+): TargetOptionsMap {
+  const casualOptionsMap = new Map<string, OptionsWithCacheSid>(
+    shared.targets.map((target) => [
+      target.fontName,
+      { sid: JSON.stringify(target), target, auto: false },
+    ]),
+  );
+  const isAuto = shared.mode === "auto";
+  return {
+    get: (key: string) => {
+      const option = casualOptionsMap.get(key);
+      return isAuto ? (option ?? autoProxyOption) : option;
+    },
+    has: (key: string) => isAuto || casualOptionsMap.has(key),
+  };
+}
 
+function createBuildState(
+  shared: SharedContext,
+  buildConfig: ResolvedBuildOptions | null,
+): BuildState {
   const glyphsFindMap = new Map<string, string[]>();
-  const autoTarget = createAutoTarget(glyphsFindMap);
-  const autoProxyOption = createAutoOption(autoTarget);
+  const autoProxyOption = createAutoOption(createAutoTarget(glyphsFindMap));
+  const stats: MinifyStats = { minified: 0, cached: 0, saved: 0 };
+  return {
+    buildConfig,
+    glyphsFindMap,
+    autoProxyOption,
+    optionsMap: createOptionsMap(shared, autoProxyOption),
+    progress: new Map(),
+    rawSources: new Map(),
+    sourceReads: new Map(),
+    minifications: new Map(),
+    emittedFonts: new Map(),
+    inlinedFonts: new Set(),
+    preloadSources: new Map(),
+    probeAssets: new Set(),
+    graph: createGraphState(),
+    autoGlyphSets: new Set(),
+    stats,
+    isMinifyPhaseLogged: false,
+    cachedBefore: 0,
+    reportMinified: (fontName, fonts, minified) =>
+      reportMinified(getLogger(shared), stats, fontName, fonts, minified),
+  };
+}
 
+// The shared context, carrying the build state of dev
+export function createPluginContext(pluginOption: PluginOption): PluginContext {
   const targets = pluginOption.targets
     ? Array.isArray(pluginOption.targets)
       ? pluginOption.targets
@@ -164,27 +218,10 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     : [];
   assertTargets(targets);
 
-  const casualOptionsMap = new Map<string, OptionsWithCacheSid>(
-    targets.map((target) => [
-      target.fontName,
-      { sid: JSON.stringify(target), target, auto: false },
-    ]),
-  );
-
-  const optionsMap: TargetOptionsMap = {
-    get: (key: string) => {
-      const option = casualOptionsMap.get(key);
-      return mode === "auto" ? (option ?? autoProxyOption) : option;
-    },
-    has: (key: string) => mode === "auto" || casualOptionsMap.has(key),
-  };
-
-  const ctx: PluginContext = {
-    mode,
+  const shared: SharedContext = {
+    mode: pluginOption.type ?? "manual",
     pluginOption,
     targets,
-    optionsMap,
-    autoProxyOption,
     cache: null,
     importResolvers: null,
     cssResolvers: null,
@@ -196,34 +233,30 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     root: process.cwd(),
     base: "/",
     publicDir: null,
-    buildConfig: null,
-    glyphsFindMap,
     fontServeProxy: new Map(),
-    progress: new Map(),
-    rawSources: new Map(),
-    sourceReads: new Map(),
-    minifications: new Map(),
-    emittedFonts: new Map(),
-    inlinedFonts: new Set(),
-    preloadSources: new Map(),
-    probeAssets: new Set(),
-    graph: createGraphState(),
-    autoGlyphSets: new Set(),
-    stats: { minified: 0, cached: 0, saved: 0 },
-    isMinifyPhaseLogged: false,
-    cachedBefore: 0,
-    reportMinified: (fontName, fonts, minified) => reportMinified(ctx, fontName, fonts, minified),
   };
-  return ctx;
+  return Object.assign(shared, createBuildState(shared, null));
+}
+
+/**
+ * Context of one build environment: the shared context as its prototype, so options, logger,
+ * resolvers and cache stay those `configResolved` set, and a build state of its own.
+ */
+export function createEnvironmentContext(
+  shared: PluginContext,
+  buildConfig: ResolvedBuildOptions,
+): PluginContext {
+  const context = Object.create(shared) as PluginContext;
+  return Object.assign(context, createBuildState(shared, buildConfig));
 }
 
 function reportMinified(
-  ctx: PluginContext,
+  logger: InternalLogger,
+  stats: MinifyStats,
   fontName: string,
   fonts: MinifiedSource[],
   minified: Map<string, Buffer>,
 ): void {
-  const logger = getLogger(ctx);
   logger.found("Font", fontName, `${fonts.length} format${fonts.length !== 1 ? "s" : ""}`);
   fonts.forEach((font, index) => {
     const result = minified.get(font.url);
@@ -231,8 +264,8 @@ function reportMinified(
       logger.skipped(fontName, `${font.extension} was not minified — keeping original`);
       return;
     }
-    ctx.stats.minified++;
-    ctx.stats.saved += font.source.length - result.length;
+    stats.minified++;
+    stats.saved += font.source.length - result.length;
     logger.minified(
       fontName,
       font.extension,
@@ -243,8 +276,8 @@ function reportMinified(
   });
 }
 
-// Called on every (re)build start; `build --watch` on Rolldown transforms every module again.
-// Dev keeps its state: there buildStart runs once
+// Called on every (re)build start of an environment; `build --watch` on Rolldown transforms every
+// module again. Dev keeps its state: there buildStart runs once
 export function resetBuildState(ctx: PluginContext, environment = ""): void {
   ctx.cache?.resetUsage(environment);
   if (ctx.isServe) return;
