@@ -9,9 +9,10 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync, rmSync } from "node:fs";
+import { stripVTControlCharacters } from "node:util";
 import * as fontkit from "fontkit";
 import type { FontExtractorPlugin, Target, PluginOption } from "../src";
-import type { OutputAsset, RollupOutput } from "rollup";
+import type { OutputAsset, OutputChunk, RollupOutput } from "rollup";
 
 export type { InlineConfig, Logger, Plugin };
 export interface LoggerMessage {
@@ -182,7 +183,8 @@ export const plugin = async (...args: Parameters<FontExtractorPlugin>): Promise<
 
 export const generateId = (): string => Math.random().toString(32).slice(2, 10);
 
-const createLogger = (): FakeLogger => {
+// Records every message; colors are stripped so tests can match plain text
+export const createFakeLogger = (): FakeLogger => {
   const messages: LoggerMessage[] = [];
   return new Proxy(
     {},
@@ -195,7 +197,7 @@ const createLogger = (): FakeLogger => {
           return () => false;
         }
         return (message: string) => {
-          messages.push({ type: key, message });
+          messages.push({ type: key, message: stripVTControlCharacters(String(message)) });
         };
       },
     },
@@ -228,7 +230,7 @@ export const buildFixture = async (
     : await plugin(...pluginArgs);
   const customLogger = options.useConsoleLogger
     ? undefined
-    : (options.customLogger ?? createLogger());
+    : (options.customLogger ?? createFakeLogger());
   const inlineConfig: InlineConfig = {
     root: options.fixture,
     configFile: false,
@@ -375,6 +377,12 @@ export const getFontFilesByFamily = (output: OutputItem[]): Map<string, string[]
     byFamily.set(family, [...(byFamily.get(family) ?? []), ...paths]);
   }
   return byFamily;
+};
+
+export const getEntryChunk = (output: OutputItem[]): OutputChunk => {
+  const entry = output.find((item): item is OutputChunk => item.type === "chunk" && item.isEntry);
+  if (!entry) throw new Error("Entry chunk not found in build output");
+  return entry;
 };
 
 export const getOutputAsset = (output: OutputItem[], fileName: string): OutputAsset => {

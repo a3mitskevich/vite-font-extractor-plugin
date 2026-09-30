@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { join } from "node:path";
 import { originalPositionFor, TraceMap } from "@jridgewell/trace-mapping";
-import type { OutputAsset, OutputChunk } from "rollup";
+import type { OutputAsset } from "rollup";
 import type { PluginOption } from "../src";
 import {
   buildFixture,
@@ -10,6 +10,7 @@ import {
   findOrphanFontAssets,
   fixtures,
   fixturesDir,
+  getEntryChunk,
   getFontAssets,
   getFontFilesByFamily,
   getOutputAsset,
@@ -35,12 +36,6 @@ const getCssSource = (output: OutputItem[]): string =>
     .filter((item): item is OutputAsset => item.type === "asset" && item.fileName.endsWith(".css"))
     .map((item) => String(item.source))
     .join("\n");
-
-const getEntryChunk = (output: OutputItem[]): OutputChunk => {
-  const entry = output.find((item): item is OutputChunk => item.type === "chunk" && item.isEntry);
-  if (!entry) throw new Error("Entry chunk not found in build output");
-  return entry;
-};
 
 const expectMinified = (asset: OutputAsset): void => {
   const ext = asset.fileName.split(".").pop() as keyof typeof textFontsLength;

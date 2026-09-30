@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServer, type ViteDevServer } from "vite";
-import * as fontkit from "fontkit";
+import type * as fontkit from "fontkit";
 import { dirname, join } from "node:path";
 import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { stripVTControlCharacters } from "node:util";
 import type { PluginOption } from "../src";
 import {
   plugin,
+  createFakeLogger,
   fixturesDir,
+  openFont,
+  rendersLigature,
   fixtures,
   fontsLength,
   createFixture,
@@ -26,22 +28,6 @@ const CLOSE_CODE_POINT = 0xe5cd;
 const PLAY_ARROW_CODE_POINT = 0xe037;
 const textFontSource = readFileSync(join(fixturesDir, "fonts", "text-font.woff2"));
 
-function createMessageLogger(): { logger: any; messages: LoggerMessage[] } {
-  const messages: LoggerMessage[] = [];
-  const logger = new Proxy(
-    {},
-    {
-      get(_: any, key: any): any {
-        if (key === "clearScreen" || key === "hasErrorLogged") return () => false;
-        return (message: string) => {
-          messages.push({ type: key, message: stripVTControlCharacters(String(message)) });
-        };
-      },
-    },
-  );
-  return { logger, messages };
-}
-
 interface DevSession {
   origin: string;
   messages: LoggerMessage[];
@@ -52,7 +38,8 @@ async function withDevServer(
   pluginOptions: PluginOption | undefined,
   run: (session: DevSession) => Promise<void>,
 ): Promise<void> {
-  const { logger, messages } = createMessageLogger();
+  const logger = createFakeLogger();
+  const { messages } = logger;
   const FontExtract = pluginOptions ? await plugin(pluginOptions) : await plugin();
   const server = await createServer({
     root,
@@ -87,14 +74,6 @@ const fetchFont = async (
   return { status: response.status, body: Buffer.from(await response.arrayBuffer()) };
 };
 
-const openFont = (body: Buffer): fontkit.Font => fontkit.create(body) as fontkit.Font;
-
-// Only for fonts that contain the ligature: fontkit fails on a missing one in WOFF
-const rendersLigature = (font: fontkit.Font, text: string): boolean => {
-  const glyphs = font.layout(text).glyphs;
-  return glyphs.length === 1 && glyphs[0].id !== 0;
-};
-
 const problemsOf = (messages: LoggerMessage[]): LoggerMessage[] =>
   messages.filter((m) => m.type === "warn" || m.type === "error");
 
@@ -106,7 +85,8 @@ const flushRejections = (): Promise<void> =>
 describe.sequential("Dev server", () => {
   let server: ViteDevServer;
   let baseUrl: string;
-  const { logger, messages: logMessages } = createMessageLogger();
+  const logger = createFakeLogger();
+  const logMessages = logger.messages;
 
   beforeAll(async () => {
     const FontExtract = await plugin({

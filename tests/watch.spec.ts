@@ -1,16 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { cpSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import * as fontkit from "fontkit";
 import { build, type Logger } from "vite";
 import {
+  createFakeLogger,
   createFixture,
   fixturesDir,
   fontsLength,
   generateId,
   type LoggerMessage,
+  openFont,
   outDir,
   plugin,
+  rendersLigature,
 } from "./utils";
 import type { PluginOption } from "../src";
 
@@ -36,20 +38,6 @@ interface Snapshot {
   fonts: Record<string, Buffer>;
   fontRefs: string[];
   problems: LoggerMessage[];
-}
-
-function createMessageLogger(): { logger: any; messages: LoggerMessage[] } {
-  const messages: LoggerMessage[] = [];
-  const logger = new Proxy(
-    {},
-    {
-      get(_: any, key: any): any {
-        if (key === "clearScreen" || key === "hasErrorLogged") return () => false;
-        return (message: string) => messages.push({ type: key, message: String(message) });
-      },
-    },
-  );
-  return { logger, messages };
 }
 
 // Resolves once per finished (re)build, in order
@@ -107,8 +95,7 @@ function expectMinified(snapshot: Snapshot): void {
   for (const [file, source] of Object.entries(snapshot.fonts)) {
     const ext = file.split(".").pop() as keyof typeof fontsLength;
     expect(source.length, file).toBeLessThan(fontsLength[ext]);
-    const glyphs = (fontkit.create(source) as fontkit.Font).layout("close").glyphs;
-    expect(glyphs.length === 1 && glyphs[0].id !== 0, file).toBe(true);
+    expect(rendersLigature(openFont(source), "close"), file).toBe(true);
   }
 }
 
@@ -118,12 +105,12 @@ const ICON_TARGET_OPTIONS: PluginOption = {
   targets: [{ fontName: "Font Name", ligatures: ["close"] }],
 };
 
-async function startWatcher(root: string, out: string, logger: unknown): Promise<Watcher> {
+async function startWatcher(root: string, out: string, logger: Logger): Promise<Watcher> {
   return (await build({
     root,
     configFile: false,
     logLevel: "silent",
-    customLogger: logger as Logger,
+    customLogger: logger,
     plugins: [await plugin(ICON_TARGET_OPTIONS)],
     build: { outDir: out, emptyOutDir: true, watch: {} },
   })) as Watcher;
@@ -140,7 +127,8 @@ const subsetImportJs = (characters: string): string =>
 describe.sequential("Build watch mode", () => {
   it(`should keep fonts minified and references intact across rebuilds`, async () => {
     const { root, out, workDir } = createProject();
-    const { logger, messages } = createMessageLogger();
+    const logger = createFakeLogger();
+    const { messages } = logger;
     const watcher = await startWatcher(root, out, logger);
     const nextBuild = createBuildQueue(watcher);
     const rebuildAfter = async (file: string, content: string): Promise<Snapshot> => {
@@ -175,7 +163,8 @@ describe.sequential("Build watch mode", () => {
       join(workDir, "fonts", "text-font.woff2"),
     );
     writeFileSync(join(root, "main.js"), subsetImportJs("XY"));
-    const { logger, messages } = createMessageLogger();
+    const logger = createFakeLogger();
+    const { messages } = logger;
     const watcher = await startWatcher(root, out, logger);
     const nextBuild = createBuildQueue(watcher);
 
@@ -191,7 +180,7 @@ describe.sequential("Build watch mode", () => {
         file.includes("text-font"),
       );
       expect(textFonts.map(([file]) => file)).toHaveLength(1);
-      const font = fontkit.create(textFonts[0][1]) as fontkit.Font;
+      const font = openFont(textFonts[0][1]);
       for (const char of "XYZ") {
         expect(font.hasGlyphForCodePoint(char.codePointAt(0)!), char).toBe(true);
       }

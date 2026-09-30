@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
-import type { OutputAsset, OutputChunk } from "rollup";
+import type { OutputAsset } from "rollup";
 import { createHash } from "node:crypto";
 import { basename, join } from "node:path";
-import * as fontkit from "fontkit";
 import type { PluginOption } from "../src";
 import {
   buildFixture,
@@ -12,38 +11,19 @@ import {
   fixtures,
   fixturesDir,
   fontsLength,
+  getEntryChunk,
+  getFontAssets,
+  getFontFilesByFamily,
+  openFont,
+  type OutputItem,
+  rendersLigature,
   textFontsLength,
 } from "./utils";
 
-type OutputItem = OutputAsset | OutputChunk;
-
 const ICON_TARGET = { fontName: "Font Name", ligatures: ["close"] };
-
-const getFontAssets = (output: OutputItem[]): OutputAsset[] =>
-  output.filter(
-    (item): item is OutputAsset =>
-      item.type === "asset" && /\.(?:woff2?|ttf|eot|otf)$/.test(item.fileName),
-  );
 
 const contentHash = (asset: OutputAsset): string =>
   createHash("sha256").update(Buffer.from(asset.source)).digest("hex");
-
-const getEntryChunk = (output: OutputItem[]): OutputChunk | undefined =>
-  output.find((item): item is OutputChunk => item.type === "chunk" && item.isEntry);
-
-// Maps each @font-face family in the output CSS to the font file its src points at
-const getFontFileByFamily = (output: OutputItem[]): Map<string, string> => {
-  const css = output
-    .filter((item): item is OutputAsset => item.type === "asset" && item.fileName.endsWith(".css"))
-    .map((item) => String(item.source))
-    .join("\n");
-  const entries = Array.from(css.matchAll(/@font-face\s*\{[^}]*\}/g), ([block]) => {
-    const family = /font-family\s*:\s*([^;}]+)/.exec(block)?.[1].replace(/["']/g, "").trim();
-    const path = /assets\/[^"'`()\s?#]+?\.(?:woff2?|ttf|eot|otf)/.exec(block)?.[0];
-    return [family ?? "", path ?? ""] as const;
-  });
-  return new Map(entries);
-};
 
 interface ManifestChunk {
   file: string;
@@ -54,12 +34,6 @@ interface ManifestChunk {
 const readManifest = (output: OutputItem[]): Record<string, ManifestChunk> => {
   const manifest = output.find((item) => item.fileName.endsWith("manifest.json")) as OutputAsset;
   return JSON.parse(String(manifest.source)) as Record<string, ManifestChunk>;
-};
-
-// A ligature is rendered when the text collapses into one existing glyph
-const rendersLigature = (font: fontkit.Font, text: string): boolean => {
-  const glyphs = font.layout(text).glyphs;
-  return glyphs.length === 1 && glyphs[0].id !== 0;
 };
 
 describe.sequential("Font references in build output", () => {
@@ -108,14 +82,14 @@ describe.sequential("Font references in build output", () => {
     });
     const items = output as OutputItem[];
 
-    const fileByFamily = getFontFileByFamily(items);
+    const fileByFamily = getFontFilesByFamily(items);
     expect(fileByFamily.size).toBe(2);
-    expect(fileByFamily.get("Icons A")).not.toBe(fileByFamily.get("Icons B"));
+    expect(fileByFamily.get("Icons A")).not.toEqual(fileByFamily.get("Icons B"));
     expect(findBrokenFontReferences(items)).toEqual([]);
 
     const fontOf = (family: string) => {
-      const asset = items.find((item) => item.fileName === fileByFamily.get(family));
-      return fontkit.create(Buffer.from((asset as OutputAsset).source)) as fontkit.Font;
+      const asset = items.find((item) => item.fileName === fileByFamily.get(family)?.[0]);
+      return openFont((asset as OutputAsset).source);
     };
     expect(rendersLigature(fontOf("Icons A"), "close")).toBe(true);
     expect(rendersLigature(fontOf("Icons A"), "star")).toBe(false);
@@ -130,15 +104,15 @@ describe.sequential("Font references in build output", () => {
     });
     const items = output as OutputItem[];
 
-    const fileByFamily = getFontFileByFamily(items);
+    const fileByFamily = getFontFilesByFamily(items);
     expect(fileByFamily.size).toBe(2);
     // Auto mode extracts one glyph set for every family: one file serves both
-    expect(fileByFamily.get("Icons A")).toBe(fileByFamily.get("Icons B"));
+    expect(fileByFamily.get("Icons A")).toEqual(fileByFamily.get("Icons B"));
     expect(getFontAssets(items)).toHaveLength(1);
     expect(findBrokenFontReferences(items)).toEqual([]);
 
-    const asset = items.find((item) => item.fileName === fileByFamily.get("Icons B"));
-    const font = fontkit.create(Buffer.from((asset as OutputAsset).source)) as fontkit.Font;
+    const asset = items.find((item) => item.fileName === fileByFamily.get("Icons B")?.[0]);
+    const font = openFont((asset as OutputAsset).source);
     expect(Buffer.from((asset as OutputAsset).source).length).toBeLessThan(fontsLength.woff2);
     expect(rendersLigature(font, "close")).toBe(true);
     expect(rendersLigature(font, "star")).toBe(true);
@@ -151,14 +125,13 @@ describe.sequential("Font references in build output", () => {
     });
     const items = output as OutputItem[];
 
-    const fileByFamily = getFontFileByFamily(items);
-    expect(fileByFamily.get("Icons")).not.toBe(fileByFamily.get("IconsFull"));
+    const fileByFamily = getFontFilesByFamily(items);
+    expect(fileByFamily.get("Icons")).not.toEqual(fileByFamily.get("IconsFull"));
     expect(findBrokenFontReferences(items)).toEqual([]);
 
     const assetOf = (family: string) =>
-      items.find((item) => item.fileName === fileByFamily.get(family)) as OutputAsset;
-    const fontOf = (family: string) =>
-      fontkit.create(Buffer.from(assetOf(family).source)) as fontkit.Font;
+      items.find((item) => item.fileName === fileByFamily.get(family)?.[0]) as OutputAsset;
+    const fontOf = (family: string) => openFont(assetOf(family).source);
     expect(Buffer.from(assetOf("IconsFull").source).length).toBe(fontsLength.woff2);
     expect(rendersLigature(fontOf("IconsFull"), "star")).toBe(true);
     expect(rendersLigature(fontOf("Icons"), "close")).toBe(true);
@@ -181,10 +154,9 @@ describe.sequential("Font references in build output", () => {
     expect(Buffer.from(fontAssets[0].source).length).toBeLessThan(textFontsLength.woff2);
 
     const entry = getEntryChunk(items);
-    expect(entry).toBeDefined();
-    const jsReferences = collectFontReferences([entry!]);
+    const jsReferences = collectFontReferences([entry]);
     expect(jsReferences.map((ref) => ref.path)).toEqual([fontAssets[0].fileName]);
-    expect(entry!.code).not.toContain("?subset=");
+    expect(entry.code).not.toContain("?subset=");
     expect(findBrokenFontReferences(items)).toEqual([]);
   });
 
@@ -199,7 +171,7 @@ describe.sequential("Font references in build output", () => {
     expect(fontAssets).toHaveLength(2);
     expect(contentHash(fontAssets[0])).not.toBe(contentHash(fontAssets[1]));
 
-    const entry = getEntryChunk(items)!;
+    const entry = getEntryChunk(items);
     const jsPaths = collectFontReferences([entry]).map((ref) => ref.path);
     expect(new Set(jsPaths)).toEqual(new Set(fontAssets.map((asset) => asset.fileName)));
     expect(entry.code).not.toContain("?subset=");
@@ -226,9 +198,9 @@ describe.sequential("Font references in build output", () => {
     });
     const items = output as OutputItem[];
 
-    expect(getFontFileByFamily(items).get("Text Font")).toBe("assets/text-font.woff2");
+    expect(getFontFilesByFamily(items).get("Text Font")).toEqual(["assets/text-font.woff2"]);
     // Vite never emits the original of a minified @font-face: the minified font keeps the name
-    expect(getFontFileByFamily(items).get("Font Name")).toBe("assets/font.woff2");
+    expect(getFontFilesByFamily(items).get("Font Name")).toEqual(["assets/font.woff2"]);
     const minified = getFontAssets(items).find((asset) => asset.fileName === "assets/font.woff2");
     expect(Buffer.from(minified!.source).length).toBeLessThan(fontsLength.woff2);
     expect(findBrokenFontReferences(items)).toEqual([]);
@@ -252,7 +224,7 @@ describe.sequential("Font references in build output", () => {
     });
     const items = output as OutputItem[];
 
-    const entry = getEntryChunk(items)!;
+    const entry = getEntryChunk(items);
     expect(entry.code).toContain("assets/x@text-font.woff2");
     expect(entry.code).toContain("assets/my~text-font.woff2");
     expect(findBrokenFontReferences(items)).toEqual([]);
@@ -294,7 +266,7 @@ describe.sequential("Font references in build output", () => {
     const fontAssets = getFontAssets(items);
     expect(fontAssets).toHaveLength(2);
     const css = items.find((item) => item.fileName.endsWith(".css"))!;
-    const entry = getEntryChunk(items)!;
+    const entry = getEntryChunk(items);
     const [cssPath] = collectFontReferences([css], items).map((ref) => ref.path);
     const [jsPath] = collectFontReferences([entry], items).map((ref) => ref.path);
     expect(cssPath).not.toBe(jsPath);
@@ -318,7 +290,7 @@ describe.sequential("Font references in build output", () => {
     }
     const css = items.find((item): item is OutputAsset => item.fileName.endsWith(".css"))!;
     const cssCode = String(css.source);
-    const entry = getEntryChunk(items)!;
+    const entry = getEntryChunk(items);
     expect(cssCode).toMatch(/\.woff2\?v=1\b/);
     expect(entry.code).toMatch(/\.woff2\?v=2\b/);
     expect(cssCode + entry.code).not.toContain("subset=");

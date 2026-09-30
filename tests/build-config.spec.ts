@@ -1,12 +1,15 @@
 import { describe, it, expect } from "vitest";
-import type { OutputAsset, OutputChunk } from "rollup";
+import type { OutputAsset } from "rollup";
 import { readFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
-import * as fontkit from "fontkit";
 import { build as viteBuild } from "vite";
 import type { PluginOption } from "../src";
 import {
-  type FakeLogger,
+  createFakeLogger,
+  getFontAssets,
+  openFont,
+  type OutputItem,
+  rendersLigature,
   fixturesDir,
   fontsLength,
   generateId,
@@ -16,7 +19,6 @@ import {
   plugin,
 } from "./utils";
 
-type OutputItem = OutputAsset | OutputChunk;
 type BuildConfig = NonNullable<InlineConfig["build"]>;
 
 interface PreRenderedAssetInfo {
@@ -32,20 +34,6 @@ const STAR_CODE_POINT = 0xe838;
 
 const ICON_TARGET = { fontName: "Font Name", ligatures: ["close"] };
 const MANUAL_OPTIONS: PluginOption = { type: "manual", targets: [ICON_TARGET] };
-
-const createFakeLogger = (): FakeLogger => {
-  const messages: LoggerMessage[] = [];
-  return new Proxy(
-    {},
-    {
-      get(_, key: string) {
-        if (key === "messages") return messages;
-        if (key === "clearScreen" || key === "hasErrorLogged") return () => false;
-        return (message: string) => messages.push({ type: key as LoggerMessage["type"], message });
-      },
-    },
-  ) as FakeLogger;
-};
 
 interface ConfigBuildOptions {
   fixture: string;
@@ -84,11 +72,6 @@ const textOf = (item: OutputItem): string | null => {
   if (item.type === "chunk") return item.code;
   return typeof item.source === "string" ? item.source : null;
 };
-
-const getFontAssets = (output: OutputItem[]): OutputAsset[] =>
-  output.filter(
-    (item): item is OutputAsset => item.type === "asset" && FONT_EXT_RE.test(item.fileName),
-  );
 
 // Font file names referenced from CSS/HTML/JS, whatever `assetFileNames` produced
 const collectReferencedFontNames = (output: OutputItem[]): Array<{ from: string; name: string }> =>
@@ -139,18 +122,9 @@ const findOrphanFonts = (output: OutputItem[]): string[] => {
 const extensionOf = (fileName: string): keyof typeof fontsLength =>
   fileName.split(".").pop() as keyof typeof fontsLength;
 
-const openFont = (asset: OutputAsset): fontkit.Font =>
-  fontkit.create(Buffer.from(asset.source)) as fontkit.Font;
-
-// A ligature is rendered when the text collapses into one existing glyph
-const rendersLigature = (font: fontkit.Font, text: string): boolean => {
-  const glyphs = font.layout(text).glyphs;
-  return glyphs.length === 1 && glyphs[0].id !== 0;
-};
-
 // fontkit fails on layout() of a missing ligature in WOFF — check code points there
 const expectOnlyCloseGlyph = (asset: OutputAsset): void => {
-  const font = openFont(asset);
+  const font = openFont(asset.source);
   if (asset.fileName.endsWith(".woff")) {
     expect(font.hasGlyphForCodePoint(CLOSE_CODE_POINT)).toBe(true);
     expect(font.hasGlyphForCodePoint(STAR_CODE_POINT)).toBe(false);
@@ -195,7 +169,7 @@ const expectInlinedMinifiedFonts = (output: OutputItem[], format: string): void 
   expect(fonts.length).toBeGreaterThan(0);
   for (const { bytes } of fonts) {
     expect(bytes.length).toBeLessThan(fontsLength[format as keyof typeof fontsLength]);
-    const font = fontkit.create(bytes) as fontkit.Font;
+    const font = openFont(bytes);
     expect(rendersLigature(font, "close")).toBe(true);
     expect(rendersLigature(font, "star")).toBe(false);
   }
