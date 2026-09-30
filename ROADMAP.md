@@ -52,6 +52,8 @@ Development roadmap for `vite-font-extractor-plugin` — v4.0.
 - ~~Disk cache in `config.cacheDir`, fontext version in the key, pruning per build config and dev server~~
 - ~~Exact sourcemaps after a `?subset=` url~~
 - ~~Tests: goal, auto graph, CSS modules, emoji / non-BMP in auto mode, shared helpers; `transformHook` split~~
+- ~~fontext security update: fontext 2 ships svg2ttf 6.1 with `@xmldom/xmldom` 0.9 (`npm audit` clean)~~
+- ~~Toolchain: vitest 5, TypeScript 6, tsup → tsdown, changesets 3, lint-staged 17; playground on Vite 8~~
 
 ## Completed (v3.1)
 
