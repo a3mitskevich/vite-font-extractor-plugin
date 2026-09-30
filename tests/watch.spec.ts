@@ -71,7 +71,10 @@ function createProject(): { root: string; out: string; workDir: string } {
 }
 
 function takeSnapshot(out: string, messages: LoggerMessage[]): Snapshot {
-  const files = readdirSync(out, { recursive: true }).map(String);
+  // Windows lists `assets\icon.woff2`; the CSS references `assets/icon.woff2`
+  const files = readdirSync(out, { recursive: true }).map((file) =>
+    String(file).replaceAll("\\", "/"),
+  );
   const css = files
     .filter((file) => file.endsWith(".css"))
     .map((file) => readFileSync(join(out, file), "utf8"))
