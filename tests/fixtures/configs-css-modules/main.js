@@ -1,3 +1,3 @@
-import styles from './icons.module.css'
+import styles from "./icons.module.css";
 
-document.body.className = styles.icon
+document.body.className = styles.icon;

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { OutputAsset } from "rollup";
-import { buildFixture, type BuildOptions, type CssMinify, fixtures } from "./utils";
+import { join } from "node:path";
+import { buildFixture, type BuildOptions, type CssMinify, fixtures, fixturesDir } from "./utils";
 
 describe("Google", () => {
   describe(`Google font test`, () => {
@@ -104,5 +105,46 @@ describe("Google", () => {
         });
       });
     });
+  });
+});
+
+const googleSources = (output: unknown[]): string[] =>
+  (output as OutputAsset[])
+    .filter(
+      (asset) =>
+        asset.type === "asset" &&
+        typeof asset.source === "string" &&
+        asset.source.includes("fonts.googleapis.com"),
+    )
+    .map((asset) => String(asset.source));
+
+describe("Google Fonts text=", () => {
+  it("should add the characters of a subset target", async () => {
+    const { output } = await buildFixture({
+      fixture: fixtures["google-font"].path,
+      pluginOptions: {
+        type: "manual",
+        targets: ["Index", "Css font"].map((fontName) => ({
+          fontName,
+          engine: "subset" as const,
+          characters: "ABC",
+        })),
+      },
+    });
+
+    const sources = googleSources(output);
+    expect(sources).toHaveLength(2);
+    sources.forEach((content) => expect(content).toContain("&text=ABC"));
+  });
+
+  it("should add the glyphs found in auto mode", async () => {
+    const { output } = await buildFixture({
+      fixture: join(fixturesDir, "google-font-auto"),
+      pluginOptions: { type: "auto" },
+    });
+
+    const sources = googleSources(output);
+    expect(sources).toHaveLength(2);
+    sources.forEach((content) => expect(content).toContain("&text=home"));
   });
 });

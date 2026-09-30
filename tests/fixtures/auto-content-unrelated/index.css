@@ -1,26 +1,27 @@
 @font-face {
-    font-family: "Icons";
-    src: url("../fonts/icon-font.woff2") format("woff2"),
-         url("../fonts/icon-font.woff") format("woff");
+  font-family: "Icons";
+  src:
+    url("../fonts/icon-font.woff2") format("woff2"),
+    url("../fonts/icon-font.woff") format("woff");
 }
 
 .icon {
-    font-family: "Icons";
+  font-family: "Icons";
 }
 
 .icon.close::before {
-    content: "\e5cd";
+  content: "\e5cd";
 }
 
 /* Ordinary app styles next to the icon usage */
 .crumb + .crumb::before {
-    content: "/";
+  content: "/";
 }
 
 .required::after {
-    content: "*";
+  content: "*";
 }
 
 .note::before {
-    content: "Note: ";
+  content: "Note: ";
 }

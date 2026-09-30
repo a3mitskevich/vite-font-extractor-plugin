@@ -78,6 +78,7 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.1",
+    "@jridgewell/trace-mapping": "^0.3.31",
     "@tsconfig/node22": "^22.0.6",
     "@types/fontkit": "^2.0.9",
     "@types/node": "^25.9.8",

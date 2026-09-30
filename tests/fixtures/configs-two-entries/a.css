@@ -1,9 +1,10 @@
 @font-face {
-    font-family: 'Icons';
-    src: url("../fonts/icon-font.woff2") format("woff2"),
-         url("../fonts/icon-font.woff") format("woff");
+  font-family: "Icons";
+  src:
+    url("../fonts/icon-font.woff2") format("woff2"),
+    url("../fonts/icon-font.woff") format("woff");
 }
 
 .a {
-    font-family: 'Icons';
+  font-family: "Icons";
 }

@@ -1,0 +1,11 @@
+/* Linked from HTML */
+.home::before {
+  content: "home";
+}
+/* Emoji and non-BMP code points the icon font does not have */
+.smile::before {
+  content: "\1F600";
+}
+.note::before {
+  content: "🎵";
+}

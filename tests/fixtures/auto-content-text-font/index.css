@@ -1,18 +1,19 @@
 @font-face {
-    font-family: "Icons";
-    src: url("../fonts/icon-font.woff2") format("woff2"),
-         url("../fonts/icon-font.woff") format("woff");
+  font-family: "Icons";
+  src:
+    url("../fonts/icon-font.woff2") format("woff2"),
+    url("../fonts/icon-font.woff") format("woff");
 }
 
 .icon {
-    font-family: "Icons";
+  font-family: "Icons";
 }
 
 @font-face {
-    font-family: "Text";
-    src: url("../fonts/text-font.woff2") format("woff2");
+  font-family: "Text";
+  src: url("../fonts/text-font.woff2") format("woff2");
 }
 
 .icon.close::before {
-    content: "\e5cd";
+  content: "\e5cd";
 }

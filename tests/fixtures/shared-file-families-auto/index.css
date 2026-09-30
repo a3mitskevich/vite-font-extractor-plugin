@@ -1,19 +1,19 @@
 @font-face {
-    font-family: 'Icons A';
-    src: url("../fonts/icon-font.woff2") format("woff2");
+  font-family: "Icons A";
+  src: url("../fonts/icon-font.woff2") format("woff2");
 }
 
 @font-face {
-    font-family: 'Icons B';
-    src: url("../fonts/icon-font.woff2") format("woff2");
+  font-family: "Icons B";
+  src: url("../fonts/icon-font.woff2") format("woff2");
 }
 
 .a::before {
-    font-family: 'Icons A';
-    content: "close";
+  font-family: "Icons A";
+  content: "close";
 }
 
 .b::before {
-    font-family: 'Icons B';
-    content: "star";
+  font-family: "Icons B";
+  content: "star";
 }

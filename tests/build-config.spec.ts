@@ -264,6 +264,45 @@ describe.sequential("Build configuration", () => {
     },
   );
 
+  it("should keep the original name of a minified @font-face with assetFileNames without [hash]", async () => {
+    const { output, messages } = await buildWithConfig({
+      fixture: "plain",
+      build: { rollupOptions: { output: { assetFileNames: "assets/[name][extname]" } } },
+    });
+
+    expect(
+      getFontAssets(output)
+        .map((asset) => asset.fileName)
+        .sort(),
+    ).toEqual([
+      "assets/icon-font.eot",
+      "assets/icon-font.ttf",
+      "assets/icon-font.woff",
+      "assets/icon-font.woff2",
+    ]);
+    expect(findBrokenReferences(output)).toEqual([]);
+    expect(findOrphanFonts(output)).toEqual([]);
+    for (const asset of getFontAssets(output)) {
+      expect(Buffer.from(asset.source).length).toBeLessThan(
+        fontsLength[extensionOf(asset.fileName)],
+      );
+    }
+    expect(problems(messages)).toEqual([]);
+  });
+
+  // Known limitation: Vite emits the original of a face from a Sass mixin before the plugin
+  // sees the compiled CSS, so the minified font gets the next free name
+  it("should number the minified font of a Sass mixin face with assetFileNames without [hash]", async () => {
+    const { output, messages } = await buildWithConfig({
+      fixture: "mixins",
+      build: { rollupOptions: { output: { assetFileNames: "assets/[name][extname]" } } },
+    });
+
+    const fonts = getFontAssets(output);
+    expect(fonts.map((asset) => asset.fileName)).toEqual(["assets/icon-font2.woff"]);
+    expectHealthyFontOutput(output, messages);
+  });
+
   it("should inline the minified font where Vite inlines the original (assetsInlineLimit)", async () => {
     const { output, messages } = await buildWithConfig({
       fixture: "inline-font",

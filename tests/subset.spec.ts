@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { join } from "node:path";
+import { originalPositionFor, TraceMap } from "@jridgewell/trace-mapping";
 import type { OutputAsset, OutputChunk } from "rollup";
 import type { PluginOption } from "../src";
 import {
@@ -7,6 +9,7 @@ import {
   findBrokenFontReferences,
   findOrphanFontAssets,
   fixtures,
+  fixturesDir,
   getFontAssets,
   getFontFilesByFamily,
   getOutputAsset,
@@ -222,6 +225,51 @@ describe.sequential("Font subsetting", () => {
       expectMinified(fontAssets[0]);
       expectGlyphs(fontAssets[0], { present: "ABC", absent: `abc${DIGITS}` });
       expectCleanOutput(output);
+    });
+  });
+
+  describe("new URL() with ?subset=", () => {
+    it("should point new URL at the minified font", async () => {
+      const output = await build(join(fixturesDir, "subset-new-url"), {
+        type: "manual",
+        targets: [],
+      });
+
+      const fontAssets = getFontAssets(output);
+      expect(fontAssets).toHaveLength(1);
+      const entry = getEntryChunk(output);
+      expect(collectFontReferences([entry]).map((ref) => ref.path)).toEqual([
+        fontAssets[0].fileName,
+      ]);
+      expect(entry.code).toMatch(/new URL\(/);
+      expectMinified(fontAssets[0]);
+      expectGlyphs(fontAssets[0], { present: "ABC", absent: `abc${DIGITS}` });
+      expectCleanOutput(output);
+    });
+  });
+
+  describe("sourcemap of a chunk with a ?subset= import", () => {
+    it("should map code after the font url to its source position", async () => {
+      const { output } = await buildFixture({
+        fixture: join(fixturesDir, "subset-sourcemap"),
+        pluginOptions: { type: "manual", targets: [] },
+        config: { build: { sourcemap: true } },
+      });
+      const items = output as OutputItem[];
+      const entry = getEntryChunk(items);
+      const map = items.find((item) => item.fileName === `${entry.fileName}.map`) as OutputAsset;
+
+      // The minified chunk has the font url and the next call on one line
+      const lines = entry.code.split("\n");
+      const line = lines.findIndex((text) => text.includes("after the url"));
+      const column = lines[line].lastIndexOf("console.log");
+      expect(column).toBeGreaterThan(lines[line].indexOf(".woff2"));
+      const position = originalPositionFor(new TraceMap(String(map.source)), {
+        line: line + 1,
+        column,
+      });
+      expect(position.source).toMatch(/subset-sourcemap\/index\.js$/);
+      expect({ line: position.line, column: position.column }).toEqual({ line: 3, column: 0 });
     });
   });
 });
