@@ -1,32 +1,11 @@
 import {
-  build as buildV5,
-  type InlineConfig as InlineConfigV5,
-  version as versionV5,
-  type Plugin as PluginV5,
-  type Logger as LoggerV5,
-} from "vite-5";
-import {
-  build as buildV6,
-  type InlineConfig as InlineConfigV6,
-  version as versionV6,
-  type Plugin as PluginV6,
-  type Logger as LoggerV6,
-} from "vite-6";
-import {
-  build as buildV7,
-  type InlineConfig as InlineConfigV7,
-  version as versionV7,
-  type Plugin as PluginV7,
-  type Logger as LoggerV7,
-} from "vite-7";
-import {
-  build as buildV8,
-  type InlineConfig as InlineConfigV8,
-  version as versionV8,
-  type Plugin as PluginV8,
-  type Logger as LoggerV8,
-} from "vite-8";
-import { mergeConfig, type ResolvedConfig } from "vite";
+  build,
+  type InlineConfig,
+  type Logger,
+  mergeConfig,
+  type Plugin,
+  type ResolvedConfig,
+} from "vite";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync, rmSync } from "node:fs";
@@ -34,14 +13,7 @@ import * as fontkit from "fontkit";
 import type { FontExtractorPlugin, Target, PluginOption } from "../src";
 import type { OutputAsset, RollupOutput } from "rollup";
 
-export type InlineConfig = InlineConfigV5 & InlineConfigV6 & InlineConfigV7 & InlineConfigV8;
-export type Plugin = PluginV5 & PluginV6 & PluginV7 & PluginV8;
-export type ContainerVersion =
-  | typeof versionV5
-  | typeof versionV6
-  | typeof versionV7
-  | typeof versionV8;
-export type Logger = LoggerV5 & LoggerV6 & LoggerV7 & LoggerV8;
+export type { InlineConfig, Logger, Plugin };
 export interface LoggerMessage {
   type: "error" | "warn" | "info";
   message: string;
@@ -202,7 +174,6 @@ export const importTargets = {
   dist: createCachedImport(async () => import("../dist")),
 };
 
-// Returns Plugin compatible with all Vite versions — cross-version types are incompatible in strict mode
 export const plugin = async (...args: Parameters<FontExtractorPlugin>): Promise<Plugin> => {
   const testTarget = process.env.TEST_TARGET as keyof typeof importTargets;
   const { default: index } = await importTargets[testTarget ?? "local"]();
@@ -210,13 +181,6 @@ export const plugin = async (...args: Parameters<FontExtractorPlugin>): Promise<
 };
 
 export const generateId = (): string => Math.random().toString(32).slice(2, 10);
-
-export const viteBuild = {
-  [versionV5]: buildV5,
-  [versionV6]: buildV6,
-  [versionV7]: buildV7,
-  [versionV8]: buildV8,
-};
 
 const createLogger = (): FakeLogger => {
   const messages: LoggerMessage[] = [];
@@ -238,13 +202,12 @@ const createLogger = (): FakeLogger => {
   ) as FakeLogger;
 };
 
-export const buildByVersion = async (
-  version: ContainerVersion,
+export const buildFixture = async (
   options: BuildOptions = {
     fixture: fixtures.plain.path,
   },
 ) => {
-  const id = generateId() + `-V${version}`;
+  const id = generateId();
   const out = join(outDir, id);
 
   const targets =
@@ -295,7 +258,7 @@ export const buildByVersion = async (
     },
   };
   const config = options.config ? mergeConfig(inlineConfig, options.config) : inlineConfig;
-  const result = (await viteBuild[version](config)) as RollupOutput | RollupOutput[];
+  const result = (await build(config)) as unknown as RollupOutput | RollupOutput[];
   // Several `output` options produce one bundle each
   const bundles = Array.isArray(result) ? result : [result];
 

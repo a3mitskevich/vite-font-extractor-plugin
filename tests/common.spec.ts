@@ -2,8 +2,7 @@ import { describe, it, expect } from "vitest";
 import { extname } from "node:path";
 import type { OutputAsset } from "rollup";
 import {
-  buildByVersion,
-  type ContainerVersion,
+  buildFixture,
   type CssMinify,
   findBrokenFontReferences,
   findOrphanFontAssets,
@@ -14,20 +13,19 @@ import {
   openFont,
   type OutputItem,
   rendersLigature,
-  viteBuild,
 } from "./utils";
 
 describe("Common", () => {
-  const runCommonTest = (version: ContainerVersion, fixturesNames: FixturesNames) => {
-    describe(`Common test for vite@${version}`, () => {
+  const runCommonTest = (fixturesNames: FixturesNames) => {
+    describe(`Common test`, () => {
       fixturesNames.forEach((fixtureName) => {
         const fixture = fixtures[fixtureName];
         Array.from(["lightningcss", "esbuild"] as CssMinify[]).forEach((cssMinify) => {
           describe(`Build test for "${fixtureName}" fixture with "${cssMinify}" css minificator`, () => {
             // Both tests inspect the same build
-            let result: ReturnType<typeof buildByVersion> | undefined;
+            let result: ReturnType<typeof buildFixture> | undefined;
             const build = () =>
-              (result ??= buildByVersion(version, {
+              (result ??= buildFixture({
                 cssMinify,
                 fixture: fixture.path,
                 targets: fixture.fonts.map((font) => font.name),
@@ -84,11 +82,5 @@ describe("Common", () => {
     });
   };
 
-  const runAllTests = () => {
-    Object.keys(viteBuild).forEach((version) => {
-      runCommonTest(version, ["plain", "plain-html", "mixins", "import-css", "import-js"]);
-    });
-  };
-
-  runAllTests();
+  runCommonTest(["plain", "plain-html", "mixins", "import-css", "import-js"]);
 });

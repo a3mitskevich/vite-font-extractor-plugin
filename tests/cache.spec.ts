@@ -3,15 +3,7 @@ import type { OutputAsset } from "rollup";
 import { copyFileSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PluginOption, Target } from "../src";
-import {
-  buildByVersion,
-  type ContainerVersion,
-  fixturesDir,
-  fontsLength,
-  generateId,
-  outDir,
-  viteBuild,
-} from "./utils";
+import { buildFixture, fixturesDir, fontsLength, generateId, outDir } from "./utils";
 
 const CACHE_DIR_NAME = ".font-extractor-cache";
 
@@ -53,64 +45,56 @@ describe.sequential("Disk cache", () => {
     projects.splice(0).forEach((project) => rmSync(project.root, { recursive: true, force: true }));
   });
 
-  const runCacheTests = (version: ContainerVersion) => {
-    describe(`vite@${version}`, () => {
-      const build = (project: TempProject, target: Target) => {
-        const pluginOptions: PluginOption = {
-          type: "manual",
-          targets: [target],
-          cache: project.cacheDir,
-        };
-        return buildByVersion(version, { fixture: project.root, pluginOptions });
-      };
-
-      it("should not reuse a cached result after the source font changes", async () => {
-        const project = createTempProject();
-        projects.push(project);
-        const target: Target = { fontName: "Font Name", engine: "subset", characters: "abc" };
-
-        project.useFont("text-font.woff2");
-        const first = getWoff2((await build(project, target)).output);
-        project.useFont("icon-font.woff2");
-        const second = getWoff2((await build(project, target)).output);
-
-        expect(Buffer.from(second.source).equals(Buffer.from(first.source))).toBe(false);
-      });
-
-      it("should drop cache entries that are no longer used", async () => {
-        const project = createTempProject();
-        projects.push(project);
-        project.useFont("icon-font.woff2");
-
-        await build(project, { fontName: "Font Name", ligatures: ["close"] });
-        await build(project, { fontName: "Font Name", ligatures: ["play_arrow"] });
-
-        const entries = readdirSync(join(project.cacheDir, CACHE_DIR_NAME));
-        expect(entries).toHaveLength(1);
-      });
-
-      it("should cache a font whose family name contains path characters", async () => {
-        const family = "Icons/../Regular";
-        const project = createTempProject(family);
-        projects.push(project);
-        project.useFont("icon-font.woff2");
-
-        const { output, messages } = await build(project, {
-          fontName: family,
-          ligatures: ["close"],
-        });
-
-        expect(messages.filter((m) => m.type === "error")).toEqual([]);
-        expect(Buffer.from(getWoff2(output).source).length).toBeLessThan(fontsLength.woff2);
-        const entries = readdirSync(join(project.cacheDir, CACHE_DIR_NAME), {
-          withFileTypes: true,
-        });
-        expect(entries.map((entry) => entry.isFile())).toEqual([true]);
-      });
-    });
+  const build = (project: TempProject, target: Target) => {
+    const pluginOptions: PluginOption = {
+      type: "manual",
+      targets: [target],
+      cache: project.cacheDir,
+    };
+    return buildFixture({ fixture: project.root, pluginOptions });
   };
 
-  Object.keys(viteBuild).forEach((version) => {
-    runCacheTests(version);
+  it("should not reuse a cached result after the source font changes", async () => {
+    const project = createTempProject();
+    projects.push(project);
+    const target: Target = { fontName: "Font Name", engine: "subset", characters: "abc" };
+
+    project.useFont("text-font.woff2");
+    const first = getWoff2((await build(project, target)).output);
+    project.useFont("icon-font.woff2");
+    const second = getWoff2((await build(project, target)).output);
+
+    expect(Buffer.from(second.source).equals(Buffer.from(first.source))).toBe(false);
+  });
+
+  it("should drop cache entries that are no longer used", async () => {
+    const project = createTempProject();
+    projects.push(project);
+    project.useFont("icon-font.woff2");
+
+    await build(project, { fontName: "Font Name", ligatures: ["close"] });
+    await build(project, { fontName: "Font Name", ligatures: ["play_arrow"] });
+
+    const entries = readdirSync(join(project.cacheDir, CACHE_DIR_NAME));
+    expect(entries).toHaveLength(1);
+  });
+
+  it("should cache a font whose family name contains path characters", async () => {
+    const family = "Icons/../Regular";
+    const project = createTempProject(family);
+    projects.push(project);
+    project.useFont("icon-font.woff2");
+
+    const { output, messages } = await build(project, {
+      fontName: family,
+      ligatures: ["close"],
+    });
+
+    expect(messages.filter((m) => m.type === "error")).toEqual([]);
+    expect(Buffer.from(getWoff2(output).source).length).toBeLessThan(fontsLength.woff2);
+    const entries = readdirSync(join(project.cacheDir, CACHE_DIR_NAME), {
+      withFileTypes: true,
+    });
+    expect(entries.map((entry) => entry.isFile())).toEqual([true]);
   });
 });

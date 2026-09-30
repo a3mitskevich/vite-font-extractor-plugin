@@ -3,9 +3,9 @@ import type { OutputAsset, OutputChunk } from "rollup";
 import { rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import * as fontkit from "fontkit";
+import { build as viteBuild } from "vite";
 import type { PluginOption } from "../src";
 import {
-  type ContainerVersion,
   type FakeLogger,
   fixturesDir,
   fontsLength,
@@ -14,7 +14,6 @@ import {
   type LoggerMessage,
   outDir,
   plugin,
-  viteBuild,
 } from "./utils";
 
 type OutputItem = OutputAsset | OutputChunk;
@@ -54,10 +53,11 @@ interface ConfigBuildOptions {
   build?: BuildConfig;
 }
 
-const buildWithConfig = async (
-  version: ContainerVersion,
-  { fixture, pluginOptions = MANUAL_OPTIONS, build = {} }: ConfigBuildOptions,
-): Promise<{ output: OutputItem[]; messages: LoggerMessage[] }> => {
+const buildWithConfig = async ({
+  fixture,
+  pluginOptions = MANUAL_OPTIONS,
+  build = {},
+}: ConfigBuildOptions): Promise<{ output: OutputItem[]; messages: LoggerMessage[] }> => {
   const customLogger = createFakeLogger();
   const config: InlineConfig = {
     root: join(fixturesDir, fixture),
@@ -66,15 +66,18 @@ const buildWithConfig = async (
     customLogger,
     plugins: [await plugin(pluginOptions)],
     build: {
-      outDir: join(outDir, `${generateId()}-V${version}`),
+      outDir: join(outDir, generateId()),
       write: false,
       emptyOutDir: false,
       ...build,
     },
   };
-  const result = await viteBuild[version](config);
+  const result = await viteBuild(config);
   const [first] = Array.isArray(result) ? result : [result];
-  return { output: (first as { output: OutputItem[] }).output, messages: customLogger.messages };
+  return {
+    output: (first as unknown as { output: OutputItem[] }).output,
+    messages: customLogger.messages,
+  };
 };
 
 const textOf = (item: OutputItem): string | null => {
@@ -190,141 +193,133 @@ const ASSET_FILE_NAME_CASES = [
 ];
 
 describe.sequential("Build configuration", () => {
-  const runBuildConfigTests = (version: ContainerVersion) => {
-    describe(`vite@${version}`, () => {
-      it("should rewrite the single CSS file of build.cssCodeSplit: false", async () => {
-        const { output, messages } = await buildWithConfig(version, {
-          fixture: "css-code-split",
-          build: { cssCodeSplit: false, manifest: true },
-        });
-
-        const css = output.filter((item) => item.fileName.endsWith(".css"));
-        expect(css).toHaveLength(1);
-        expect(getFontAssets(output)).toHaveLength(3);
-        expect(collectManifestFiles(output).length).toBeGreaterThan(0);
-        expectHealthyFontOutput(output, messages);
-      });
-
-      it("should rewrite a font preloaded from HTML", async () => {
-        const { output, messages } = await buildWithConfig(version, { fixture: "preload-html" });
-
-        const html = output.find((item) => item.fileName === "index.html");
-        const preloaded = collectReferencedFontNames([html!]);
-        expect(preloaded).toHaveLength(1);
-        expect(preloaded[0].name).toMatch(/\.woff2$/);
-        expectHealthyFontOutput(output, messages);
-      });
-
-      describe.each(ASSET_FILE_NAME_CASES)(
-        "build.rollupOptions.output.assetFileNames: $title",
-        ({ pattern, expected }) => {
-          it("should name minified fonts by the pattern", async () => {
-            const { output, messages } = await buildWithConfig(version, {
-              fixture: "asset-names",
-              build: { rollupOptions: { output: { assetFileNames: pattern } } },
-            });
-
-            const fonts = getFontAssets(output);
-            expect(fonts).toHaveLength(3);
-            for (const asset of fonts) {
-              expect(asset.fileName).toMatch(expected);
-            }
-            expect(collectReferencedFontNames(output).some((ref) => ref.from.endsWith(".js"))).toBe(
-              true,
-            );
-            expectHealthyFontOutput(output, messages);
-          });
-        },
-      );
-
-      it("should warn that a font inlined by build.assetsInlineLimit is not minified", async () => {
-        const { output, messages } = await buildWithConfig(version, {
-          fixture: "inline-font",
-          build: { assetsInlineLimit: 100_000_000 },
-        });
-
-        expect(getFontAssets(output)).toEqual([]);
-        const warnings = problems(messages);
-        expect(warnings).toHaveLength(1);
-        expect(warnings[0].type).toBe("warn");
-        expect(warnings[0].message).toContain('"Font Name"');
-        expect(warnings[0].message).toMatch(/inlined/);
-        expect(warnings[0].message).not.toMatch(/Asset not found/);
-      });
-
-      it("should warn that a font inlined by library mode is not minified", async () => {
-        const root = join(fixturesDir, "inline-font");
-        const { messages } = await buildWithConfig(version, {
-          fixture: "inline-font",
-          build: { lib: { entry: join(root, "lib.js"), formats: ["es"], fileName: "lib" } },
-        });
-
-        const warnings = problems(messages);
-        expect(warnings).toHaveLength(1);
-        expect(warnings[0].message).toContain('"Font Name"');
-        expect(warnings[0].message).toMatch(/inlined/);
-      });
-
-      it("should warn that an inlined ?subset= face is not minified", async () => {
-        const { messages } = await buildWithConfig(version, {
-          fixture: "subset-chars",
-          pluginOptions: { type: "manual", targets: [] },
-          build: { assetsInlineLimit: 100_000_000 },
-        });
-
-        const warnings = problems(messages);
-        expect(warnings).toHaveLength(1);
-        expect(warnings[0].message).toMatch(/inlined/);
-        expect(warnings[0].message).not.toMatch(/no minify options/);
-      });
-
-      it("should warn that an inlined ?subset= import is not minified", async () => {
-        const { messages } = await buildWithConfig(version, {
-          fixture: "subset-js",
-          pluginOptions: { type: "manual", targets: [] },
-          build: { assetsInlineLimit: 100_000_000 },
-        });
-
-        const warnings = problems(messages);
-        expect(warnings).toHaveLength(1);
-        expect(warnings[0].message).toContain("text-font.woff2");
-        expect(warnings[0].message).toMatch(/inlined/);
-      });
-
-      it("should log the reason when a font fails to minify", async () => {
-        const { output, messages } = await buildWithConfig(version, {
-          fixture: "plain",
-          pluginOptions: {
-            type: "manual",
-            targets: [{ fontName: "Font Name", characters: "abc" }],
-          },
-        });
-
-        const errors = messages.filter((message) => message.type === "error");
-        expect(errors).toHaveLength(1);
-        expect(errors[0].message).toMatch(/Failed to minify "Font Name" — keeping original: \S+/);
-        expect(findBrokenReferences(output)).toEqual([]);
-      });
-
-      it("should count fonts restored from cache in the summary", async () => {
-        const cacheDir = join(outDir, `cache-${generateId()}`);
-        const pluginOptions: PluginOption = { ...MANUAL_OPTIONS, cache: cacheDir };
-        const summaryOf = (messages: LoggerMessage[]): string | undefined =>
-          messages.find((message) => message.message.includes("Done"))?.message;
-        try {
-          const first = await buildWithConfig(version, { fixture: "plain", pluginOptions });
-          const second = await buildWithConfig(version, { fixture: "plain", pluginOptions });
-
-          expect(summaryOf(first.messages)).not.toContain("cached");
-          expect(summaryOf(second.messages)).toContain("1 cached");
-        } finally {
-          rmSync(cacheDir, { recursive: true, force: true });
-        }
-      });
+  it("should rewrite the single CSS file of build.cssCodeSplit: false", async () => {
+    const { output, messages } = await buildWithConfig({
+      fixture: "css-code-split",
+      build: { cssCodeSplit: false, manifest: true },
     });
-  };
 
-  Object.keys(viteBuild).forEach((version) => {
-    runBuildConfigTests(version);
+    const css = output.filter((item) => item.fileName.endsWith(".css"));
+    expect(css).toHaveLength(1);
+    expect(getFontAssets(output)).toHaveLength(3);
+    expect(collectManifestFiles(output).length).toBeGreaterThan(0);
+    expectHealthyFontOutput(output, messages);
+  });
+
+  it("should rewrite a font preloaded from HTML", async () => {
+    const { output, messages } = await buildWithConfig({ fixture: "preload-html" });
+
+    const html = output.find((item) => item.fileName === "index.html");
+    const preloaded = collectReferencedFontNames([html!]);
+    expect(preloaded).toHaveLength(1);
+    expect(preloaded[0].name).toMatch(/\.woff2$/);
+    expectHealthyFontOutput(output, messages);
+  });
+
+  describe.each(ASSET_FILE_NAME_CASES)(
+    "build.rollupOptions.output.assetFileNames: $title",
+    ({ pattern, expected }) => {
+      it("should name minified fonts by the pattern", async () => {
+        const { output, messages } = await buildWithConfig({
+          fixture: "asset-names",
+          build: { rollupOptions: { output: { assetFileNames: pattern } } },
+        });
+
+        const fonts = getFontAssets(output);
+        expect(fonts).toHaveLength(3);
+        for (const asset of fonts) {
+          expect(asset.fileName).toMatch(expected);
+        }
+        expect(collectReferencedFontNames(output).some((ref) => ref.from.endsWith(".js"))).toBe(
+          true,
+        );
+        expectHealthyFontOutput(output, messages);
+      });
+    },
+  );
+
+  it("should warn that a font inlined by build.assetsInlineLimit is not minified", async () => {
+    const { output, messages } = await buildWithConfig({
+      fixture: "inline-font",
+      build: { assetsInlineLimit: 100_000_000 },
+    });
+
+    expect(getFontAssets(output)).toEqual([]);
+    const warnings = problems(messages);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe("warn");
+    expect(warnings[0].message).toContain('"Font Name"');
+    expect(warnings[0].message).toMatch(/inlined/);
+    expect(warnings[0].message).not.toMatch(/Asset not found/);
+  });
+
+  it("should warn that a font inlined by library mode is not minified", async () => {
+    const root = join(fixturesDir, "inline-font");
+    const { messages } = await buildWithConfig({
+      fixture: "inline-font",
+      build: { lib: { entry: join(root, "lib.js"), formats: ["es"], fileName: "lib" } },
+    });
+
+    const warnings = problems(messages);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('"Font Name"');
+    expect(warnings[0].message).toMatch(/inlined/);
+  });
+
+  it("should warn that an inlined ?subset= face is not minified", async () => {
+    const { messages } = await buildWithConfig({
+      fixture: "subset-chars",
+      pluginOptions: { type: "manual", targets: [] },
+      build: { assetsInlineLimit: 100_000_000 },
+    });
+
+    const warnings = problems(messages);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toMatch(/inlined/);
+    expect(warnings[0].message).not.toMatch(/no minify options/);
+  });
+
+  it("should warn that an inlined ?subset= import is not minified", async () => {
+    const { messages } = await buildWithConfig({
+      fixture: "subset-js",
+      pluginOptions: { type: "manual", targets: [] },
+      build: { assetsInlineLimit: 100_000_000 },
+    });
+
+    const warnings = problems(messages);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain("text-font.woff2");
+    expect(warnings[0].message).toMatch(/inlined/);
+  });
+
+  it("should log the reason when a font fails to minify", async () => {
+    const { output, messages } = await buildWithConfig({
+      fixture: "plain",
+      pluginOptions: {
+        type: "manual",
+        targets: [{ fontName: "Font Name", characters: "abc" }],
+      },
+    });
+
+    const errors = messages.filter((message) => message.type === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toMatch(/Failed to minify "Font Name" — keeping original: \S+/);
+    expect(findBrokenReferences(output)).toEqual([]);
+  });
+
+  it("should count fonts restored from cache in the summary", async () => {
+    const cacheDir = join(outDir, `cache-${generateId()}`);
+    const pluginOptions: PluginOption = { ...MANUAL_OPTIONS, cache: cacheDir };
+    const summaryOf = (messages: LoggerMessage[]): string | undefined =>
+      messages.find((message) => message.message.includes("Done"))?.message;
+    try {
+      const first = await buildWithConfig({ fixture: "plain", pluginOptions });
+      const second = await buildWithConfig({ fixture: "plain", pluginOptions });
+
+      expect(summaryOf(first.messages)).not.toContain("cached");
+      expect(summaryOf(second.messages)).toContain("1 cached");
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
   });
 });

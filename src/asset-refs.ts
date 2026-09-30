@@ -8,13 +8,12 @@ export interface AssetReference {
 }
 
 // Placeholders Vite leaves in transformed code for emitted assets:
-//   __VITE_ASSET__<ref>__$_?subset=ABC__                 Vite 5–7 (CSS and JS)
-//   __VITE_ASSET__<ref>__?subset=ABC                     Vite 8 (CSS)
-//   import.meta.ROLLDOWN_FILE_URL_<ref> + "?subset=ABC"  Vite 8 (JS asset import)
+//   __VITE_ASSET__<ref>__?subset=ABC                     CSS
+//   import.meta.ROLLDOWN_FILE_URL_<ref> + "?subset=ABC"  JS asset import
 // Vite decodes the url, so the query may contain spaces (`?subset=A%20B` → `?subset=A B`),
 // but not line breaks: placeholders may come one per line
 const ASSET_PLACEHOLDER_RE =
-  /__VITE_ASSET__([\w$-]+)__(?:\$_([^"'`)\r\n]*?)__|(\?[^"'`)\r\n]*))?|import\.meta\.ROLLDOWN_FILE_URL_([\w$-]+)(?:\s*\+\s*(["'`])(\?[^"'`]*)\5)?/g;
+  /__VITE_ASSET__([\w$-]+)__(\?[^"'`)\r\n]*)?|import\.meta\.ROLLDOWN_FILE_URL_([\w$-]+)(?:\s*\+\s*(["'`])(\?[^"'`]*)\4)?/g;
 
 const parseSubset = (query: string | undefined): SubsetOptions | undefined => {
   const value = query ? SUBSET_PARAM_RE.exec(query)?.[1] : undefined;
@@ -23,8 +22,8 @@ const parseSubset = (query: string | undefined): SubsetOptions | undefined => {
 
 export function extractAssetReferences(code: string): AssetReference[] {
   return Array.from(code.matchAll(ASSET_PLACEHOLDER_RE), (match) => ({
-    referenceId: match[1] ?? match[4],
-    subset: parseSubset(match[2] ?? match[3] ?? match[6]),
+    referenceId: match[1] ?? match[3],
+    subset: parseSubset(match[2] ?? match[5]),
   }));
 }
 

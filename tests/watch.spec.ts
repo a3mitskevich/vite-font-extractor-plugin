@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { cpSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as fontkit from "fontkit";
+import { build, type Logger } from "vite";
 import {
-  type ContainerVersion,
   createFixture,
   fixturesDir,
   fontsLength,
@@ -11,7 +11,6 @@ import {
   type LoggerMessage,
   outDir,
   plugin,
-  viteBuild,
 } from "./utils";
 import type { PluginOption } from "../src";
 
@@ -119,18 +118,12 @@ const ICON_TARGET_OPTIONS: PluginOption = {
   targets: [{ fontName: "Font Name", ligatures: ["close"] }],
 };
 
-async function startWatcher(
-  version: ContainerVersion,
-  root: string,
-  out: string,
-  logger: unknown,
-): Promise<Watcher> {
-  const build = viteBuild[version] as (config: object) => Promise<unknown>;
+async function startWatcher(root: string, out: string, logger: unknown): Promise<Watcher> {
   return (await build({
     root,
     configFile: false,
     logLevel: "silent",
-    customLogger: logger,
+    customLogger: logger as Logger,
     plugins: [await plugin(ICON_TARGET_OPTIONS)],
     build: { outDir: out, emptyOutDir: true, watch: {} },
   })) as Watcher;
@@ -145,68 +138,66 @@ const subsetImportJs = (characters: string): string =>
   `import "./index.css";\nimport font from "../fonts/text-font.woff2?subset=${characters}";\n\ndocument.title = font;\n`;
 
 describe.sequential("Build watch mode", () => {
-  Object.keys(viteBuild).forEach((version) => {
-    it(`vite@${version}: should keep fonts minified and references intact across rebuilds`, async () => {
-      const { root, out, workDir } = createProject();
-      const { logger, messages } = createMessageLogger();
-      const watcher = await startWatcher(version as ContainerVersion, root, out, logger);
-      const nextBuild = createBuildQueue(watcher);
-      const rebuildAfter = async (file: string, content: string): Promise<Snapshot> => {
-        await settle();
-        writeFileSync(join(root, file), content);
-        await nextBuild();
-        return takeSnapshot(out, messages);
-      };
+  it(`should keep fonts minified and references intact across rebuilds`, async () => {
+    const { root, out, workDir } = createProject();
+    const { logger, messages } = createMessageLogger();
+    const watcher = await startWatcher(root, out, logger);
+    const nextBuild = createBuildQueue(watcher);
+    const rebuildAfter = async (file: string, content: string): Promise<Snapshot> => {
+      await settle();
+      writeFileSync(join(root, file), content);
+      await nextBuild();
+      return takeSnapshot(out, messages);
+    };
 
-      try {
-        await nextBuild();
-        expectMinified(takeSnapshot(out, messages));
+    try {
+      await nextBuild();
+      expectMinified(takeSnapshot(out, messages));
 
-        // CSS untouched — Vite 5–7 reuse its cached transform
-        expectMinified(await rebuildAfter("main.js", `${MAIN_JS}document.title = "changed";\n`));
+      // CSS untouched
+      expectMinified(await rebuildAfter("main.js", `${MAIN_JS}document.title = "changed";\n`));
 
-        const withoutFace = await rebuildAfter("index.css", ".icon { color: red; }\n");
-        expect(withoutFace.problems).toEqual([]);
-        expect(withoutFace.fontRefs).toEqual([]);
+      const withoutFace = await rebuildAfter("index.css", ".icon { color: red; }\n");
+      expect(withoutFace.problems).toEqual([]);
+      expect(withoutFace.fontRefs).toEqual([]);
 
-        expectMinified(await rebuildAfter("index.css", FONT_FACE));
-      } finally {
-        await watcher.close();
-        rmSync(workDir, { recursive: true, force: true });
-      }
-    }, 60_000);
+      expectMinified(await rebuildAfter("index.css", FONT_FACE));
+    } finally {
+      await watcher.close();
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 
-    it(`vite@${version}: should drop the result of a ?subset= import changed between rebuilds`, async () => {
-      const { root, out, workDir } = createProject();
-      cpSync(
-        join(fixturesDir, "fonts", "text-font.woff2"),
-        join(workDir, "fonts", "text-font.woff2"),
+  it(`should drop the result of a ?subset= import changed between rebuilds`, async () => {
+    const { root, out, workDir } = createProject();
+    cpSync(
+      join(fixturesDir, "fonts", "text-font.woff2"),
+      join(workDir, "fonts", "text-font.woff2"),
+    );
+    writeFileSync(join(root, "main.js"), subsetImportJs("XY"));
+    const { logger, messages } = createMessageLogger();
+    const watcher = await startWatcher(root, out, logger);
+    const nextBuild = createBuildQueue(watcher);
+
+    try {
+      await nextBuild();
+      await settle();
+      writeFileSync(join(root, "main.js"), subsetImportJs("XYZ"));
+      await nextBuild();
+
+      const snapshot = takeSnapshot(out, messages);
+      expect(snapshot.problems).toEqual([]);
+      const textFonts = Object.entries(snapshot.fonts).filter(([file]) =>
+        file.includes("text-font"),
       );
-      writeFileSync(join(root, "main.js"), subsetImportJs("XY"));
-      const { logger, messages } = createMessageLogger();
-      const watcher = await startWatcher(version as ContainerVersion, root, out, logger);
-      const nextBuild = createBuildQueue(watcher);
-
-      try {
-        await nextBuild();
-        await settle();
-        writeFileSync(join(root, "main.js"), subsetImportJs("XYZ"));
-        await nextBuild();
-
-        const snapshot = takeSnapshot(out, messages);
-        expect(snapshot.problems).toEqual([]);
-        const textFonts = Object.entries(snapshot.fonts).filter(([file]) =>
-          file.includes("text-font"),
-        );
-        expect(textFonts.map(([file]) => file)).toHaveLength(1);
-        const font = fontkit.create(textFonts[0][1]) as fontkit.Font;
-        for (const char of "XYZ") {
-          expect(font.hasGlyphForCodePoint(char.codePointAt(0)!), char).toBe(true);
-        }
-      } finally {
-        await watcher.close();
-        rmSync(workDir, { recursive: true, force: true });
+      expect(textFonts.map(([file]) => file)).toHaveLength(1);
+      const font = fontkit.create(textFonts[0][1]) as fontkit.Font;
+      for (const char of "XYZ") {
+        expect(font.hasGlyphForCodePoint(char.codePointAt(0)!), char).toBe(true);
       }
-    }, 60_000);
-  });
+    } finally {
+      await watcher.close();
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

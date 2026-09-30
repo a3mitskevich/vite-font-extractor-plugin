@@ -5,15 +5,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkIconGlyphs, formatGlyphs, splitGlyphTexts } from "../src/glyph-filter";
 import {
-  buildByVersion,
-  type ContainerVersion,
+  buildFixture,
   createFixture,
   findBrokenFontReferences,
   fixturesDir,
   fontsLength,
   type LoggerMessage,
   textFontsLength,
-  viteBuild,
 } from "./utils";
 
 type Output = RollupOutput["output"];
@@ -34,8 +32,8 @@ const DELETE = 0xe872;
 
 const AUTO_MODE_NOTICE = '"auto" mode detected';
 
-const build = (version: ContainerVersion, fixture: { path: string }) =>
-  buildByVersion(version, { fixture: fixture.path, pluginOptions: { type: "auto", cache: false } });
+const build = (fixture: { path: string }) =>
+  buildFixture({ fixture: fixture.path, pluginOptions: { type: "auto", cache: false } });
 
 const getFontAsset = (output: Output, prefix: string, ext: string): OutputAsset => {
   const asset = output.find(
@@ -102,83 +100,77 @@ describe("checkIconGlyphs", () => {
 });
 
 describe("Auto mode: CSS content", () => {
-  Object.keys(viteBuild).forEach((version) => {
-    describe(`vite@${version}`, () => {
-      it("keeps the icon glyph when other CSS uses characters missing from the font", async () => {
-        const { output, messages } = await build(version, fixtures.unrelated);
+  it("keeps the icon glyph when other CSS uses characters missing from the font", async () => {
+    const { output, messages } = await build(fixtures.unrelated);
 
-        expect(unexpectedMessages(messages)).toEqual([]);
-        expect(findBrokenFontReferences(output)).toEqual([]);
-        expectIconFontMinified(output);
-        for (const ext of ["woff2", "woff"]) {
-          const font = openFont(getFontAsset(output, "icon-font", ext));
-          expect(font.hasGlyphForCodePoint(CLOSE)).toBe(true);
-          expect(font.hasGlyphForCodePoint(STAR)).toBe(false);
-        }
-        const skipped = messages.filter(({ message }) => message.includes("not found in the font"));
-        expect(skipped).toHaveLength(1);
-        expect(skipped[0].type).toBe("info");
-      });
+    expect(unexpectedMessages(messages)).toEqual([]);
+    expect(findBrokenFontReferences(output)).toEqual([]);
+    expectIconFontMinified(output);
+    for (const ext of ["woff2", "woff"]) {
+      const font = openFont(getFontAsset(output, "icon-font", ext));
+      expect(font.hasGlyphForCodePoint(CLOSE)).toBe(true);
+      expect(font.hasGlyphForCodePoint(STAR)).toBe(false);
+    }
+    const skipped = messages.filter(({ message }) => message.includes("not found in the font"));
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0].type).toBe("info");
+  });
 
-      it("keeps every glyph referenced by content strings", async () => {
-        const { output, messages } = await build(version, fixtures.parsing);
+  it("keeps every glyph referenced by content strings", async () => {
+    const { output, messages } = await build(fixtures.parsing);
 
-        expect(unexpectedMessages(messages)).toEqual([]);
-        expect(findBrokenFontReferences(output)).toEqual([]);
-        expectIconFontMinified(output);
-        const font = openFont(getFontAsset(output, "icon-font", "woff2"));
-        for (const codePoint of [HOME, MENU, CLOSE, STAR, PLAY_ARROW]) {
-          expect(font.hasGlyphForCodePoint(codePoint), codePoint.toString(16)).toBe(true);
-        }
-        expect(font.hasGlyphForCodePoint(DELETE)).toBe(false);
-        const playArrow = font.layout("play_arrow").glyphs;
-        expect(playArrow).toHaveLength(1);
-        expect(playArrow[0].id).not.toBe(0);
-      });
+    expect(unexpectedMessages(messages)).toEqual([]);
+    expect(findBrokenFontReferences(output)).toEqual([]);
+    expectIconFontMinified(output);
+    const font = openFont(getFontAsset(output, "icon-font", "woff2"));
+    for (const codePoint of [HOME, MENU, CLOSE, STAR, PLAY_ARROW]) {
+      expect(font.hasGlyphForCodePoint(codePoint), codePoint.toString(16)).toBe(true);
+    }
+    expect(font.hasGlyphForCodePoint(DELETE)).toBe(false);
+    const playArrow = font.layout("play_arrow").glyphs;
+    expect(playArrow).toHaveLength(1);
+    expect(playArrow[0].id).not.toBe(0);
+  });
 
-      it("keeps a text font without auto-detected glyphs as is", async () => {
-        const { output, messages } = await build(version, fixtures.textFont);
+  it("keeps a text font without auto-detected glyphs as is", async () => {
+    const { output, messages } = await build(fixtures.textFont);
 
-        expect(messages.filter(({ type }) => type === "error")).toEqual([]);
-        const warnings = unexpectedMessages(messages);
-        expect(warnings).toHaveLength(1);
-        expect(warnings[0].message).toContain('"Text"');
-        expect(warnings[0].message).toContain("keeping original");
-        expect(findBrokenFontReferences(output)).toEqual([]);
-        expect(Buffer.from(getFontAsset(output, "text-font", "woff2").source).length).toBe(
-          textFontsLength.woff2,
-        );
-        expectIconFontMinified(output);
-        const font = openFont(getFontAsset(output, "icon-font", "woff2"));
-        expect(font.hasGlyphForCodePoint(CLOSE)).toBe(true);
-      });
-    });
+    expect(messages.filter(({ type }) => type === "error")).toEqual([]);
+    const warnings = unexpectedMessages(messages);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('"Text"');
+    expect(warnings[0].message).toContain("keeping original");
+    expect(findBrokenFontReferences(output)).toEqual([]);
+    expect(Buffer.from(getFontAsset(output, "text-font", "woff2").source).length).toBe(
+      textFontsLength.woff2,
+    );
+    expectIconFontMinified(output);
+    const font = openFont(getFontAsset(output, "icon-font", "woff2"));
+    expect(font.hasGlyphForCodePoint(CLOSE)).toBe(true);
   });
 });
 
 describe("Auto mode with ?subset= on a @font-face", () => {
   const autoSubset = createFixture("auto-subset", { fonts: [] });
 
-  Object.keys(viteBuild).forEach((version) => {
-    it(`vite@${version}: should minify the ?subset= face by its query and icons by detected glyphs`, async () => {
-      const { output, messages } = await build(version, autoSubset);
+  it(`should minify the ?subset= face by its query and icons by detected glyphs`, async () => {
+    const { output, messages } = await build(autoSubset);
 
-      const text = fontkit.create(
-        Buffer.from(getFontAsset(output, "text-font", "woff2").source),
-      ) as fontkit.Font;
-      expect(["a", "b", "c"].every((char) => text.hasGlyphForCodePoint(char.codePointAt(0)!))).toBe(
-        true,
-      );
-      expect(text.hasGlyphForCodePoint("z".codePointAt(0)!)).toBe(false);
+    const text = fontkit.create(
+      Buffer.from(getFontAsset(output, "text-font", "woff2").source),
+    ) as fontkit.Font;
+    expect(["a", "b", "c"].every((char) => text.hasGlyphForCodePoint(char.codePointAt(0)!))).toBe(
+      true,
+    );
+    expect(text.hasGlyphForCodePoint("z".codePointAt(0)!)).toBe(false);
 
-      const icons = fontkit.create(
-        Buffer.from(getFontAsset(output, "icon-font", "woff2").source),
-      ) as fontkit.Font;
-      expect(icons.hasGlyphForCodePoint(CLOSE)).toBe(true);
-      expect(icons.hasGlyphForCodePoint(STAR)).toBe(false);
+    const icons = fontkit.create(
+      Buffer.from(getFontAsset(output, "icon-font", "woff2").source),
+    ) as fontkit.Font;
+    expect(icons.hasGlyphForCodePoint(CLOSE)).toBe(true);
+    expect(icons.hasGlyphForCodePoint(STAR)).toBe(false);
 
-      expect(findBrokenFontReferences(output)).toEqual([]);
-      expect(messages.filter((m) => m.type === "error")).toEqual([]);
-    });
+    expect(findBrokenFontReferences(output)).toEqual([]);
+    expect(messages.filter((m) => m.type === "error")).toEqual([]);
   });
 });

@@ -67,7 +67,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       ctx.isServe = true;
       server.middlewares.use(createServeMiddleware(ctx, server));
     },
-    // Vite 6+: fonts are emitted by the client build only
+    // Fonts are emitted by the client build only
     applyToEnvironment(environment) {
       return environment.config.consumer === "client";
     },
@@ -76,11 +76,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
     transform: {
       filter: { id: { include: TRANSFORM_ID_INCLUDE } },
-      async handler(code, id, options) {
-        // Filters are ignored before Vite 6.3, and applyToEnvironment before Vite 6
-        if (options?.ssr || !TRANSFORM_ID_INCLUDE.some((re) => re.test(id))) {
-          return null;
-        }
+      async handler(code, id) {
         if (!ctx.isServe) {
           const references = extractAssetReferences(code).map(getReferenceKey);
           replaceModuleReferences(ctx, id, new Set(references));

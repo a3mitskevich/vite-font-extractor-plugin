@@ -4,8 +4,7 @@ import { join } from "node:path";
 import type { OutputAsset } from "rollup";
 import type { PluginOption } from "../src";
 import {
-  buildByVersion,
-  type ContainerVersion,
+  buildFixture,
   findBrokenFontReferences,
   findOrphanFontAssets,
   fixtures,
@@ -19,7 +18,6 @@ import {
   type OutputItem,
   outDir,
   rendersLigature,
-  viteBuild,
 } from "./utils";
 
 const PLUGIN_OPTIONS: PluginOption = {
@@ -137,7 +135,7 @@ const scenarios: Record<string, Scenario> = {
       },
     },
     // Vite itself warns about differing assetFileNames across outputs
-    expectedWarnings: [/assetFileNames isn't equal for every build\.(rollup|rolldown)Options/],
+    expectedWarnings: [/assetFileNames isn't equal for every build\.rolldownOptions/],
     check: (outputs) => {
       expect(outputs).toHaveLength(2);
       const [a, b] = outputs;
@@ -243,36 +241,27 @@ describe.sequential("Build config regressions", () => {
     rmSync(spacesProject, { recursive: true, force: true });
   });
 
-  const runConfigTests = (version: ContainerVersion) => {
-    describe(`vite@${version}`, () => {
-      Object.entries(scenarios).forEach(([name, scenario]) => {
-        it(`should minify fonts and keep references with ${name}`, async () => {
-          const { outputs, messages } = await buildByVersion(version, {
-            fixture: scenario.fixture(),
-            pluginOptions: PLUGIN_OPTIONS,
-            config: scenario.config,
-          });
-
-          const expected = scenario.expectedWarnings ?? [];
-          const unexpected = messages.filter(
-            (m) =>
-              (m.type === "warn" || m.type === "error") &&
-              !expected.some((re) => re.test(m.message)),
-          );
-          expect(unexpected).toEqual([]);
-          expected.forEach((re) => {
-            expect(messages.filter((m) => m.type === "warn" && re.test(m.message))).toHaveLength(1);
-          });
-
-          const items = outputs as OutputItem[][];
-          items.forEach(expectInvariants);
-          scenario.check?.(items);
-        });
+  Object.entries(scenarios).forEach(([name, scenario]) => {
+    it(`should minify fonts and keep references with ${name}`, async () => {
+      const { outputs, messages } = await buildFixture({
+        fixture: scenario.fixture(),
+        pluginOptions: PLUGIN_OPTIONS,
+        config: scenario.config,
       });
-    });
-  };
 
-  Object.keys(viteBuild).forEach((version) => {
-    runConfigTests(version);
+      const expected = scenario.expectedWarnings ?? [];
+      const unexpected = messages.filter(
+        (m) =>
+          (m.type === "warn" || m.type === "error") && !expected.some((re) => re.test(m.message)),
+      );
+      expect(unexpected).toEqual([]);
+      expected.forEach((re) => {
+        expect(messages.filter((m) => m.type === "warn" && re.test(m.message))).toHaveLength(1);
+      });
+
+      const items = outputs as OutputItem[][];
+      items.forEach(expectInvariants);
+      scenario.check?.(items);
+    });
   });
 });
