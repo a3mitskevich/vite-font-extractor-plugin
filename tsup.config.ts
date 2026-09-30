@@ -5,6 +5,8 @@ export default defineConfig({
   dts: true,
   format: ["cjs", "esm"],
   clean: true,
+  // import.meta.url in the CommonJS build
+  shims: true,
   external: ["picocolors"],
   tsconfig: "tsconfig.lib.json",
 });

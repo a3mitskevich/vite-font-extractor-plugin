@@ -1,8 +1,8 @@
 import type { Plugin, ResolvedConfig, Rollup } from "vite";
-import { isAbsolute } from "node:path";
+import { resolve } from "node:path";
 import type { PluginOption } from "./types";
 import Cache from "./cache";
-import { createResolvers, intersection, mergePath } from "./utils";
+import { createResolvers, getHash, intersection, mergePath } from "./utils";
 import { CSS_LANGS_RE, PLUGIN_NAME } from "./constants";
 import { createInternalLogger } from "./internal-logger";
 import { type PluginContext, createPluginContext, getLogger, resetBuildState } from "./context";
@@ -68,15 +68,34 @@ function configureContext(ctx: PluginContext, config: ResolvedConfig): void {
   ctx.publicDir = config.publicDir || null;
   ctx.buildConfig = config.command === "build" ? config.build : null;
 
-  if (pluginOption.cache) {
-    const cachePath =
-      (typeof pluginOption.cache === "string" && pluginOption.cache) || "node_modules";
-    const resolvedPath = isAbsolute(cachePath) ? cachePath : mergePath(config.root, cachePath);
-    ctx.cache = new Cache(resolvedPath);
-  } else {
-    // Clean up stale cache directory when cache is disabled
-    Cache.removeIfExists(mergePath(config.root, "node_modules"));
+  configureCache(ctx, config);
+}
+
+// The cache used to live in node_modules; 4.0 keeps it in Vite's cache directory
+const LEGACY_CACHE_PARENT = "node_modules";
+
+// One owner per config and command: builds of other configs keep the entries they use
+const getCacheOwner = (config: ResolvedConfig): string =>
+  getHash(
+    JSON.stringify([
+      config.root,
+      config.configFile,
+      config.command,
+      config.mode,
+      config.build.outDir,
+    ]),
+  );
+
+function configureCache(ctx: PluginContext, config: ResolvedConfig): void {
+  const { cache } = ctx.pluginOption;
+  if (cache) {
+    const parent = typeof cache === "string" ? resolve(config.root, cache) : config.cacheDir;
+    ctx.cache = new Cache(parent, getCacheOwner(config), config.command === "serve");
+    return;
   }
+  // Clean up a stale cache directory when cache is disabled
+  Cache.removeIfExists(config.cacheDir);
+  Cache.removeIfExists(mergePath(config.root, LEGACY_CACHE_PARENT));
 }
 
 // Auto mode: glyphs are complete once every other module of the graph is transformed

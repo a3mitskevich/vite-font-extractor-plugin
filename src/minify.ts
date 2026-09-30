@@ -8,6 +8,7 @@ import type {
 } from "./types";
 import { camelCase, getHash } from "./utils";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { SUPPORT_START_FONT_REGEX, SUPPORTED_RESULTS_FORMATS } from "./constants";
 import styler from "./styler";
 import type Cache from "./cache";
@@ -15,6 +16,10 @@ import { type PluginContext, getLogger, getResolvers } from "./context";
 import { checkIconGlyphs, formatGlyphs, type IconGlyphs, splitGlyphTexts } from "./glyph-filter";
 
 const SHA256_HEX_LENGTH = 64;
+// Part of the cache key: another fontext may write other bytes for the same input
+const FONTEXT_VERSION = (
+  createRequire(import.meta.url)("fontext/package.json") as { version: string }
+).version;
 // A font-family may contain any character; the cache key is a flat file name
 const UNSAFE_FILE_NAME_CHARS_RE = /[^\w-]/g;
 
@@ -214,7 +219,7 @@ export async function processMinify(
   const cacheKey =
     camelCase(fontName).replace(UNSAFE_FILE_NAME_CHARS_RE, "_") +
     "-" +
-    getHash(options.sid + sourceHash);
+    getHash(options.sid + sourceHash + FONTEXT_VERSION);
   const emptyResult: ExtractedResult = {
     meta: [],
     report: { originalSize: 0, formats: {} },
