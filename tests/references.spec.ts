@@ -234,6 +234,36 @@ describe.sequential("Font references in build output", () => {
         expect(findOrphanFontAssets(items)).toEqual([]);
       });
 
+      it("should not rewrite a file name that ends with a minified name after @ or ~", async () => {
+        const { output } = await buildByVersion(version, {
+          fixture: fixtures["name-delimiters"].path,
+          pluginOptions: {
+            type: "manual",
+            targets: [{ fontName: "Text Font", engine: "subset", characters: "A" }],
+          },
+          manifest: true,
+          config: {
+            build: {
+              assetsInlineLimit: 0,
+              rollupOptions: { output: { assetFileNames: "assets/[name][extname]" } },
+            },
+          },
+        });
+        const items = output as OutputItem[];
+
+        const entry = getEntryChunk(items)!;
+        expect(entry.code).toContain("assets/x@text-font.woff2");
+        expect(entry.code).toContain("assets/my~text-font.woff2");
+        expect(findBrokenFontReferences(items)).toEqual([]);
+        expect(findOrphanFontAssets(items)).toEqual([]);
+
+        // Manifest keys and `src` are source paths and must stay as they are
+        const manifest = readManifest(items);
+        const fontEntry = manifest["../fonts/text-font.woff2"];
+        expect(fontEntry?.src).toBe("../fonts/text-font.woff2");
+        expect(items.map((item) => item.fileName)).toContain(fontEntry?.file);
+      });
+
       it("should list the font a JS ?subset= import loads in the manifest", async () => {
         const { output } = await buildByVersion(version, {
           fixture: fixtures["subset-js"].path,

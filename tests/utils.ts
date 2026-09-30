@@ -176,6 +176,7 @@ export const fixtures = {
   "subset-js": createFixture("subset-js", { fonts: [{ name: "Font", urls: [] }] }),
   "subset-js-target": createFixture("subset-js-target", { fonts: [] }),
   "name-suffix": createFixture("name-suffix", { fonts: [] }),
+  "name-delimiters": createFixture("name-delimiters", { fonts: [] }),
   "subset-query-params": createFixture("subset-query-params", { fonts: [] }),
   "subset-chars": createFixture("subset-chars"),
   "subset-range": createFixture("subset-range"),

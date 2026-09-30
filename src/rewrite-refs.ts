@@ -38,8 +38,9 @@ const NAME_ENCODERS: Array<(name: string) => string> = [
   (name) => name.replaceAll(" ", "%20"),
 ];
 
-// A file name is a whole token: `icon.woff` must not match inside `my-icon.woff2`
-const NAME_START = "(?<![\\w.%-])";
+// A file name is a whole url segment: it starts after a url delimiter, so `icon.woff` never
+// matches inside `my-icon.woff2`, `x@icon.woff2` or `a\ icon.woff2` (escaped space)
+const NAME_START = "(?<=^|[\\s\"'`(/,=])(?<!\\\\\\s)";
 const NAME_END = "(?![\\w-])";
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -123,10 +124,10 @@ function updateImportedAssets(chunk: Rollup.OutputChunk, renames: AssetRename[])
   if (!importedAssets) return;
   for (const { oldFileName, newFileName } of renames) {
     if (!importedAssets.has(oldFileName)) continue;
-    if (chunk.code.includes(basename(newFileName))) {
+    if (createFileNamePattern(newFileName).test(chunk.code)) {
       importedAssets.add(newFileName);
     }
-    if (!chunk.code.includes(basename(oldFileName))) {
+    if (!createFileNamePattern(oldFileName).test(chunk.code)) {
       importedAssets.delete(oldFileName);
     }
   }
