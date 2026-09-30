@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServer, type ViteDevServer } from "vite";
 import type * as fontkit from "fontkit";
 import { dirname, join } from "node:path";
-import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { PluginOption } from "../src";
 import {
   plugin,
@@ -143,6 +143,21 @@ describe("Dev server", () => {
       if (ext !== "eot") {
         expect(rendersLigature(openFont(body), "close")).toBe(true);
       }
+    }
+  });
+
+  it("should send a minified font with its content type and an etag", async () => {
+    const contentTypes = { woff2: "font/woff2", eot: "application/vnd.ms-fontobject" };
+    for (const [ext, contentType] of Object.entries(contentTypes)) {
+      const url = `${baseUrl}${toFsUrl(join(fixturesDir, "fonts", `icon-font.${ext}`))}`;
+      const response = await fetch(url);
+      await response.arrayBuffer();
+      expect(response.headers.get("content-type"), ext).toBe(contentType);
+      const etag = response.headers.get("etag");
+      expect(etag, ext).toBeTruthy();
+
+      const revalidated = await fetch(url, { headers: { "if-none-match": etag! } });
+      expect(revalidated.status, ext).toBe(304);
     }
   });
 
@@ -378,6 +393,71 @@ describe("Dev server: options", () => {
       }
       expect(font.hasGlyphForCodePoint("q".codePointAt(0)!)).toBe(false);
       expect(problemsOf(dev.messages)).toEqual([]);
+    });
+  });
+});
+
+describe("Dev server: generated projects", () => {
+  const MANUAL_OPTIONS: PluginOption = {
+    type: "manual",
+    cache: false,
+    targets: [{ fontName: "Font Name", ligatures: ["close"] }],
+  };
+  const SVG_PADDING = 5000;
+  const roots: string[] = [];
+
+  afterAll(() => {
+    roots.forEach((root) => rmSync(root, { recursive: true, force: true }));
+  });
+
+  // A project with the icon font next to index.css and `src` as the @font-face sources
+  const createProject = (src: string): string => {
+    const root = join(outDir, `dev-project-${generateId()}`);
+    roots.push(root);
+    mkdirSync(root, { recursive: true });
+    cpSync(join(fixturesDir, "fonts", "icon-font.woff2"), join(root, "icon-font.woff2"));
+    // Over Vite's inline limit, so the dev server requests it
+    writeFileSync(
+      join(root, "icon-font.svg"),
+      `<svg xmlns="http://www.w3.org/2000/svg"><!--${"-".repeat(SVG_PADDING)}--></svg>`,
+    );
+    writeFileSync(
+      join(root, "index.html"),
+      '<!doctype html><html><head><link href="index.css" rel="stylesheet" /></head></html>',
+    );
+    writeFileSync(join(root, "index.css"), `@font-face { font-family: "Font Name"; src: ${src}; }`);
+    return root;
+  };
+
+  it("should send a minified SVG font as image/svg+xml", async () => {
+    const root = createProject(
+      'url("./icon-font.woff2") format("woff2"), url("./icon-font.svg") format("svg")',
+    );
+    await withDevServer(root, MANUAL_OPTIONS, async (dev) => {
+      const urls = fontUrlsOf(await fetchCss(dev.origin, "/index.css"));
+      const svg = urls.find((url) => url.includes(".svg"))!;
+
+      const response = await fetch(`${dev.origin}${svg}`);
+      const body = await response.text();
+      expect(response.headers.get("content-type")).toBe("image/svg+xml");
+      expect(response.headers.get("etag")).toBeTruthy();
+      expect(body).toContain("<font");
+      expect(problemsOf(dev.messages)).toEqual([]);
+    });
+  });
+
+  it("should keep `$&` in a font url as text", async () => {
+    const root = createProject('url("./icon-font.woff2?v=$&") format("woff2")');
+    await withDevServer(root, MANUAL_OPTIONS, async (dev) => {
+      const css = await fetchCss(dev.origin, "/index.css");
+      expect(css.match(/@font-face/g)).toHaveLength(1);
+      const [url] = fontUrlsOf(css);
+      expect(url).toContain("?v=$&");
+
+      const { status, body } = await fetchFont(dev.origin, url);
+      expect(status).toBe(200);
+      expect(body.byteLength).toBeLessThan(fontsLength.woff2);
+      expect(rendersLigature(openFont(body), "close")).toBe(true);
     });
   });
 });

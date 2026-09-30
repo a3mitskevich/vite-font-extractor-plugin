@@ -81,7 +81,8 @@ function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceM
   const taggedFace = font.face.replace(FACE_URL_RE, (match, quote: string, url: string) =>
     localUrls.includes(url) ? `url(${quote}${tagFamilyUrl(ctx, url, font)}${quote})` : match,
   );
-  return code.replace(font.face, taggedFace);
+  // A function: `$&` or `$1` in a url is text, not a replacement pattern
+  return code.replace(font.face, () => taggedFace);
 }
 
 // A face the dev server minifies: a target, or `?subset=` without one

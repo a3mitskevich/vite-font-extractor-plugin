@@ -10,7 +10,7 @@ import type {
   SubsetOptions,
 } from "./types";
 import { processMinify } from "./minify";
-import { SUPPORT_START_FONT_REGEX } from "./constants";
+import { FONT_MIME_TYPES, SUPPORT_START_FONT_REGEX } from "./constants";
 import { mergeSubsetOptions, parseUrlSubset } from "./subset-options";
 import styler from "./styler";
 import { splitUrl } from "./font-emit";
@@ -21,6 +21,8 @@ const SUBSET_REQUEST_RE = /\.(?:woff2?|ttf|otf|eot)\?(?:[^#]*&)?subset=/i;
 const MODULE_REQUEST_RE = /[?&](?:import|url|raw|inline|worker|sharedworker)\b/;
 const FS_PREFIX = "/@fs/";
 const WINDOWS_DRIVE_RE = /^\/[A-Za-z]:/;
+// Every distinct `?subset=` url gets a loader: the oldest ones go past this many
+const MAX_SUBSET_REQUESTS = 500;
 // Coalesces the reloads of auto-mode fonts while many stylesheets load
 const AUTO_RELOAD_DELAY_MS = 50;
 
@@ -131,7 +133,11 @@ function fileOfRequest(ctx: PluginContext, path: string): string | null {
  * Dev: a font requested with `?subset=` that no @font-face registered — a JS import or
  * `new URL()`. Vite serves its asset url with the query, the plugin minifies it like build.
  */
-function registerSubsetRequest(ctx: PluginContext, url: string): ServeFontLoader | undefined {
+function registerSubsetRequest(
+  ctx: PluginContext,
+  url: string,
+  registered: Set<string>,
+): ServeFontLoader | undefined {
   if (!SUBSET_REQUEST_RE.test(url) || MODULE_REQUEST_RE.test(url)) return undefined;
   const { path, query } = splitUrl(url);
   const file = fileOfRequest(ctx, path);
@@ -146,6 +152,13 @@ function registerSubsetRequest(ctx: PluginContext, url: string): ServeFontLoader
     auto: false,
   });
   ctx.fontServeProxy.set(url, loader);
+  registered.add(url);
+  // Evicted in insertion order; a url requested again is registered again
+  for (const oldest of registered) {
+    if (registered.size <= MAX_SUBSET_REQUESTS) break;
+    registered.delete(oldest);
+    ctx.fontServeProxy.delete(oldest);
+  }
   return loader;
 }
 
@@ -179,6 +192,8 @@ export function createServeMiddleware(
   server: ViteDevServer,
 ): Connect.NextHandleFunction {
   const inFlightRequests = new Map<string, Promise<ServeFontStubResponse | null>>();
+  // `?subset=` urls outside @font-face; @font-face urls in fontServeProxy are never evicted
+  const subsetRequests = new Set<string>();
   const load = (url: string, loader: ServeFontLoader): Promise<ServeFontStubResponse | null> => {
     const pending = inFlightRequests.get(url);
     if (pending) return pending;
@@ -194,7 +209,7 @@ export function createServeMiddleware(
   return (req, res, next) => {
     const url = req.url;
     const loader = url
-      ? (ctx.fontServeProxy.get(url) ?? registerSubsetRequest(ctx, url))
+      ? (ctx.fontServeProxy.get(url) ?? registerSubsetRequest(ctx, url, subsetRequests))
       : undefined;
     if (!url || !loader) {
       next();
@@ -209,11 +224,14 @@ export function createServeMiddleware(
           }
           getLogger(ctx).fix();
           getLogger(ctx).info(`Stub server response for: ${styler.path(url)}`);
-          send(req, res, stub.content, `font/${stub.extension}`, {
-            cacheControl: "no-cache",
-            headers: server.config.server.headers,
-            etag: "",
-          });
+          // Without `etag` Vite sends a weak one of the content and answers If-None-Match with 304
+          send(
+            req,
+            res,
+            stub.content,
+            FONT_MIME_TYPES[stub.extension] ?? "application/octet-stream",
+            { cacheControl: "no-cache", headers: server.config.server.headers },
+          );
         },
         (error: unknown) => {
           logFailure(url, error);

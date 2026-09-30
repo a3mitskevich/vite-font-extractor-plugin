@@ -14,3 +14,11 @@ export const FONT_FAMILY_RE = /font-family:\s*(.*?);/;
 export const SUPPORT_START_FONT_REGEX = /^(?:otf|ttf|woff2?|ttc|dfont)$/;
 export const FONT_FACE_BLOCK_REGEX = /@font-face\s*{([\s\S]*?)}/g;
 export const SUPPORTED_RESULTS_FORMATS: Formats[] = ["woff2", "woff", "svg", "eot", "ttf"];
+export const FONT_MIME_TYPES: Partial<Record<Formats | "otf", string>> = {
+  woff2: "font/woff2",
+  woff: "font/woff",
+  ttf: "font/ttf",
+  otf: "font/otf",
+  eot: "application/vnd.ms-fontobject",
+  svg: "image/svg+xml",
+};

@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { basename, relative } from "node:path";
 import { normalizePath, type Rollup } from "vite";
-import type { Formats } from "fontext";
 import type { OptionsWithCacheSid } from "./types";
 import { type PluginContext, getLogger } from "./context";
+import { FONT_MIME_TYPES } from "./constants";
 import { processMinify } from "./minify";
 import { mergeSubsetOptions, parseUrlSubset } from "./subset-options";
 import { getFontExtension, getHash, getSubsetKey, toError } from "./utils";
@@ -30,15 +30,6 @@ export type EmittedUrl =
 const QUERY_START_RE = /[?#]/;
 const SUBSET_PARAM = "subset=";
 const DEFAULT_ASSETS_INLINE_LIMIT = 4096;
-
-const FONT_MIME_TYPES: Partial<Record<Formats | "otf", string>> = {
-  woff2: "font/woff2",
-  woff: "font/woff",
-  ttf: "font/ttf",
-  otf: "font/otf",
-  eot: "application/vnd.ms-fontobject",
-  svg: "image/svg+xml",
-};
 
 export function splitUrl(url: string): { path: string; query: string } {
   const index = url.search(QUERY_START_RE);

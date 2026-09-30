@@ -11,10 +11,19 @@ interface ChunkMetadata {
 const SOURCE_MAP_RE = /\.map$/;
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// encodeURI throws on a lone surrogate: such a name has no encoded variant
+const tryEncodeURI = (name: string): string[] => {
+  try {
+    return [encodeURI(name)];
+  } catch {
+    return [];
+  }
+};
+
 // A file name is a whole url segment: `icon.woff2` never matches inside `my-icon.woff2`
 const createNamePattern = (fileName: string): RegExp => {
   const name = basename(fileName);
-  const variants = [...new Set([name, encodeURI(name), name.replaceAll(" ", "\\ ")])];
+  const variants = [...new Set([name, ...tryEncodeURI(name), name.replaceAll(" ", "\\ ")])];
   return new RegExp(`(?<![\\w.-])(?:${variants.map(escapeRegExp).join("|")})(?![\\w-])`);
 };
 
