@@ -297,6 +297,16 @@ describe("findUnicodeGlyphs", () => {
   it("should ignore properties without strings", () => {
     expect(findUnicodeGlyphs(`.a{justify-content:center;align-content:space-between}`)).toEqual([]);
   });
+
+  it("should read only content declarations, not selectors or other properties", () => {
+    const css = `.content:hover { font-family: "Material Icons"; } .grid{justify-content:"a"}
+      .page-content::after{content:"close"} .b{color:red;content:"star"}`;
+    expect(findUnicodeGlyphs(css)).toEqual(["close", "star"]);
+  });
+
+  it("should read a content declaration at the start of the code", () => {
+    expect(findUnicodeGlyphs(`content: "close"`)).toEqual(["close"]);
+  });
 });
 
 describe("getFontExtension", () => {

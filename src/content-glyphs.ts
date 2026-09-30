@@ -2,8 +2,9 @@
 // with CSS escapes resolved. A word of 2+ letters/digits is kept whole as a ligature
 // ("close"), anything else is split into single code points.
 
-// Any `*content:` declaration, including custom properties like `--icon-content:`
-const CONTENT_PROPERTY_RE = /content\s*:/g;
+// A `content:` declaration, including custom properties like `--icon-content:`. It starts a
+// declaration, so selectors (`.content:hover`) and `justify-content:` are skipped
+const CONTENT_PROPERTY_RE = /(?<=(?:^|[{;])\s*)(?:--[\w-]*)?content\s*:/g;
 const HEX_ESCAPE_RE = /^[0-9a-fA-F]{1,6}/;
 const LIGATURE_WORD_RE = /^[\p{L}\p{N}_-]+$/u;
 const WHITESPACE_RE = /\s/;
