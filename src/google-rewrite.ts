@@ -25,8 +25,12 @@ function getFamilyTexts(ctx: PluginContext, name: string, id: string): string[] 
     return [];
   }
   checkFontProcessing(ctx, name, id);
+  if (!options.auto) return getTargetTexts(options.target);
+  // Dev transforms HTML and a stylesheet once, before later stylesheets add their glyphs, and
+  // serves them again as they are — a partial `text=` would drop icons: the full font is loaded
+  if (ctx.isServe) return [];
   // Auto mode: Google subsets by characters, so the letters of a ligature keep it working
-  return options.auto ? getTargetTexts(ctx.autoProxyOption.target) : getTargetTexts(options.target);
+  return getTargetTexts(ctx.autoProxyOption.target);
 }
 
 // Adds `text=` with the target glyphs to a Google Fonts stylesheet url

@@ -23,7 +23,7 @@ Features and fixes:
 - Auto mode collects the glyphs of the whole build, lazy chunks and CSS modules included, before a font is minified
 - `new URL('./font.woff2?subset=…', import.meta.url)` is supported
 - Dev server: JS `?subset=` imports are minified; auto-mode fonts get a new url and reload when stylesheets change their glyphs
-- Google Fonts `text=` lists `characters`/`raws` of targets and the glyphs detected in auto mode
+- Google Fonts `text=` lists `characters`/`raws` of targets and the glyphs detected in auto mode (build; the dev server loads the full Google font for auto-mode families)
 - `<link rel="preload">` follows the minified file of the CSS through Vite's own HTML processing
 - The fontext version is part of the cache key; a build prunes only entries no build of another config and no dev server used within 30 days
 - fontext warnings (`legacy-kern`) are logged

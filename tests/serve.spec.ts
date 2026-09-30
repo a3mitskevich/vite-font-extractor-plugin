@@ -24,6 +24,7 @@ const devFixtures = {
   autoTwoCss: createFixture("dev-auto-two-css"),
   fontQuery: createFixture("dev-font-query"),
   serveFollow: createFixture("dev-serve-follow"),
+  googleAuto: createFixture("dev-google-auto"),
 };
 
 const CLOSE_CODE_POINT = 0xe5cd;
@@ -668,6 +669,49 @@ describe("Dev server: served urls follow the stylesheet", () => {
     } finally {
       rmSync(workDir, { recursive: true, force: true });
     }
+  });
+});
+
+const GOOGLE_URL_RE = /https:\/\/fonts\.googleapis\.com\/[^"')\s]+/g;
+
+// `text=` of every Google Fonts url in the code, null where there is none
+const googleTextsOf = (code: string): (string | null)[] =>
+  Array.from(code.matchAll(GOOGLE_URL_RE), ([url]) =>
+    new URL(url.replaceAll("&amp;", "&")).searchParams.get("text"),
+  );
+
+const fetchHtml = async (origin: string): Promise<string> =>
+  (await fetch(`${origin}/`, { headers: { accept: "text/html" } })).text();
+
+describe("Dev server: Google Fonts in auto mode", () => {
+  it("should serve the full Google font whatever glyphs are known yet", async () => {
+    const options: PluginOption = { type: "auto", cache: false };
+    await withDevServer(devFixtures.googleAuto.path, options, async (dev) => {
+      // The HTML is transformed before any stylesheet
+      const firstHtml = await fetchHtml(dev.origin);
+      const css = await fetchCss(dev.origin, "/index.css");
+      // After a reload, while a lazy stylesheet is still to come
+      const secondHtml = await fetchHtml(dev.origin);
+      await fetchCss(dev.origin, "/lazy.css");
+      const thirdHtml = await fetchHtml(dev.origin);
+
+      expect(googleTextsOf(firstHtml)).toEqual([null]);
+      expect(googleTextsOf(css)).toEqual([null]);
+      expect(googleTextsOf(secondHtml)).toEqual([null]);
+      expect(googleTextsOf(thirdHtml)).toEqual([null]);
+      expect(dev.messages.filter((m) => m.type === "error")).toEqual([]);
+    });
+  });
+
+  it("should keep text= of a target in auto mode", async () => {
+    const options: PluginOption = {
+      type: "auto",
+      cache: false,
+      targets: [{ fontName: "Material Icons", ligatures: ["close"] }],
+    };
+    await withDevServer(devFixtures.googleAuto.path, options, async (dev) => {
+      expect(googleTextsOf(await fetchHtml(dev.origin))).toEqual(["close"]);
+    });
   });
 });
 

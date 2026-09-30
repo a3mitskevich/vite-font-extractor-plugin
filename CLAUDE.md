@@ -64,7 +64,7 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 
 **`src/glyph-filter.ts`** — Drops auto-detected glyphs the font doesn't contain (fontkit, GSUB ligatures) before calling fontext. fontkit stays: fontext 2's Node entry exports only `extract`, its browser entry can not read WOFF2.
 
-**`src/google-fonts.ts` / `src/google-rewrite.ts`** — Google Fonts URL handling (legacy `|` families, css2 `family=` with axes, `&text=` from ligatures, raws, characters or auto glyphs).
+**`src/google-fonts.ts` / `src/google-rewrite.ts`** — Google Fonts URL handling (legacy `|` families, css2 `family=` with axes, `&text=` from ligatures, raws, characters or auto glyphs; dev adds no auto glyphs — HTML and a stylesheet are transformed before later stylesheets bring theirs, so auto families load the full Google font).
 
 **`src/subset-options.ts`** — `?subset=` parsing from urls and `mergeSubsetOptions` shared by build and dev.
 

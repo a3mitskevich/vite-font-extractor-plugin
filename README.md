@@ -178,6 +178,11 @@ in CSS `content`. `<link>` attributes may come in any order and the HTML may be 
 multi-family form `family=Material+Icons|Roboto` and the css2 API with several `family=` parameters and axes
 (`family=Roboto:wght@400;700`).
 
+**Dev server, auto mode:** Google Fonts urls are left without `text=` for families that use auto-detected glyphs —
+the browser loads the full Google font. The dev server transforms the HTML before any stylesheet and serves a
+stylesheet as it transformed it, so a `text=` built from the glyphs known at that moment would miss the icons of
+stylesheets that load later. Families with a target keep their `text=` in dev; the build always adds it.
+
 ## Build Output
 
 - Minified fonts are emitted through the bundler like any Vite asset, so `build.rolldownOptions.output.assetFileNames`

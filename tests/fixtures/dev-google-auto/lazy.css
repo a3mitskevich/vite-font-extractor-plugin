@@ -1,0 +1,4 @@
+.icon-star::before {
+  font-family: "Material Icons";
+  content: "star";
+}
