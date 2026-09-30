@@ -195,9 +195,6 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         resolved.flatMap((entry) => (entry ? [entry.id] : [])),
       );
     },
-    moduleParsed(info) {
-      if (!ctx.isServe && ctx.mode === "auto") onModuleParsed(ctx.graph, this, info);
-    },
     transform: {
       filter: CSS_FILTER,
       async handler(code, id) {
@@ -221,6 +218,17 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       // An aborted build must not keep a waiting module or its timer alive
       ctx.graph.reset();
       if (problem) this.error(problem);
+    },
+  };
+
+  // moduleParsed has no hook filter: Rolldown calls it for every module, so it exists only where
+  // it is needed — auto-mode builds
+  const graph: Plugin = {
+    name: `${PLUGIN_NAME}:graph`,
+    apply: applyToBuild(apply),
+    applyToEnvironment: isAppliedTo,
+    moduleParsed(info) {
+      onModuleParsed(ctx.graph, this, info);
     },
   };
 
@@ -270,5 +278,5 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
   };
 
-  return [pre, newUrl, main, htmlPre, post];
+  return [pre, newUrl, main, ...(ctx.mode === "auto" ? [graph] : []), htmlPre, post];
 }

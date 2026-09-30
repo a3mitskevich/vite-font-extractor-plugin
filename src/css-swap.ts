@@ -131,6 +131,13 @@ export async function swapCompiledFaces(
     if (located.some((url, index) => url.kind === "data" && !sources[index])) {
       getLogger(ctx).warn(getInlinedFontMessage(`Font "${face.family}"`));
     }
+    for (const [index, url] of located.entries()) {
+      if (url.kind !== "asset" || sources[index]) continue;
+      getLogger(ctx).warn(
+        `Font "${face.family}": the source of ${pluginContext.getFileName(url.referenceId)} was not` +
+          " found among the files the stylesheet imports (a path built by interpolation?) — keeping original",
+      );
+    }
     const found = sources.filter((source): source is FontSource => !!source);
     if (!found.length) continue;
     const minified = await minifyFace(ctx, { fontName: face.family, options, sources: found });

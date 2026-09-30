@@ -24,14 +24,19 @@ const textOf = (item: Rollup.OutputAsset | Rollup.OutputChunk): string | null =>
   return typeof item.source === "string" ? item.source : null;
 };
 
+// Chunk metadata first; the texts are read only for files no chunk lists
 function createReferenceCheck(bundle: Rollup.OutputBundle): (fileName: string) => boolean {
   const items = Object.values(bundle);
   const imported = new Set(
     items.flatMap((item) => [...((item as ChunkMetadata).viteMetadata?.importedAssets ?? [])]),
   );
-  const texts = items.map(textOf).filter((text): text is string => text !== null);
-  return (fileName) =>
-    imported.has(fileName) || texts.some((text) => createNamePattern(fileName).test(text));
+  let texts: string[] | undefined;
+  return (fileName) => {
+    if (imported.has(fileName)) return true;
+    texts ??= items.map(textOf).filter((text): text is string => text !== null);
+    const pattern = createNamePattern(fileName);
+    return texts.some((text) => pattern.test(text));
+  };
 }
 
 /**

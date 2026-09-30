@@ -30,12 +30,16 @@ describe("Edge cases", () => {
     // Different bytes behind the interpolated name
     cpSync(join(fixturesDir, "fonts", "icon-font.woff2"), join(root, "fonts", "text-bold.woff2"));
     try {
-      const { output } = await buildFixture({
+      const { output, messages } = await buildFixture({
         fixture: root,
         pluginOptions: { type: "manual", targets: [] },
       });
       const items = output as OutputItem[];
       expect(findBrokenFontReferences(items)).toEqual([]);
+      // The interpolated path names no candidate: the face keeps its original and says why
+      const warnings = problems(messages).map((m) => m.message);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatch(/Font "Text Bold": the source of .*text-bold.* was not found/);
       expect(findOrphanFontAssets(items)).toEqual([]);
 
       const byFamily = getFontFilesByFamily(items);
@@ -132,6 +136,28 @@ describe("Disk cache: client and SSR builds of one config", () => {
       expect(entries().some((name) => name.endsWith(".tmp"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Hooks without filters", () => {
+  // moduleParsed runs for every module of the build: only auto mode needs it
+  it("should register moduleParsed in auto mode only", async () => {
+    const hasModuleParsed = async (options: Parameters<typeof plugin>[0]) =>
+      (await plugin(options)).some((part) => "moduleParsed" in part);
+
+    expect(await hasModuleParsed({ type: "manual", targets: [] })).toBe(false);
+    expect(await hasModuleParsed({ type: "auto" })).toBe(true);
+  });
+
+  it("should give every per-module hook a filter", async () => {
+    const parts = await plugin({ type: "auto" });
+    for (const part of parts) {
+      for (const hook of ["resolveId", "load", "transform"] as const) {
+        const value = part[hook];
+        if (!value) continue;
+        expect(typeof value === "object" && "filter" in value, `${part.name} ${hook}`).toBe(true);
+      }
     }
   });
 });
