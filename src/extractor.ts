@@ -15,6 +15,7 @@ import { transformHook } from "./transform";
 import { generateBundleHook } from "./bundle";
 import { createServeMiddleware } from "./serve";
 import { extractAssetReferences } from "./asset-refs";
+import { getManifestFileName } from "./manifest";
 
 export default function FontExtractor(pluginOption: PluginOption = { type: "auto" }): Plugin {
   const ctx = createPluginContext(pluginOption);
@@ -50,6 +51,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
 
       ctx.importResolvers = createResolvers(config);
       ctx.base = config.base;
+      ctx.manifestFileName = getManifestFileName(config.build.manifest);
 
       if (pluginOption.cache) {
         const cachePath =

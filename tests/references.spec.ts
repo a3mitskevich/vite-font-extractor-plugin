@@ -46,6 +46,17 @@ const getFontFileByFamily = (output: OutputItem[]): Map<string, string> => {
   return new Map(entries);
 };
 
+interface ManifestChunk {
+  file: string;
+  src?: string;
+  assets?: string[];
+}
+
+const readManifest = (output: OutputItem[]): Record<string, ManifestChunk> => {
+  const manifest = output.find((item) => item.fileName.endsWith("manifest.json")) as OutputAsset;
+  return JSON.parse(String(manifest.source)) as Record<string, ManifestChunk>;
+};
+
 // A ligature is rendered when the text collapses into one existing glyph
 const rendersLigature = (font: fontkit.Font, text: string): boolean => {
   const glyphs = font.layout(text).glyphs;
@@ -221,6 +232,21 @@ describe.sequential("Font references in build output", () => {
         expect(getFontFileByFamily(items).get("Font Name")).not.toBe("assets/font.woff2");
         expect(findBrokenFontReferences(items)).toEqual([]);
         expect(findOrphanFontAssets(items)).toEqual([]);
+      });
+
+      it("should list the font a JS ?subset= import loads in the manifest", async () => {
+        const { output } = await buildByVersion(version, {
+          fixture: fixtures["subset-js"].path,
+          pluginOptions: { type: "manual", targets: [] },
+          manifest: true,
+        });
+        const items = output as OutputItem[];
+
+        const [font] = getFontAssets(items);
+        expect(getFontAssets(items)).toHaveLength(1);
+        expect(Buffer.from(font.source).length).toBeLessThan(textFontsLength.woff2);
+        expect(readManifest(items)["index.html"]?.assets).toEqual([font.fileName]);
+        expect(findBrokenFontReferences(items)).toEqual([]);
       });
 
       it("should point a JS ?subset= import at its own font with a relative base", async () => {

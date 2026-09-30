@@ -14,6 +14,7 @@ import { type AssetRename, rewriteFontReferences } from "./rewrite-refs";
 import { STANDALONE_GROUP_PREFIX } from "./asset-refs";
 import { warnInlinedFonts } from "./inline-fonts";
 import { mergeSubsetOptions } from "./subset-options";
+import { rewriteManifest } from "./manifest";
 
 type GetFileName = (referenceId: string) => string;
 type EmitFile = (file: Rollup.EmittedAsset) => string;
@@ -206,12 +207,15 @@ export async function generateBundleHook(
   const minified = (await Promise.all(groups.map((group) => minifyGroup(ctx, group)))).flat();
   const renames = emitMinifiedFonts(emitFile, getFileName, minified);
 
-  const stillReferenced = rewriteFontReferences(bundle, renames);
+  // The manifest lists what the other files load — it is rewritten once the originals are gone
+  const manifests = new Set(ctx.manifestFileName ? [ctx.manifestFileName] : []);
+  const stillReferenced = rewriteFontReferences(bundle, renames, manifests);
   for (const oldFileName of new Set(renames.map((rename) => rename.oldFileName))) {
     if (!stillReferenced.has(oldFileName)) {
       delete bundle[oldFileName];
     }
   }
+  rewriteManifest(bundle, ctx.manifestFileName, renames, (message) => logger.warn(message));
 
   const stats: MinifyStats = {
     minified: minified.length,

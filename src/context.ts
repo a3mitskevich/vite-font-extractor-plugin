@@ -25,6 +25,8 @@ export interface PluginContext {
   isServe: boolean;
   // Resolved `config.base`; dev urls carry it and must be stripped before resolving files
   base: string;
+  // Build manifest written by Vite, null when `build.manifest` is off
+  manifestFileName: string | null;
   readonly glyphsFindMap: Map<string, string[]>;
   // Keyed by `${referenceId}:${subsetKey}:${fontName}`
   readonly transformMap: Map<string, FontReference>;
@@ -115,6 +117,7 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     logger: null,
     isServe: false,
     base: "/",
+    manifestFileName: null,
     glyphsFindMap,
     transformMap: new Map(),
     moduleReferences: new Map(),

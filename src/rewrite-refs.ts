@@ -110,6 +110,14 @@ function createTargets(renames: AssetRename[]): RenameTargets {
 const pickNewBase = (target: RenameTarget, family: string | undefined): string | undefined =>
   family === undefined ? target.fallback : target.byFamily.get(normalizeFamily(family));
 
+// Matches a reference to the file in any encoding the output may use
+export function createFileNamePattern(fileName: string): RegExp {
+  const base = basename(fileName);
+  return new RegExp(
+    NAME_ENCODERS.map((encode) => NAME_START + escapeRegExp(encode(base)) + NAME_END).join("|"),
+  );
+}
+
 function updateImportedAssets(chunk: Rollup.OutputChunk, renames: AssetRename[]): void {
   const importedAssets = (chunk as ChunkMetadata).viteMetadata?.importedAssets;
   if (!importedAssets) return;
@@ -171,12 +179,7 @@ const rewriteText = (text: string, rewriteNames: RewriteNames): string => {
 function findLeftovers(texts: string[], renames: AssetRename[]): Set<string> {
   const leftovers = new Set<string>();
   for (const oldFileName of new Set(renames.map((rename) => rename.oldFileName))) {
-    const oldBase = basename(oldFileName);
-    const pattern = new RegExp(
-      NAME_ENCODERS.map((encode) => NAME_START + escapeRegExp(encode(oldBase)) + NAME_END).join(
-        "|",
-      ),
-    );
+    const pattern = createFileNamePattern(oldFileName);
     if (texts.some((text) => pattern.test(text))) leftovers.add(oldFileName);
   }
   return leftovers;
@@ -186,16 +189,19 @@ function findLeftovers(texts: string[], renames: AssetRename[]): Set<string> {
  * Points every CSS/HTML/JS reference of a renamed font to its minified file.
  * Inside @font-face the file minified for that font-family is used.
  * Returns old file names that are still referenced and therefore must stay in the bundle.
+ * `skipped` files (the manifest) are neither rewritten nor count as references.
  */
 export function rewriteFontReferences(
   bundle: Rollup.OutputBundle,
   renames: AssetRename[],
+  skipped: ReadonlySet<string> = new Set(),
 ): Set<string> {
   if (!renames.length) return new Set();
 
   const rewriteNames = createNameRewriter(renames);
   const texts: string[] = [];
   for (const item of Object.values(bundle)) {
+    if (skipped.has(item.fileName)) continue;
     if (item.type === "chunk") {
       const code = rewriteText(item.code, rewriteNames);
       if (code !== item.code) {
