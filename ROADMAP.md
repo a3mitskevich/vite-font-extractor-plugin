@@ -1,6 +1,6 @@
 # ROADMAP
 
-Development roadmap for `vite-font-extractor-plugin` — v3.1.
+Development roadmap for `vite-font-extractor-plugin` — v4.0.
 
 > Priorities: **P0** — blocks release, **P1** — next release, **P2** — planned, **P3** — backlog.
 
@@ -8,86 +8,50 @@ Development roadmap for `vite-font-extractor-plugin` — v3.1.
 
 ## Open tasks
 
-### v4.0 — Vite 8 only
-- **Priority:** P1
-- **Status:** Planned. 3.x is the last line supporting Vite 5–7.
-- `peerDependencies.vite` → `^8.0.0`, `engines.node` aligned with Vite 8
-- Remove `vite-5/6/7` aliases and the per-version test loops
-- Drop compatibility guards duplicated from hook filters, use Rolldown types directly
-- Move the disk cache to `config.cacheDir`
-- Toolchain majors: vitest 5, TypeScript 6, tsup → tsdown, changesets 3, lint-staged 17
-- Dev server: invalidate auto-mode fonts on HMR (`?v=` and non-root `base` are handled since 3.1)
-- **Main goal of the package (README → "Goal"):** a changed font result renames the font and every file that
-  depends on it (CSS, JS, HTML, manifest); an unchanged result keeps every name. 3.x meets it for font files only:
-  CSS/JS are hashed before `generateBundle` rewrites the font url, so a changed glyph set keeps `index-<hash>.css`
-  under the old name. Approach: minify before the bundler hashes the output and let Rolldown rename the chain
-  itself, not rewrite the finished bundle. Findings of the 2026-09-30 spike on Vite 5 and 8:
-  - JS `?subset=` imports: a `resolveId` that returns the minified file works — the bundler renames the font and
-    the JS chunk. The manifest key becomes the path of that file.
-  - CSS `url()`: Vite resolves it with its internal resolver (aliases + `vite:resolve`), plugin `resolveId` is not
-    called. Candidates: `resolve.alias` with `customResolver`, or swapping the asset reference in `transform`
-    after `vite:css`.
-  - Auto mode knows its glyph set only after all CSS is transformed, and Rolldown has no `setAssetSource`:
-    needs a source pre-scan in `buildStart` or stays on the post-processing path.
-  - Requires deterministic minification (fontext 2, see "Deterministic font hashing"), otherwise every build
-    renames every CSS/JS file
-- Dev server: minify JS `?subset=` imports (3.x subsets them in build only, documented)
-- `assetFileNames` without `[hash]`: keep the original file name for the minified font (3.x emits `icons2.woff2`)
-  and support that outcome in every reference and the manifest
-- Google Fonts: add `&text=` for `characters` targets and in auto mode. 3.x uses `ligatures` only — changing it in
-  3.x would start subsetting Google fonts of existing projects
-- Put the fontext version into the disk cache key, so a fontext upgrade never serves a stale result. Reading the
-  installed version needs the ESM-only build
+### Vite: plugin resolution of CSS `url()`
+- **Priority:** P2
+- CSS `url()` never reaches plugin `resolveId` in Vite 8 (vitejs/vite#14686), and `resolve.alias` `customResolver` is
+  deprecated. 4.0 therefore minifies `@font-face` in two passes (before vite:css for faces written in the module,
+  after it for partials/mixins/`@import`, with a lookup of the source file). Once Vite resolves CSS urls through
+  plugins, collapse both passes into `resolveId`/`load` — faces from partials would then keep the original name with
+  `assetFileNames` without `[hash]` too
+
+### Fonts in `public/`
+- **Priority:** P3
+- Copied as is by Vite, never hashed: minifying them would change the bytes behind an unchanged url. Out of scope
+  unless they move into the module graph
+
+### Auto mode and plugins that load CSS modules themselves
+- **Priority:** P3
+- The `@font-face` module waits until every discovered module is parsed; a plugin that `this.load()`s that module
+  from another module's transform delays it until the 20 s watchdog, and `buildEnd` then reports glyphs found late.
+  No such plugin is known; revisit when a report comes in
 
 ---
 
-### Testing
+## Completed (v4.0)
 
-#### CSS Modules (.module.css)
-- **Priority:** P2
-- Vite natively supports CSS modules — verify `@font-face` inside `.module.css` is processed by plugin
-- **Files:** create `tests/fixtures/css-modules/`, add tests
-
-#### Emoji / non-BMP Unicode in auto mode
-- **Priority:** P2
-- Auto mode uses `GLYPH_REGEX` for `content: "..."` — verify emoji support (🔤, 🎵) and non-BMP characters (U+10000+)
-- Depends on fontext support
-- **Files:** create `tests/fixtures/auto-emoji/`, update `src/constants.ts` if needed
-
-#### Deterministic font hashing
-- **Priority:** P1
-- **Status:** Root cause found, fix belongs to `fontext`
-- svg2ttf writes the current time (second precision) into `head.created`/`head.modified` and `checkSumAdjustment`, so builds in different seconds produce different bytes and file hashes (woff2 660/664/672/676 B)
-- **Needed:** pass svg2ttf's `ts` option in fontext (0 or `SOURCE_DATE_EPOCH`), then drop `retry` in `tests/hash.spec.ts` — `hash.spec.ts` already proves stability with a frozen `Date`
-- `vitest.config.ts` blames parallel execution for nondeterminism — that comment is wrong, re-check whether `fileParallelism: false` is still needed
-
-#### fontext security update
-- **Priority:** P1
-- `@xmldom/xmldom@0.7` (high severity advisories) comes via `svg2ttf@6.0.3`; `svg2ttf@6.1.0` uses the fixed `^0.9` — release a fontext patch, then bump it here
-
-### Code Quality (from audit)
-
-#### Break down large functions
-- **Priority:** P3
-- `transformHook` in `src/transform.ts` — still long, split the @font-face branch
-
-#### Deduplicate test helpers
-- **Priority:** P3
-- `tests/references.spec.ts` and `tests/serve.spec.ts` define their own `rendersLigature`/font-by-family helpers — use the shared ones from `tests/utils.ts`
-
-#### `new URL('…?subset=', import.meta.url)`
-- **Priority:** P3
-- Not supported (documented). Could be handled in `generateBundle` by finding `<font>?subset=X` in chunks and registering standalone groups by file name
-
-### Features
-
-#### JS import ?subset= in dev server
-- **Priority:** P3
-- `?subset=` in CSS works in dev since 3.1; JS imports with `?subset=` are still build only
-- Dev server doesn't intercept `import font from './font.woff2?subset=ABC'`
-- Needed: add handling in `configureServer` middleware
-
----
+- ~~Vite 8 only: `peerDependencies.vite ^8.0.0`, Node 22.13, CI on Node 22/24; Vite 5–7 aliases, per-version test
+  loops and compatibility guards removed~~
+- ~~fontext 2: deterministic fonts (no retries or frozen clock in tests, test files run in parallel again),
+  `withWhitespace` removed with a hint, failed ligatures keep the font original with the reason, `legacy-kern`
+  warnings logged~~
+- ~~**Main goal:** fonts are minified before Rolldown hashes the output; the plugin emits them and Vite/Rolldown name
+  the font, the CSS, the JS chunk that imports it, HTML and manifest. Proven by `tests/goal.spec.ts`~~
+- ~~`@font-face` in a module (pre-transform) and from Sass/Less partials, mixins, `@import` (after vite:css, source
+  found through `config.createResolver` and Rolldown's content dedup, the original removed)~~
+- ~~Auto mode waits for the whole module graph (lazy chunks, Sass variables, CSS modules), fails the build on a glyph
+  found too late~~
+- ~~`assetFileNames` without `[hash]` keeps the original file name of a minified `@font-face`~~
+- ~~JS `?subset=` imports and `new URL('…?subset=', import.meta.url)` in build and dev~~
+- ~~Dev: auto-mode fonts get a new url and reload through HMR when stylesheets change their glyphs~~
+- ~~HTML preloads follow the CSS through `transformIndexHtml`~~
+- ~~Fonts inlined by Vite (`build.lib`, `assetsInlineLimit`) are minified and inlined~~
+- ~~SSR builds point at the client's minified fonts~~
+- ~~Google Fonts `text=` for `characters`/`raws` targets and auto mode~~
+- ~~Disk cache in `config.cacheDir`, fontext version in the key, pruning per build config and dev server~~
+- ~~Exact sourcemaps after a `?subset=` url~~
+- ~~Tests: goal, auto graph, CSS modules, emoji / non-BMP in auto mode, shared helpers; `transformHook` split~~
 
 ## Completed (v3.1)
 
