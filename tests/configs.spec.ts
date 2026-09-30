@@ -5,6 +5,7 @@ import type { OutputAsset } from "rollup";
 import type { PluginOption } from "../src";
 import {
   buildFixture,
+  collectFontReferences,
   findBrokenFontReferences,
   findOrphanFontAssets,
   fixtures,
@@ -141,14 +142,8 @@ const scenarios: Record<string, Scenario> = {
       const [a, b] = outputs;
       getFontAssets(a).forEach((asset) => expect(asset.fileName).toMatch(/^a\//));
       getFontAssets(b).forEach((asset) => expect(asset.fileName).toMatch(/^b\//));
-      // Each output is minified on its own: same formats, but the hashes may differ when the
-      // two minifications fall into different seconds (svg2ttf timestamps, see hash.spec)
-      const extensionsOf = (output: OutputItem[]) =>
-        fontNamesOf(output)
-          .map((name) => name.split(".").pop())
-          .sort();
-      expect(extensionsOf(a)).toEqual(["ttf", "woff", "woff2"]);
-      expect(extensionsOf(b)).toEqual(extensionsOf(a));
+      // Fonts are emitted once, before the outputs are rendered: same files in both
+      expect(fontNamesOf(a).sort()).toEqual(fontNamesOf(b).sort());
     },
   },
   "spaces in the font file name": {
@@ -194,9 +189,7 @@ const scenarios: Record<string, Scenario> = {
         },
       },
     },
-    // Current behaviour: the same family in two stylesheets is reported although both are
-    // minified with the same options and share one result
-    expectedWarnings: [/Font "Icons" found in multiple files: .*[ab]\.css.* and .*[ab]\.css.*/],
+    // The same family in two stylesheets is minified once and shares one result: no warning
     check: ([output]) => {
       const cssFiles = output.filter(
         (item): item is OutputAsset => item.type === "asset" && item.fileName.endsWith(".css"),
@@ -212,24 +205,49 @@ const scenarios: Record<string, Scenario> = {
   },
 };
 
+const baseNameOf = (fileName: string): string => fileName.slice(fileName.lastIndexOf("/") + 1);
+
+// Fonts the given outputs point at, by output file name
+const referencedFonts = (output: OutputItem[], from: (fileName: string) => boolean) => {
+  const names = new Set(
+    collectFontReferences(output)
+      .filter((ref) => from(ref.from))
+      .map((ref) => baseNameOf(ref.path)),
+  );
+  return getFontAssets(output).filter((asset) => names.has(baseNameOf(asset.fileName)));
+};
+
 const expectInvariants = (output: OutputItem[]): void => {
   expect(findBrokenFontReferences(output)).toEqual([]);
   expect(findOrphanFontAssets(output)).toEqual([]);
 
-  const fonts = getFontAssets(output);
-  expect(fonts.length).toBeGreaterThan(0);
-  fonts.forEach((asset) => {
+  // @font-face sources are minified
+  const cssFonts = referencedFonts(output, (name) => name.endsWith(".css") || name.endsWith(".js"));
+  const minified = cssFonts.filter((asset) => {
     const ext = asset.fileName.split(".").pop() as keyof typeof fontsLength;
-    expect(Buffer.from(asset.source).length, asset.fileName).toBeLessThan(fontsLength[ext]);
+    return Buffer.from(asset.source).length < fontsLength[ext];
   });
+  expect(minified.length).toBeGreaterThan(0);
 
-  const readable = getReadableFontAssets(output);
+  const readable = getReadableFontAssets(minified);
   expect(readable.length).toBeGreaterThan(0);
   readable.forEach((asset) => {
     const font = openFont(asset.source);
     expect(rendersLigature(font, "close"), asset.fileName).toBe(true);
     expect(rendersLigature(font, "star"), asset.fileName).toBe(false);
   });
+
+  // A JS import without ?subset= is not tied to a font-family: it loads the original file,
+  // which no stylesheet points at
+  const cssNames = new Set(
+    referencedFonts(output, (name) => name.endsWith(".css")).map((asset) => asset.fileName),
+  );
+  getFontAssets(output)
+    .filter((asset) => {
+      const ext = asset.fileName.split(".").pop() as keyof typeof fontsLength;
+      return Buffer.from(asset.source).length === fontsLength[ext];
+    })
+    .forEach((asset) => expect(cssNames.has(asset.fileName), asset.fileName).toBe(false));
 };
 
 describe.sequential("Build config regressions", () => {

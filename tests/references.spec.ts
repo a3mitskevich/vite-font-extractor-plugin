@@ -226,7 +226,10 @@ describe.sequential("Font references in build output", () => {
     const items = output as OutputItem[];
 
     expect(getFontFileByFamily(items).get("Text Font")).toBe("assets/text-font.woff2");
-    expect(getFontFileByFamily(items).get("Font Name")).not.toBe("assets/font.woff2");
+    // Vite never emits the original of a minified @font-face: the minified font keeps the name
+    expect(getFontFileByFamily(items).get("Font Name")).toBe("assets/font.woff2");
+    const minified = getFontAssets(items).find((asset) => asset.fileName === "assets/font.woff2");
+    expect(Buffer.from(minified!.source).length).toBeLessThan(fontsLength.woff2);
     expect(findBrokenFontReferences(items)).toEqual([]);
     expect(findOrphanFontAssets(items)).toEqual([]);
   });

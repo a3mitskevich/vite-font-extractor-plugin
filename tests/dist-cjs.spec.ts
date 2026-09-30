@@ -38,7 +38,8 @@ describe.skipIf(!existsSync(DIST_CJS))("dist: CommonJS build", () => {
     const cjs = loadCjs();
     expect(typeof cjs.default).toBe("function");
     expect(cjs.FontExtractor).toBe(cjs.default);
-    expect(cjs.default({ type: "manual", targets: [] }).name).toBe(PACKAGE_NAME);
+    const names = cjs.default({ type: "manual", targets: [] }).map((part) => part.name);
+    expect(names).toContain(PACKAGE_NAME);
   });
 
   it("should minify fonts in a Vite build", async () => {

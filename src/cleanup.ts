@@ -1,0 +1,66 @@
+import { basename, relative } from "node:path";
+import { normalizePath, type Rollup } from "vite";
+import type { PluginContext } from "./context";
+
+type GetFileName = (referenceId: string) => string;
+
+interface ChunkMetadata {
+  viteMetadata?: { importedAssets?: Set<string> };
+}
+
+const SOURCE_MAP_RE = /\.map$/;
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// A file name is a whole url segment: `icon.woff2` never matches inside `my-icon.woff2`
+const createNamePattern = (fileName: string): RegExp => {
+  const name = basename(fileName);
+  const variants = [name, name.replaceAll(" ", "%20"), name.replaceAll(" ", "\\ ")];
+  return new RegExp(`(?<![\\w.-])(?:${variants.map(escapeRegExp).join("|")})(?![\\w-])`);
+};
+
+const textOf = (item: Rollup.OutputAsset | Rollup.OutputChunk): string | null => {
+  if (SOURCE_MAP_RE.test(item.fileName)) return null;
+  if (item.type === "chunk") return item.code;
+  return typeof item.source === "string" ? item.source : null;
+};
+
+function createReferenceCheck(bundle: Rollup.OutputBundle): (fileName: string) => boolean {
+  const items = Object.values(bundle);
+  const imported = new Set(
+    items.flatMap((item) => [...((item as ChunkMetadata).viteMetadata?.importedAssets ?? [])]),
+  );
+  const texts = items.map(textOf).filter((text): text is string => text !== null);
+  return (fileName) =>
+    imported.has(fileName) || texts.some((text) => createNamePattern(fileName).test(text));
+}
+
+/**
+ * Removes fonts Vite emitted for a source the plugin minified once nothing loads them anymore:
+ * the CSS of an imported @font-face was pointed at the minified file after Vite had emitted the
+ * original, a preload followed the CSS, or a probe named a candidate source. Runs before Vite
+ * writes the manifest, so the manifest never lists a removed file.
+ */
+export function removeUnusedOriginals(
+  ctx: PluginContext,
+  bundle: Rollup.OutputBundle,
+  getFileName: GetFileName,
+): string[] {
+  if (!ctx.emittedFonts.size && !ctx.probeAssets.size) return [];
+  const minified = new Set([...ctx.emittedFonts.values()].map((font) => font.fileName));
+  const sources = new Set(
+    [...ctx.emittedFonts.values()].map((font) => normalizePath(relative(ctx.root, font.file))),
+  );
+  const probes = new Set([...ctx.probeAssets].map(getFileName));
+  const isReferenced = createReferenceCheck(bundle);
+  const removed: string[] = [];
+  for (const [fileName, item] of Object.entries(bundle)) {
+    if (item.type !== "asset" || minified.has(fileName)) continue;
+    const isReplaced =
+      probes.has(fileName) || item.originalFileNames.some((file) => sources.has(file));
+    if (isReplaced && !isReferenced(fileName)) {
+      delete bundle[fileName];
+      removed.push(fileName);
+    }
+  }
+  return removed;
+}

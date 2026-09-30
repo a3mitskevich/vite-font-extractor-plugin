@@ -1,8 +1,9 @@
+import type { ResolvedBuildOptions } from "vite";
 import type Cache from "./cache";
 import type {
-  FontReference,
   ImportResolvers,
   InternalLogger,
+  MinifyStats,
   OptionsWithCacheSid,
   PluginOption,
   ServeFontStubResponse,
@@ -10,7 +11,23 @@ import type {
   Target,
   TargetOptionsMap,
 } from "./types";
-import { getReferenceKey } from "./asset-refs";
+import type { CssResolvers } from "./css-candidates";
+import { createGraphState, type GraphState } from "./graph-wait";
+
+// A minified font emitted by the plugin
+export interface EmittedFont {
+  file: string;
+  // Output file name, known as soon as the asset is emitted
+  fileName: string;
+  // Emitted for a url without `?subset=` — the result an HTML preload of the file follows
+  isPlain: boolean;
+}
+
+export interface MinifiedSource {
+  url: string;
+  extension: string;
+  source: Buffer;
+}
 
 export interface PluginContext {
   readonly mode: PluginOption["type"];
@@ -21,22 +38,42 @@ export interface PluginContext {
 
   cache: Cache | null;
   importResolvers: ImportResolvers | null;
+  cssResolvers: CssResolvers | null;
   logger: InternalLogger | null;
 
   isServe: boolean;
+  root: string;
   // Resolved `config.base`; dev urls carry it and must be stripped before resolving files
   base: string;
-  // Build manifest written by Vite, null when `build.manifest` is off
-  manifestFileName: string | null;
+  publicDir: string | null;
+  // Build options of the environment, null in dev
+  buildConfig: ResolvedBuildOptions | null;
+  // Auto mode: glyphs of CSS `content` per module id
   readonly glyphsFindMap: Map<string, string[]>;
-  // Keyed by `${referenceId}:${subsetKey}:${fontName}`
-  readonly transformMap: Map<string, FontReference>;
-  // Build: asset reference keys (`${referenceId}:${subsetKey}`) of each transformed module.
-  // `vite build --watch` re-transforms only changed modules, so entries of transformMap are
-  // replaced per module. A key, not the id: every `?subset=` of one file shares its reference id
-  readonly moduleReferences: Map<string, ReadonlySet<string>>;
   readonly fontServeProxy: Map<string, () => Promise<ServeFontStubResponse | null>>;
+  // font-family → id of the module that declared it, for the "found in multiple files" warning
   readonly progress: Map<string, string>;
+
+  // Build state, reset on every (re)build
+  // CSS module sources before vite:css — imports of a module lead to the fonts it received
+  readonly rawSources: Map<string, string>;
+  readonly sourceReads: Map<string, Promise<Buffer>>;
+  // Minified bytes per source file, keyed by source files + options
+  readonly minifications: Map<string, Promise<Map<string, Buffer>>>;
+  // Reference id → minified font emitted by the plugin
+  readonly emittedFonts: Map<string, EmittedFont>;
+  // Hashes of data: URLs the plugin inlined minified fonts as
+  readonly inlinedFonts: Set<string>;
+  // Reference ids emitted only to find which source file an asset of Vite was read from
+  readonly probeAssets: Set<string>;
+  readonly graph: GraphState;
+  // Auto mode: glyph sets (option sids) fonts were minified with, checked in buildEnd
+  readonly autoGlyphSets: Set<string>;
+  readonly stats: MinifyStats;
+  isMinifyPhaseLogged: boolean;
+  // Logger's cached count when the build started, the summary reports the difference
+  cachedBefore: number;
+  reportMinified(fontName: string, fonts: MinifiedSource[], minified: Map<string, Buffer>): void;
 }
 
 export function getLogger(ctx: PluginContext): InternalLogger {
@@ -57,13 +94,23 @@ export function getResolvers(ctx: PluginContext): ImportResolvers {
   return ctx.importResolvers;
 }
 
+export function getCssResolvers(ctx: PluginContext): CssResolvers {
+  if (!ctx.cssResolvers) {
+    throw new Error(
+      "[vite-font-extractor-plugin] CSS resolvers not initialized. configResolved not called yet.",
+    );
+  }
+  return ctx.cssResolvers;
+}
+
 function createAutoTarget(glyphsFindMap: Map<string, string[]>): IconTarget {
   return {
     get fontName(): string {
       throw new Error("Illegal access. Font name must be provided from another place");
     },
+    // Sorted: the order modules are transformed in must not change the result
     get raws(): string[] {
-      return Array.from(glyphsFindMap.values()).flat();
+      return [...new Set(Array.from(glyphsFindMap.values()).flat())].sort();
     },
     ligatures: [],
   };
@@ -126,7 +173,7 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     has: (key: string) => mode === "auto" || casualOptionsMap.has(key),
   };
 
-  return {
+  const ctx: PluginContext = {
     mode,
     pluginOption,
     targets,
@@ -134,64 +181,73 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     autoProxyOption,
     cache: null,
     importResolvers: null,
+    cssResolvers: null,
     logger: null,
     isServe: false,
+    root: process.cwd(),
     base: "/",
-    manifestFileName: null,
+    publicDir: null,
+    buildConfig: null,
     glyphsFindMap,
-    transformMap: new Map(),
-    moduleReferences: new Map(),
     fontServeProxy: new Map(),
     progress: new Map(),
+    rawSources: new Map(),
+    sourceReads: new Map(),
+    minifications: new Map(),
+    emittedFonts: new Map(),
+    inlinedFonts: new Set(),
+    probeAssets: new Set(),
+    graph: createGraphState(),
+    autoGlyphSets: new Set(),
+    stats: { minified: 0, cached: 0, saved: 0 },
+    isMinifyPhaseLogged: false,
+    cachedBefore: 0,
+    reportMinified: (fontName, fonts, minified) => reportMinified(ctx, fontName, fonts, minified),
   };
+  return ctx;
 }
 
-// Called on every (re)build start. Dev keeps its state: there buildStart runs once
+function reportMinified(
+  ctx: PluginContext,
+  fontName: string,
+  fonts: MinifiedSource[],
+  minified: Map<string, Buffer>,
+): void {
+  const logger = getLogger(ctx);
+  logger.found("Font", fontName, `${fonts.length} format${fonts.length !== 1 ? "s" : ""}`);
+  fonts.forEach((font, index) => {
+    const result = minified.get(font.url);
+    if (!result) {
+      logger.skipped(fontName, `${font.extension} was not minified — keeping original`);
+      return;
+    }
+    ctx.stats.minified++;
+    ctx.stats.saved += font.source.length - result.length;
+    logger.minified(
+      fontName,
+      font.extension,
+      font.source.length,
+      result.length,
+      index === fonts.length - 1,
+    );
+  });
+}
+
+// Called on every (re)build start; `build --watch` on Rolldown transforms every module again.
+// Dev keeps its state: there buildStart runs once
 export function resetBuildState(ctx: PluginContext): void {
   ctx.cache?.resetUsage();
-  if (!ctx.isServe) {
-    ctx.progress.clear();
-  }
-}
-
-const isHeldByOtherModule = (ctx: PluginContext, referenceKey: string, id: string): boolean =>
-  [...ctx.moduleReferences].some(([moduleId, refs]) => moduleId !== id && refs.has(referenceKey));
-
-function deleteReferences(ctx: PluginContext, referenceKeys: ReadonlySet<string>): void {
-  for (const [key, reference] of ctx.transformMap) {
-    if (referenceKeys.has(getReferenceKey(reference))) {
-      ctx.transformMap.delete(key);
-    }
-  }
-}
-
-// Before a module is (re)transformed: drops the entries it registered last time.
-// References shared with other modules stay — those modules may be served from cache
-export function replaceModuleReferences(
-  ctx: PluginContext,
-  id: string,
-  referenceKeys: ReadonlySet<string>,
-): void {
-  const previous = ctx.moduleReferences.get(id) ?? new Set<string>();
-  ctx.moduleReferences.set(id, referenceKeys);
-  const owned = [...previous, ...referenceKeys].filter((ref) => !isHeldByOtherModule(ctx, ref, id));
-  deleteReferences(ctx, new Set(owned));
-}
-
-// After all modules are transformed: forgets modules that left the build
-export function pruneBuildState(ctx: PluginContext, moduleIds: Iterable<string>): void {
-  const live = new Set(moduleIds);
-  const released = new Set<string>();
-  for (const [id, refs] of ctx.moduleReferences) {
-    if (live.has(id)) continue;
-    ctx.moduleReferences.delete(id);
-    refs.forEach((ref) => released.add(ref));
-  }
-  const unheld = [...released].filter((ref) => !isHeldByOtherModule(ctx, ref, ""));
-  deleteReferences(ctx, new Set(unheld));
-  for (const id of ctx.glyphsFindMap.keys()) {
-    if (!live.has(id)) {
-      ctx.glyphsFindMap.delete(id);
-    }
-  }
+  if (ctx.isServe) return;
+  ctx.progress.clear();
+  ctx.rawSources.clear();
+  ctx.sourceReads.clear();
+  ctx.minifications.clear();
+  ctx.emittedFonts.clear();
+  ctx.inlinedFonts.clear();
+  ctx.probeAssets.clear();
+  ctx.glyphsFindMap.clear();
+  ctx.graph.reset();
+  ctx.autoGlyphSets.clear();
+  Object.assign(ctx.stats, { minified: 0, cached: 0, saved: 0 });
+  ctx.isMinifyPhaseLogged = false;
 }

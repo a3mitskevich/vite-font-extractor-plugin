@@ -70,6 +70,7 @@
   "dependencies": {
     "fontext": "^2.0.0",
     "fontkit": "^2.0.4",
+    "magic-string": "^1.4.2",
     "picocolors": "1.1.1"
   },
   "peerDependencies": {

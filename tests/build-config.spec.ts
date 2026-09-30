@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { OutputAsset, OutputChunk } from "rollup";
-import { rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import * as fontkit from "fontkit";
 import { build as viteBuild } from "vite";
@@ -176,6 +176,31 @@ const expectHealthyFontOutput = (output: OutputItem[], messages: LoggerMessage[]
   expect(problems(messages)).toEqual([]);
 };
 
+const DATA_URL_RE = /data:font\/(woff2?|ttf);base64,([A-Za-z0-9+/=]+)/g;
+
+// Fonts inlined as data: URLs anywhere in the output
+const inlinedFonts = (output: OutputItem[]): Array<{ format: string; bytes: Buffer }> =>
+  output.flatMap((item) =>
+    Array.from((textOf(item) ?? "").matchAll(DATA_URL_RE), (match) => ({
+      format: match[1],
+      bytes: Buffer.from(match[2], "base64"),
+    })),
+  );
+
+const textFontSize = (format: string): number =>
+  readFileSync(join(fixturesDir, "fonts", `text-font.${format}`)).length;
+
+const expectInlinedMinifiedFonts = (output: OutputItem[], format: string): void => {
+  const fonts = inlinedFonts(output).filter((font) => font.format === format);
+  expect(fonts.length).toBeGreaterThan(0);
+  for (const { bytes } of fonts) {
+    expect(bytes.length).toBeLessThan(fontsLength[format as keyof typeof fontsLength]);
+    const font = fontkit.create(bytes) as fontkit.Font;
+    expect(rendersLigature(font, "close")).toBe(true);
+    expect(rendersLigature(font, "star")).toBe(false);
+  }
+};
+
 const fontAssetFileNames = (info: PreRenderedAssetInfo): string =>
   FONT_EXT_RE.test(info.names?.[0] ?? info.name ?? "")
     ? "f/[hash][extname]"
@@ -225,8 +250,9 @@ describe.sequential("Build configuration", () => {
           build: { rollupOptions: { output: { assetFileNames: pattern } } },
         });
 
+        // Three formats of the @font-face and the JS ?subset= import
         const fonts = getFontAssets(output);
-        expect(fonts).toHaveLength(3);
+        expect(fonts).toHaveLength(4);
         for (const asset of fonts) {
           expect(asset.fileName).toMatch(expected);
         }
@@ -238,58 +264,55 @@ describe.sequential("Build configuration", () => {
     },
   );
 
-  it("should warn that a font inlined by build.assetsInlineLimit is not minified", async () => {
+  it("should inline the minified font where Vite inlines the original (assetsInlineLimit)", async () => {
     const { output, messages } = await buildWithConfig({
       fixture: "inline-font",
       build: { assetsInlineLimit: 100_000_000 },
     });
 
     expect(getFontAssets(output)).toEqual([]);
-    const warnings = problems(messages);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].type).toBe("warn");
-    expect(warnings[0].message).toContain('"Font Name"');
-    expect(warnings[0].message).toMatch(/inlined/);
-    expect(warnings[0].message).not.toMatch(/Asset not found/);
+    expectInlinedMinifiedFonts(output, "woff2");
+    expect(problems(messages)).toEqual([]);
   });
 
-  it("should warn that a font inlined by library mode is not minified", async () => {
+  it("should inline the minified font in library mode", async () => {
     const root = join(fixturesDir, "inline-font");
-    const { messages } = await buildWithConfig({
+    const { output, messages } = await buildWithConfig({
       fixture: "inline-font",
       build: { lib: { entry: join(root, "lib.js"), formats: ["es"], fileName: "lib" } },
     });
 
-    const warnings = problems(messages);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].message).toContain('"Font Name"');
-    expect(warnings[0].message).toMatch(/inlined/);
+    expect(getFontAssets(output)).toEqual([]);
+    expectInlinedMinifiedFonts(output, "woff2");
+    expect(problems(messages)).toEqual([]);
   });
 
-  it("should warn that an inlined ?subset= face is not minified", async () => {
-    const { messages } = await buildWithConfig({
+  it("should inline the minified font of an inlined ?subset= face", async () => {
+    const { output, messages } = await buildWithConfig({
       fixture: "subset-chars",
       pluginOptions: { type: "manual", targets: [] },
       build: { assetsInlineLimit: 100_000_000 },
     });
 
-    const warnings = problems(messages);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].message).toMatch(/inlined/);
-    expect(warnings[0].message).not.toMatch(/no minify options/);
+    expect(getFontAssets(output)).toEqual([]);
+    const fonts = inlinedFonts(output);
+    expect(fonts.map((font) => font.format).sort()).toEqual(["woff", "woff2"]);
+    fonts.forEach(({ format, bytes }) => expect(bytes.length).toBeLessThan(textFontSize(format)));
+    expect(problems(messages)).toEqual([]);
   });
 
-  it("should warn that an inlined ?subset= import is not minified", async () => {
-    const { messages } = await buildWithConfig({
+  it("should inline the minified font of an inlined ?subset= import", async () => {
+    const { output, messages } = await buildWithConfig({
       fixture: "subset-js",
       pluginOptions: { type: "manual", targets: [] },
       build: { assetsInlineLimit: 100_000_000 },
     });
 
-    const warnings = problems(messages);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].message).toContain("text-font.woff2");
-    expect(warnings[0].message).toMatch(/inlined/);
+    expect(getFontAssets(output)).toEqual([]);
+    const fonts = inlinedFonts(output);
+    expect(fonts).toHaveLength(1);
+    expect(fonts[0].bytes.length).toBeLessThan(textFontSize("woff2"));
+    expect(problems(messages)).toEqual([]);
   });
 
   it("should log the reason when a font fails to minify", async () => {

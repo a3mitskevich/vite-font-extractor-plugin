@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import type { OutputAsset, RollupOutput } from "rollup";
 import * as fontkit from "fontkit";
 import { getSubsetKey, parseSubsetQuery } from "../src/utils";
-import { extractAssetReferences } from "../src/asset-refs";
+import { splitUrl, withoutSubsetParam } from "../src/font-emit";
 import {
   buildFixture,
   createFixture,
@@ -98,23 +98,26 @@ describe("parseSubsetQuery", () => {
   });
 });
 
-describe("extractAssetReferences: decoded queries", () => {
-  it("reads a CSS placeholder whose query has a space", () => {
-    expect(
-      extractAssetReferences(`url("__VITE_ASSET__VRAku6fj__?subset=A B") format("woff2")`),
-    ).toEqual([
-      { referenceId: "VRAku6fj", subset: { characters: "A B", unicodeRanges: undefined } },
-    ]);
+describe("url queries of minified fonts", () => {
+  it("splits a url into the file path and everything after it", () => {
+    expect(splitUrl("./a.woff2?v=2&subset=A B#x")).toEqual({
+      path: "./a.woff2",
+      query: "?v=2&subset=A B#x",
+    });
+    expect(splitUrl("./a.woff2")).toEqual({ path: "./a.woff2", query: "" });
   });
 
-  it("reads placeholders listed one per line", () => {
-    const subset = { characters: "ABC", unicodeRanges: undefined };
-    expect(
-      extractAssetReferences("__VITE_ASSET__a__?subset=ABC\n__VITE_ASSET__b__?subset=ABC"),
-    ).toEqual([
-      { referenceId: "a", subset },
-      { referenceId: "b", subset },
-    ]);
+  it.each([
+    ["?subset=ABC", ""],
+    ["?v=2&subset=ABC", "?v=2"],
+    ["?subset=ABC&v=2", "?v=2"],
+    ["?v=2&subset=A B&w=1", "?v=2&w=1"],
+    ["?subset=ABC#iefix", "#iefix"],
+    ["?#iefix", "?#iefix"],
+    ["?v=2", "?v=2"],
+    ["", ""],
+  ])("keeps the params other than subset of %j", (query, expected) => {
+    expect(withoutSubsetParam(query)).toBe(expected);
   });
 });
 

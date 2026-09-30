@@ -174,10 +174,10 @@ export const importTargets = {
   dist: createCachedImport(async () => import("../dist")),
 };
 
-export const plugin = async (...args: Parameters<FontExtractorPlugin>): Promise<Plugin> => {
+export const plugin = async (...args: Parameters<FontExtractorPlugin>): Promise<Plugin[]> => {
   const testTarget = process.env.TEST_TARGET as keyof typeof importTargets;
   const { default: index } = await importTargets[testTarget ?? "local"]();
-  return index.apply(null, args) as Plugin;
+  return index.apply(null, args);
 };
 
 export const generateId = (): string => Math.random().toString(32).slice(2, 10);
@@ -224,7 +224,7 @@ export const buildFixture = async (
 
   const pluginArgs = options.pluginArgs ?? [pluginOptions];
   const FontExtract = options.pluginFactory
-    ? (options.pluginFactory(...pluginArgs) as Plugin)
+    ? options.pluginFactory(...pluginArgs)
     : await plugin(...pluginArgs);
   const customLogger = options.useConsoleLogger
     ? undefined

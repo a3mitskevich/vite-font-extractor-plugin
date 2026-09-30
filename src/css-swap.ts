@@ -1,0 +1,147 @@
+import { readFile } from "node:fs/promises";
+import { basename, extname, relative } from "node:path";
+import { MagicString } from "magic-string";
+import { normalizePath, type Rollup } from "vite";
+import { type PluginContext, getCssResolvers, getLogger } from "./context";
+import { type CssUrl, findFontFaces } from "./css-faces";
+import { collectFontFiles } from "./css-candidates";
+import { resolveFaceOptions } from "./face-options";
+import { emitFont, type FontSource, minifyFace, readFontSource, toCssUrl } from "./font-emit";
+import type { TransformOutput } from "./css-pre-transform";
+import { getInlinedFontMessage } from "./inline-fonts";
+import { cleanUrl, getHash } from "./utils";
+
+type SwapContext = Pick<Rollup.PluginContext, "emitFile" | "getFileName">;
+
+// `__VITE_ASSET__<ref>__?subset=A` as vite:css leaves it in the compiled CSS
+const ASSET_PLACEHOLDER_RE = /^__VITE_ASSET__([\w$]+)__(.*)$/s;
+const DATA_URL_RE = /^data:[^;,]*;base64,(.*)$/s;
+
+type CompiledUrl =
+  | { kind: "asset"; url: CssUrl; referenceId: string; postfix: string }
+  | { kind: "data"; url: CssUrl; bytes: Buffer }
+  | { kind: "other"; url: CssUrl };
+
+function parseCompiledUrl(url: CssUrl): CompiledUrl {
+  const asset = ASSET_PLACEHOLDER_RE.exec(url.url);
+  if (asset) return { kind: "asset", url, referenceId: asset[1], postfix: asset[2] };
+  const data = DATA_URL_RE.exec(url.url);
+  if (data) return { kind: "data", url, bytes: Buffer.from(data[1], "base64") };
+  return { kind: "other", url };
+}
+
+const stemOf = (file: string): string => basename(file, extname(file));
+
+class SourceLocator {
+  private candidates: Promise<string[]> | undefined;
+
+  constructor(
+    private readonly pluginContext: SwapContext,
+    private readonly ctx: PluginContext,
+    private readonly id: string,
+  ) {}
+
+  private getCandidates(): Promise<string[]> {
+    this.candidates ??= (async () => {
+      const code =
+        this.ctx.rawSources.get(this.id) ??
+        (await readFile(cleanUrl(this.id), "utf8").catch(() => ""));
+      return collectFontFiles(getCssResolvers(this.ctx), this.id, code);
+    })();
+    return this.candidates;
+  }
+
+  // Rolldown names identical bytes the same: a probe of the candidate gets the asset's name
+  private async probe(file: string, fileName: string): Promise<boolean> {
+    const referenceId = this.pluginContext.emitFile({
+      type: "asset",
+      name: basename(file),
+      originalFileName: normalizePath(relative(this.ctx.root, file)),
+      source: await readFontSource(this.ctx, file),
+    });
+    this.ctx.probeAssets.add(referenceId);
+    return this.pluginContext.getFileName(referenceId) === fileName;
+  }
+
+  private async locateAsset(referenceId: string): Promise<string | undefined> {
+    const fileName = this.pluginContext.getFileName(referenceId);
+    const extension = extname(fileName).toLowerCase();
+    const sameFormat = (await this.getCandidates()).filter(
+      (file) => extname(file).toLowerCase() === extension,
+    );
+    const named = sameFormat.filter((file) => basename(fileName).includes(stemOf(file)));
+    if (named.length === 1) return named[0];
+    for (const file of named.length ? named : sameFormat) {
+      if (await this.probe(file, fileName)) return file;
+    }
+    return undefined;
+  }
+
+  private async locateData(bytes: Buffer): Promise<string | undefined> {
+    for (const file of await this.getCandidates()) {
+      if ((await readFontSource(this.ctx, file)).equals(bytes)) return file;
+    }
+    return undefined;
+  }
+
+  async locate(url: CompiledUrl): Promise<FontSource | null> {
+    if (url.kind === "asset") {
+      const file = await this.locateAsset(url.referenceId);
+      return file ? { file, query: url.postfix } : null;
+    }
+    if (url.kind === "data") {
+      const file = await this.locateData(url.bytes);
+      // A data: URL keeps no query; the rule that inlined the original inlines the result too
+      return file ? { file, query: "?inline" } : null;
+    }
+    return null;
+  }
+}
+
+const isEmittedByPlugin = (ctx: PluginContext, url: CompiledUrl): boolean =>
+  (url.kind === "asset" && ctx.emittedFonts.has(url.referenceId)) ||
+  (url.kind === "data" && ctx.inlinedFonts.has(getHash(url.url.url)));
+
+/**
+ * After vite:css: an @font-face the source did not show (Sass/Less imports, mixins, variables,
+ * `@import` of CSS) already points at the original font Vite emitted. The plugin finds the source
+ * file of that asset, emits the minified font and points the url at it; the original, now
+ * unreferenced, is removed from the bundle (cleanup.ts). Vite hashes the CSS with the new name.
+ */
+export async function swapCompiledFaces(
+  pluginContext: SwapContext,
+  ctx: PluginContext,
+  code: string,
+  id: string,
+  waitForGlyphs: () => Promise<void>,
+): Promise<TransformOutput | null> {
+  if (!code.includes("@font-face")) return null;
+  const locator = new SourceLocator(pluginContext, ctx, id);
+  const output = new MagicString(code);
+  for (const face of findFontFaces(code)) {
+    const urls = face.urls.map(parseCompiledUrl);
+    if (urls.some((url) => isEmittedByPlugin(ctx, url))) continue;
+    const plain = face.urls.map((url) => url.url);
+    const options = resolveFaceOptions(ctx, { family: face.family, urls: plain, report: true });
+    const located = urls.filter((url) => url.kind !== "other");
+    if (!options || !located.length) continue;
+    if (options.auto) await waitForGlyphs();
+    const sources = await Promise.all(located.map((url) => locator.locate(url)));
+    if (located.some((url, index) => url.kind === "data" && !sources[index])) {
+      getLogger(ctx).warn(getInlinedFontMessage(`Font "${face.family}"`));
+    }
+    const found = sources.filter((source): source is FontSource => !!source);
+    if (!found.length) continue;
+    const minified = await minifyFace(ctx, { fontName: face.family, options, sources: found });
+    for (const [index, url] of located.entries()) {
+      const source = sources[index];
+      const content = source && minified.get(source.file + source.query);
+      if (!source || !content) continue;
+      const emitted = await emitFont(pluginContext, ctx, source, content);
+      output.overwrite(url.url.start, url.url.end, toCssUrl(emitted));
+    }
+  }
+  return output.hasChanged()
+    ? { code: output.toString(), map: output.generateMap({ hires: "boundary", source: id }) }
+    : null;
+}
