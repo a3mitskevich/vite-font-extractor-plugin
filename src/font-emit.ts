@@ -128,7 +128,15 @@ async function minifyGroup(
   for (const font of fonts) {
     const buffer = result?.[font.extension];
     const source = toReportSource(ctx, font.url);
-    if (buffer?.length && buffer.length < font.source.length) {
+    const isSmaller = !!buffer?.length && buffer.length < font.source.length;
+    getLogger(ctx).debug(
+      () =>
+        `minify "${fontName}" .${font.extension}: ${font.source.length} B → ` +
+        (buffer?.length ? `${buffer.length} B` : "no result") +
+        (isSmaller ? "" : " — keeps original"),
+      font.url,
+    );
+    if (isSmaller) {
       minified.set(font.url, buffer);
       describeMinified(buffer, {
         fontName,
@@ -148,13 +156,6 @@ async function minifyGroup(
       source,
       reason: `${font.extension}: ${reason} — keeping original`,
     });
-    getLogger(ctx).debug(
-      () =>
-        `minify "${fontName}" .${font.extension}: ${font.source.length} B → ` +
-        (buffer?.length ? `${buffer.length} B` : "no result") +
-        " — keeps original",
-      font.url,
-    );
   }
   ctx.reportMinified(fontName, fonts, minified);
   return minified;
