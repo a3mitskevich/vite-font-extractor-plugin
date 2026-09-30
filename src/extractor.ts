@@ -29,9 +29,10 @@ const SPECIAL_QUERY_RE = /[?&](?:worker|sharedworker|raw|url)\b/;
 const CSS_FILTER = { id: { include: CSS_LANGS_RE, exclude: SPECIAL_QUERY_RE } };
 const JS_CODE_FILTER = { id: { exclude: CSS_LANGS_RE }, code: NEW_URL_CODE_RE };
 
-// Fonts are emitted by the client build only
-const isClient = (environment: { config: { consumer: string } }): boolean =>
-  environment.config.consumer === "client";
+// Builds of every environment minify the same way, so an SSR bundle points at the files the
+// client build emits; the dev middleware serves the browser only
+const isAppliedTo = (environment: { config: { consumer: string; command: string } }): boolean =>
+  environment.config.consumer === "client" || environment.config.command === "build";
 
 // The user's `apply`, narrowed to builds
 const applyToBuild =
@@ -130,7 +131,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     name: `${PLUGIN_NAME}:pre`,
     enforce: "pre",
     apply,
-    applyToEnvironment: isClient,
+    applyToEnvironment: isAppliedTo,
     resolveId: {
       filter: { id: SUBSET_IMPORT_RE },
       async handler(source, importer) {
@@ -160,7 +161,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     name: `${PLUGIN_NAME}:new-url`,
     enforce: "pre",
     apply: applyToBuild(apply),
-    applyToEnvironment: isClient,
+    applyToEnvironment: isAppliedTo,
     transform: {
       filter: JS_CODE_FILTER,
       handler(code, id) {
@@ -172,7 +173,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
   const main: Plugin = {
     name: PLUGIN_NAME,
     apply,
-    applyToEnvironment: isClient,
+    applyToEnvironment: isAppliedTo,
     configResolved(config) {
       configureContext(ctx, config);
     },
@@ -183,6 +184,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
     async buildStart(options) {
       resetBuildState(ctx);
+      if (!ctx.isServe) ctx.buildConfig = this.environment.config.build;
       ctx.cachedBefore = getLogger(ctx).cachedCount();
       if (ctx.isServe || ctx.mode !== "auto") return;
       const resolved = await Promise.all(
@@ -223,7 +225,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
   const htmlPre: Plugin = {
     name: `${PLUGIN_NAME}:html`,
     apply: applyToBuild(apply),
-    applyToEnvironment: isClient,
+    applyToEnvironment: isAppliedTo,
     transformIndexHtml: {
       order: "pre",
       handler(html, htmlContext) {
@@ -236,7 +238,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     name: `${PLUGIN_NAME}:post`,
     enforce: "post",
     apply,
-    applyToEnvironment: isClient,
+    applyToEnvironment: isAppliedTo,
     transformIndexHtml: {
       order: "post",
       handler(html, htmlContext) {

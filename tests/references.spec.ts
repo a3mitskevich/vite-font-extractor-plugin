@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import type { OutputAsset, OutputChunk } from "rollup";
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import * as fontkit from "fontkit";
+import type { PluginOption } from "../src";
 import {
   buildFixture,
   collectFontReferences,
@@ -355,13 +356,20 @@ describe.sequential("Font references in build output", () => {
     expect(findBrokenFontReferences(items)).toEqual([]);
   });
 
-  it("should skip SSR builds where fonts are not emitted", async () => {
-    const { messages } = await buildFixture({
-      fixture: fixtures["subset-js"].path,
-      pluginOptions: { type: "manual", targets: [] },
-      ssr: "index.js",
-    });
+  it("should point an SSR bundle at the fonts the client build emits", async () => {
+    const pluginOptions: PluginOption = { type: "manual", targets: [] };
+    const fixture = fixtures["subset-js"].path;
+    const client = await buildFixture({ fixture, pluginOptions });
+    const ssr = await buildFixture({ fixture, pluginOptions, ssr: "index.js" });
 
-    expect(messages.filter((m) => m.type === "warn" || m.type === "error")).toEqual([]);
+    const namesOf = (output: unknown[]) => [
+      ...new Set(collectFontReferences(output as OutputItem[]).map((ref) => basename(ref.path))),
+    ];
+    const clientFonts = getFontAssets(client.output as OutputItem[]).map((asset) =>
+      basename(asset.fileName),
+    );
+    expect(clientFonts).toHaveLength(1);
+    expect(namesOf(ssr.output)).toEqual(clientFonts);
+    expect(ssr.messages.filter((m) => m.type === "warn" || m.type === "error")).toEqual([]);
   });
 });
