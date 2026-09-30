@@ -11,7 +11,7 @@ import type {
   Target,
   TargetOptionsMap,
 } from "./types";
-import type { CssResolvers } from "./css-candidates";
+import type { CssFileScans, CssResolvers } from "./css-candidates";
 import { createGraphState, type GraphState } from "./graph-wait";
 
 // A minified font emitted by the plugin
@@ -79,6 +79,10 @@ export interface BuildState {
   readonly inlinedFonts: Set<string>;
   // Reference ids emitted only to find which source file an asset of Vite was read from
   readonly probeAssets: Set<string>;
+  // Font files a stylesheet may have received, keyed by module file + hash of its source
+  readonly fontCandidates: Map<string, Promise<string[]>>;
+  // Stylesheets imported by the modules, each read and resolved once per build
+  readonly cssFileScans: CssFileScans;
   readonly graph: GraphState;
   // Auto mode: glyph sets (option sids) fonts were minified with, checked in buildEnd
   readonly autoGlyphSets: Set<string>;
@@ -199,6 +203,8 @@ function createBuildState(
     inlinedFonts: new Set(),
     preloadSources: new Map(),
     probeAssets: new Set(),
+    fontCandidates: new Map(),
+    cssFileScans: new Map(),
     graph: createGraphState(),
     autoGlyphSets: new Set(),
     stats,
@@ -289,6 +295,8 @@ export function resetBuildState(ctx: PluginContext, environment = ""): void {
   ctx.inlinedFonts.clear();
   ctx.preloadSources.clear();
   ctx.probeAssets.clear();
+  ctx.fontCandidates.clear();
+  ctx.cssFileScans.clear();
   ctx.glyphsFindMap.clear();
   ctx.graph.reset();
   ctx.autoGlyphSets.clear();

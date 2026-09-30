@@ -121,38 +121,81 @@ async function resolveImports(
   return resolved.filter((id): id is string => !!id).map(cleanUrl);
 }
 
+// One file of a stylesheet's import tree: the font paths written in it, each resolved against the
+// file itself, and the files it imports
+interface CssFileScan {
+  tokens: string[];
+  fonts: string[][];
+  imports: string[];
+}
+
+// File path → scan of the file as read from disk, shared by every module of a build importing it
+export type CssFileScans = Map<string, Promise<CssFileScan | null>>;
+
+async function scanCode(resolvers: CssResolvers, file: string, code: string): Promise<CssFileScan> {
+  const cleaned = blankComments(code, true);
+  const tokens = readTokens(cleaned).filter(
+    (token) => FONT_PATH_RE.test(token) && !REMOTE_RE.test(token),
+  );
+  const [fonts, imports] = await Promise.all([
+    Promise.all(tokens.map((token) => resolveFontToken(resolvers, token, [file]))),
+    resolveImports(resolvers, cleaned, file),
+  ]);
+  return { tokens, fonts, imports };
+}
+
+function scanFile(
+  resolvers: CssResolvers,
+  file: string,
+  scans: CssFileScans,
+): Promise<CssFileScan | null> {
+  const known = scans.get(file);
+  if (known) return known;
+  const scan = readFile(file, "utf8").then(
+    (code) => scanCode(resolvers, file, code),
+    () => null,
+  );
+  scans.set(file, scan);
+  return scan;
+}
+
 /**
  * Font files a CSS module may have received from its imports: every font path written in the
  * module source and in the files it imports (`@import`, `@use`, `@forward`, `@require`), resolved
  * against the file that contains it and against the module (Sass mixins take paths as strings,
- * and Vite rebases urls of imported files to the module).
+ * and Vite rebases urls of imported files to the module). An imported file is read and resolved
+ * once per build (`scans`); only its font paths are resolved against each module.
  */
 export async function collectFontFiles(
   resolvers: CssResolvers,
   id: string,
   code: string,
+  scans: CssFileScans,
 ): Promise<string[]> {
   const entry = cleanUrl(id);
   const fonts = new Set<string>();
   const visited = new Set<string>([entry]);
-  const queue: Array<{ file: string; code: string }> = [{ file: entry, code }];
+  // The module source, not its file: a Vue style block or a pre transform differs from the file
+  const queue: Array<{ file: string; scan: Promise<CssFileScan | null> }> = [
+    { file: entry, scan: scanCode(resolvers, entry, code) },
+  ];
   while (queue.length && visited.size <= MAX_VISITED_FILES) {
     const current = queue.shift()!;
-    const cleaned = blankComments(current.code, true);
-    const tokens = readTokens(cleaned).filter(
-      (token) => FONT_PATH_RE.test(token) && !REMOTE_RE.test(token),
-    );
-    const importers = current.file === entry ? [entry] : [current.file, entry];
-    for (const files of await Promise.all(
-      tokens.map((token) => resolveFontToken(resolvers, token, importers)),
-    )) {
-      files.forEach((file) => fonts.add(file));
-    }
-    for (const imported of await resolveImports(resolvers, cleaned, current.file)) {
+    const scan = await current.scan;
+    if (!scan) continue;
+    const nearModule =
+      current.file === entry
+        ? []
+        : await Promise.all(
+            scan.tokens.map((token) => resolveFontToken(resolvers, token, [entry])),
+          );
+    scan.fonts.forEach((files, index) => {
+      [...files, ...(nearModule[index] ?? [])].forEach((file) => fonts.add(file));
+    });
+    for (const imported of scan.imports) {
       if (visited.has(imported)) continue;
       visited.add(imported);
-      const source = await readFile(imported, "utf8").catch(() => null);
-      if (source !== null) queue.push({ file: imported, code: source });
+      queue.push({ file: imported, scan: scanFile(resolvers, imported, scans) });
     }
   }
   return [...fonts];

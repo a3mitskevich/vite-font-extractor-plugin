@@ -32,6 +32,21 @@ function parseCompiledUrl(url: CssUrl): CompiledUrl {
 
 const stemOf = (file: string): string => basename(file, extname(file));
 
+// Hash of the whole source: modules of one file (`?inline`, Vue style blocks) share a key only
+// when their sources are equal
+const CANDIDATES_KEY_HASH_LENGTH = 64;
+
+// Font files the module may have received, memoized per build by file and source
+async function getFontCandidates(ctx: PluginContext, id: string): Promise<string[]> {
+  const code = ctx.rawSources.get(id) ?? (await readFile(cleanUrl(id), "utf8").catch(() => ""));
+  const key = `${cleanUrl(id)}\0${getHash(code, CANDIDATES_KEY_HASH_LENGTH)}`;
+  const known = ctx.fontCandidates.get(key);
+  if (known) return known;
+  const candidates = collectFontFiles(getCssResolvers(ctx), id, code, ctx.cssFileScans);
+  ctx.fontCandidates.set(key, candidates);
+  return candidates;
+}
+
 class SourceLocator {
   private candidates: Promise<string[]> | undefined;
 
@@ -42,12 +57,7 @@ class SourceLocator {
   ) {}
 
   private getCandidates(): Promise<string[]> {
-    this.candidates ??= (async () => {
-      const code =
-        this.ctx.rawSources.get(this.id) ??
-        (await readFile(cleanUrl(this.id), "utf8").catch(() => ""));
-      return collectFontFiles(getCssResolvers(this.ctx), this.id, code);
-    })();
+    this.candidates ??= getFontCandidates(this.ctx, this.id);
     return this.candidates;
   }
 

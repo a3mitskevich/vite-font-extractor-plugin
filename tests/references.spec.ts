@@ -334,6 +334,30 @@ describe("Font references in build output", () => {
     expect(findBrokenFontReferences(items)).toEqual([]);
   });
 
+  it("should minify a partial's @font-face in every stylesheet that uses it", async () => {
+    const { output, messages } = await buildFixture({
+      fixture: join(fixturesDir, "shared-partial"),
+      pluginOptions: { type: "manual", targets: [ICON_TARGET] },
+    });
+    const items = output as OutputItem[];
+
+    const css = items.filter((item) => item.fileName.endsWith(".css"));
+    expect(css).toHaveLength(2);
+    const fonts = getFontAssets(items);
+    expect(fonts).toHaveLength(2);
+    const originals: Record<string, number> = { woff2: fontsLength.woff2, woff: fontsLength.woff };
+    for (const font of fonts) {
+      const extension = font.fileName.slice(font.fileName.lastIndexOf(".") + 1);
+      expect(Buffer.from(font.source).length).toBeLessThan(originals[extension]);
+    }
+    for (const sheet of css) {
+      const referenced = collectFontReferences([sheet], items).map((ref) => ref.path);
+      expect(new Set(referenced)).toEqual(new Set(fonts.map((font) => font.fileName)));
+    }
+    expect(findOrphanFontAssets(items)).toEqual([]);
+    expect(messages.filter((m) => m.type === "warn" || m.type === "error")).toEqual([]);
+  });
+
   it("should point an SSR bundle at the fonts the client build emits", async () => {
     const pluginOptions: PluginOption = { type: "manual", targets: [] };
     const fixture = fixtures["subset-js"].path;
