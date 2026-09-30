@@ -1,0 +1,10 @@
+@mixin icons {
+  @font-face {
+    font-family: "Material Icons";
+    src: url("../fonts/icon-font.woff2") format("woff2");
+  }
+}
+
+.text {
+  color: red;
+}

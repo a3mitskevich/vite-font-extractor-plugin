@@ -14,7 +14,7 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 // A file name is a whole url segment: `icon.woff2` never matches inside `my-icon.woff2`
 const createNamePattern = (fileName: string): RegExp => {
   const name = basename(fileName);
-  const variants = [name, name.replaceAll(" ", "%20"), name.replaceAll(" ", "\\ ")];
+  const variants = [...new Set([name, encodeURI(name), name.replaceAll(" ", "\\ ")])];
   return new RegExp(`(?<![\\w.-])(?:${variants.map(escapeRegExp).join("|")})(?![\\w-])`);
 };
 
@@ -42,8 +42,9 @@ function createReferenceCheck(bundle: Rollup.OutputBundle): (fileName: string) =
 /**
  * Removes fonts Vite emitted for a source the plugin minified once nothing loads them anymore:
  * the CSS of an imported @font-face was pointed at the minified file after Vite had emitted the
- * original, a preload followed the CSS, or a probe named a candidate source. Runs before Vite
- * writes the manifest, so the manifest never lists a removed file.
+ * original, a preload followed the CSS, or a probe named a candidate source. A minified font goes
+ * the same way when the preprocessor dropped its @font-face (a mixin that is never included).
+ * Runs before Vite writes the manifest, so the manifest never lists a removed file.
  */
 export function removeUnusedOriginals(
   ctx: PluginContext,
@@ -59,10 +60,12 @@ export function removeUnusedOriginals(
   const isReferenced = createReferenceCheck(bundle);
   const removed: string[] = [];
   for (const [fileName, item] of Object.entries(bundle)) {
-    if (item.type !== "asset" || minified.has(fileName)) continue;
-    const isReplaced =
-      probes.has(fileName) || item.originalFileNames.some((file) => sources.has(file));
-    if (isReplaced && !isReferenced(fileName)) {
+    if (item.type !== "asset") continue;
+    const isOwned =
+      minified.has(fileName) ||
+      probes.has(fileName) ||
+      item.originalFileNames.some((file) => sources.has(file));
+    if (isOwned && !isReferenced(fileName)) {
       delete bundle[fileName];
       removed.push(fileName);
     }
