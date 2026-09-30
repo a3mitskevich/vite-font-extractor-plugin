@@ -7,6 +7,7 @@ import { FONT_MIME_TYPES } from "./constants";
 import { processMinify } from "./minify";
 import { mergeSubsetOptions, parseUrlSubset } from "./subset-options";
 import { getFontExtension, getHash, getSubsetKey, toError } from "./utils";
+import { describeMinified, glyphsOf, INLINE_OUTPUT, reportEmitted, toReportSource } from "./report";
 
 // A font file referenced by a url, `query` keeps everything after the path (`?v=2&subset=A#x`)
 export interface FontSource {
@@ -122,9 +123,27 @@ async function minifyGroup(
   const minified = new Map<string, Buffer>();
   for (const font of fonts) {
     const buffer = result?.[font.extension];
+    const source = toReportSource(ctx, font.url);
     if (buffer?.length && buffer.length < font.source.length) {
       minified.set(font.url, buffer);
+      describeMinified(buffer, {
+        fontName,
+        source,
+        format: font.extension,
+        originalSize: font.source.length,
+        minifiedSize: buffer.length,
+        cached: !!result?.cached,
+        glyphs: glyphsOf(options),
+      });
+      continue;
     }
+    const reason = buffer?.length ? "the result is not smaller" : "no result";
+    ctx.addReportRecord({
+      kind: "skipped",
+      fontName,
+      source,
+      reason: `${font.extension}: ${reason} — keeping original`,
+    });
   }
   ctx.reportMinified(fontName, fonts, minified);
   return minified;
@@ -147,6 +166,14 @@ export async function minifyFace(ctx: PluginContext, job: FaceJob): Promise<Map<
     if (!pending) {
       pending = minifyGroup(ctx, job.fontName, options, sources).catch((error: unknown) => {
         const reason = toError(error);
+        for (const file of new Set(sources.map((source) => source.file))) {
+          ctx.addReportRecord({
+            kind: "skipped",
+            fontName: job.fontName,
+            source: toReportSource(ctx, file),
+            reason: `minification failed: ${reason.message}`,
+          });
+        }
         // Vite's logger does not print `options.error`, so the reason goes into the message
         getLogger(ctx).error(
           `Failed to minify "${job.fontName}" — keeping original: ${reason.message}`,
@@ -181,6 +208,7 @@ export async function emitFont(
   if (shouldInline(ctx, source.file, source.query, await readSource(ctx, source.file))) {
     const url = toDataUrl(source.file, content);
     ctx.inlinedFonts.add(getHash(url));
+    reportEmitted(ctx, content, INLINE_OUTPUT);
     return { type: "data", url };
   }
   const referenceId = emitter.emitFile({
@@ -189,11 +217,13 @@ export async function emitFont(
     originalFileName: normalizePath(relative(ctx.root, source.file)),
     source: content,
   });
+  const fileName = emitter.getFileName(referenceId);
   ctx.emittedFonts.set(referenceId, {
     file: normalizePath(source.file),
-    fileName: emitter.getFileName(referenceId),
+    fileName,
     isPlain: !parseUrlSubset(source.query),
   });
+  reportEmitted(ctx, content, fileName);
   return { type: "asset", referenceId, postfix };
 }
 

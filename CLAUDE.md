@@ -27,7 +27,7 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 - main: `configResolved`, `configureServer` (dev middleware), `buildStart` (reset, auto-mode graph entries), `transform` of CSS langs after vite:css (L2 pass, auto glyphs, Google `@import`; dev: `transform.ts`), `watchChange` (dev: served urls of changed/deleted files, `serve-registry.ts`), `buildEnd` (auto-mode glyph check)
 - `:graph` (auto-mode builds only): `moduleParsed` feeds the graph wait. It has no hook filter, so Rolldown calls it for every module — never register it where it is not needed
 - `:html` (build): `transformIndexHtml` pre records the files HTML preloads
-- `:post` (enforce post): `transformIndexHtml` post (Google Fonts, preloads follow the CSS), `generateBundle` — removes originals nothing loads before Vite's native manifest runs, logs the summary, prunes the cache
+- `:post` (enforce post): `transformIndexHtml` post (Google Fonts, preloads follow the CSS), `generateBundle` — removes originals nothing loads before Vite's native manifest runs, emits the `report`, logs the summary, prunes the cache
 - `applyToEnvironment`: every build environment (client, SSR); dev serves the browser only
 
 **Why two CSS passes:** in Vite 8 CSS `url()` never reaches plugin `resolveId` (alias `customResolver` is deprecated). vite:css keeps urls that start with `__VITE_ASSET__`, and `css-post` resolves them when it renders the CSS, so the plugin can emit a font and write its placeholder.
@@ -49,6 +49,8 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 **`src/graph-wait.ts`** — Auto mode: a module with an auto `@font-face` waits in `transform` until every discovered module is parsed (`moduleParsed` imports); externals have no module info. Watchdog after 20 s idle; `buildEnd` fails when a glyph was found after its font was emitted.
 
 **`src/html.ts`** — Preloads: `transformIndexHtml` runs before Vite resolves the HTML's asset placeholders, so a preload gets the reference of the minified font.
+
+**`src/report.ts`** — The `report` option. `minifyGroup` describes each minified buffer (`describeMinified`: font, source, format, sizes, `cached` from `processMinify`, glyphs of the options), `emitFont` turns it into a record with the output file name or `"inline"` (`ctx.reportRecords`, reset per build); skipped fonts come from `minifyGroup`, the `minifyFace` failure path and `css-swap.ts`. `generateBundle` (post, after the cleanup) keeps the fonts still in the bundle, dedupes and sorts them, and emits the JSON as an asset (`fileName` only, so the manifest skips it); a path outside the output directory is written with `fs`.
 
 **`src/cleanup.ts`** — `generateBundle`: removes assets of minified sources, probes and minified fonts (a face the preprocessor dropped) that no chunk (`viteMetadata.importedAssets`) or text output references.
 

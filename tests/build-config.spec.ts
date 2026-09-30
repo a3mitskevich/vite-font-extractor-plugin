@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { OutputAsset } from "./utils";
 import { readFileSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { build as viteBuild } from "vite";
 import type { PluginOption } from "../src";
 import {
@@ -357,5 +357,159 @@ describe("Build configuration", () => {
     } finally {
       rmSync(cacheDir, { recursive: true, force: true });
     }
+  });
+});
+
+const REPORT_FILE = "font-report.json";
+const PACKAGE_VERSION = (
+  JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+    version: string;
+  }
+).version;
+
+interface ReportJson {
+  version: string;
+  mode: string;
+  environment: string;
+  fonts: Array<{
+    fontName: string;
+    source: string;
+    format: string;
+    output: string;
+    originalSize: number;
+    minifiedSize: number;
+    cached: boolean;
+    glyphs: Record<string, unknown>;
+  }>;
+  skipped: Array<{ fontName: string; source?: string; reason: string }>;
+  totals: { originalSize: number; minifiedSize: number; saved: number };
+}
+
+const readReport = (output: OutputItem[]): ReportJson => {
+  const asset = output.find((item) => item.fileName === REPORT_FILE);
+  expect(asset?.type).toBe("asset");
+  return JSON.parse(textOf(asset!) ?? "") as ReportJson;
+};
+
+describe("Build report", () => {
+  it("should list every emitted font with its sizes, cached on a second build", async () => {
+    const cacheDir = join(outDir, `cache-${generateId()}`);
+    const pluginOptions: PluginOption = { ...MANUAL_OPTIONS, cache: cacheDir, report: REPORT_FILE };
+    try {
+      const first = await buildWithConfig({
+        fixture: "plain",
+        pluginOptions,
+        build: { manifest: true },
+      });
+      const report = readReport(first.output);
+      expect(report).toMatchObject({
+        version: PACKAGE_VERSION,
+        mode: "manual",
+        environment: "client",
+      });
+      expect(report.skipped).toEqual([]);
+
+      const fonts = getFontAssets(first.output);
+      expect(report.fonts.map((font) => font.format)).toEqual(["eot", "ttf", "woff", "woff2"]);
+      for (const font of report.fonts) {
+        const asset = fonts.find((item) => item.fileName === font.output);
+        expect(asset, font.output).toBeDefined();
+        expect(font).toMatchObject({
+          fontName: "Font Name",
+          source: `../fonts/icon-font.${font.format}`,
+          originalSize: fontsLength[font.format as keyof typeof fontsLength],
+          minifiedSize: Buffer.from(asset!.source).length,
+          cached: false,
+          glyphs: { ligatures: ["close"] },
+        });
+      }
+      const originalSize = report.fonts.reduce((sum, font) => sum + font.originalSize, 0);
+      const minifiedSize = report.fonts.reduce((sum, font) => sum + font.minifiedSize, 0);
+      expect(report.totals).toEqual({
+        originalSize,
+        minifiedSize,
+        saved: originalSize - minifiedSize,
+      });
+
+      // Not a font: the manifest does not list it and the cleanup keeps it
+      const manifest = first.output.find((item) => MANIFEST_RE.test(item.fileName));
+      expect(textOf(manifest!)).not.toContain(REPORT_FILE);
+      // The report names the source files, it references no output
+      const withoutReport = first.output.filter((item) => item.fileName !== REPORT_FILE);
+      expect(findBrokenReferences(withoutReport)).toEqual([]);
+      expect(findOrphanFonts(withoutReport)).toEqual([]);
+      expect(problems(first.messages)).toEqual([]);
+
+      const second = await buildWithConfig({ fixture: "plain", pluginOptions });
+      const cached = readReport(second.output);
+      expect(cached.fonts.map((font) => font.cached)).toEqual([true, true, true, true]);
+      const uncached = (fonts: ReportJson["fonts"]): ReportJson["fonts"] =>
+        fonts.map((font) => ({ ...font, cached: false }));
+      expect(uncached(cached.fonts)).toEqual(report.fonts);
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should list the glyphs found in auto mode", async () => {
+    const { output } = await buildWithConfig({
+      fixture: "auto-one-icon",
+      pluginOptions: { type: "auto", report: REPORT_FILE },
+    });
+
+    const report = readReport(output);
+    expect(report.mode).toBe("auto");
+    expect(report.fonts.length).toBeGreaterThan(0);
+    for (const font of report.fonts) {
+      expect(font.glyphs).toEqual({ raws: [String.fromCodePoint(CLOSE_CODE_POINT)] });
+    }
+  });
+
+  it("should list a font that failed to minify as skipped", async () => {
+    const { output } = await buildWithConfig({
+      fixture: "plain",
+      pluginOptions: {
+        type: "manual",
+        report: REPORT_FILE,
+        targets: [{ fontName: "Font Name", characters: "abc" }],
+      },
+    });
+
+    const report = readReport(output);
+    expect(report.fonts).toEqual([]);
+    expect(report.skipped.map((skip) => skip.source)).toEqual(
+      ["eot", "ttf", "woff", "woff2"].map((format) => `../fonts/icon-font.${format}`),
+    );
+    for (const skip of report.skipped) {
+      expect(skip.fontName).toBe("Font Name");
+      expect(skip.reason).toMatch(/^minification failed: \S+/);
+    }
+    expect(report.totals).toEqual({ originalSize: 0, minifiedSize: 0, saved: 0 });
+  });
+
+  it("should write a report outside the output directory to disk", async () => {
+    const file = join(outDir, `report-${generateId()}`, "fonts.json");
+    try {
+      const { output } = await buildWithConfig({
+        fixture: "plain",
+        pluginOptions: { ...MANUAL_OPTIONS, report: file },
+      });
+      expect(output.some((item) => item.fileName.endsWith(".json"))).toBe(false);
+      const report = JSON.parse(readFileSync(file, "utf8")) as ReportJson;
+      expect(report.fonts).toHaveLength(4);
+    } finally {
+      rmSync(dirname(file), { recursive: true, force: true });
+    }
+  });
+
+  it("should reject a report option that is not a path", async () => {
+    await expect(plugin({ ...MANUAL_OPTIONS, report: " " })).rejects.toThrow(
+      "`report` must be a file path",
+    );
+  });
+
+  it("should not write a report without the option", async () => {
+    const { output } = await buildWithConfig({ fixture: "plain" });
+    expect(output.some((item) => item.fileName.endsWith(".json"))).toBe(false);
   });
 });

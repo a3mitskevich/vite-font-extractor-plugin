@@ -14,6 +14,7 @@ import type {
 import type { CssFileScans, CssResolvers } from "./css-candidates";
 import { createGraphState, type GraphState } from "./graph-wait";
 import type { ServedModule } from "./serve-registry";
+import type { ReportRecord } from "./report";
 
 // A minified font emitted by the plugin
 export interface EmittedFont {
@@ -94,6 +95,9 @@ export interface BuildState {
   // Logger's cached count when the build started, the summary reports the difference
   cachedBefore: number;
   reportMinified(fontName: string, fonts: MinifiedSource[], minified: Map<string, Buffer>): void;
+  // Fonts emitted and skipped by the build, for the `report` option
+  readonly reportRecords: ReportRecord[];
+  addReportRecord(record: ReportRecord): void;
 }
 
 export type PluginContext = SharedContext & BuildState;
@@ -193,6 +197,7 @@ function createBuildState(
   const glyphsFindMap = new Map<string, string[]>();
   const autoProxyOption = createAutoOption(createAutoTarget(glyphsFindMap));
   const stats: MinifyStats = { minified: 0, cached: 0, saved: 0 };
+  const reportRecords: ReportRecord[] = [];
   return {
     buildConfig,
     glyphsFindMap,
@@ -215,6 +220,10 @@ function createBuildState(
     cachedBefore: 0,
     reportMinified: (fontName, fonts, minified) =>
       reportMinified(getLogger(shared), stats, fontName, fonts, minified),
+    reportRecords,
+    addReportRecord: (record) => {
+      reportRecords.push(record);
+    },
   };
 }
 
@@ -304,6 +313,7 @@ export function resetBuildState(ctx: PluginContext, environment = ""): void {
   ctx.glyphsFindMap.clear();
   ctx.graph.reset();
   ctx.autoGlyphSets.clear();
+  ctx.reportRecords.length = 0;
   Object.assign(ctx.stats, { minified: 0, cached: 0, saved: 0 });
   ctx.isMinifyPhaseLogged = false;
 }

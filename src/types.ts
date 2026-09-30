@@ -14,6 +14,8 @@ export interface PluginCommonConfig {
   cache?: string | boolean;
   apply?: Plugin["apply"];
   logLevel?: InlineConfig["logLevel"];
+  // Build: path of a JSON report of the fonts, relative to the output directory or absolute
+  report?: string;
 }
 
 export interface PluginManualOption {

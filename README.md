@@ -320,11 +320,53 @@ FontExtractor(options?: PluginOption): Plugin[]
 | `logLevel` | `'info' \| 'warn' \| 'error' \| 'silent'` | Vite config | Log verbosity                             |
 | `apply`    | `'build' \| 'serve'`                      | both        | Restrict to build or dev mode             |
 | `ignore`   | `string[]`                                | —           | Font names to skip entirely               |
+| `report`   | `string`                                  | —           | Build: write a JSON report of the fonts   |
 
 - `type`: `FontExtractor()` without arguments runs in `auto` mode. An options object without `type` falls back to
   `manual` and logs a warning — set `type` explicitly.
 - `logLevel` has no effect when Vite runs with a `customLogger`: messages go to that logger unfiltered.
 - `ignore` also applies to `@font-face` rules with `?subset=`.
+- `report`: see [Build report](#build-report).
+
+### Build report
+
+`report: 'font-report.json'` makes every build write a JSON report of its fonts. The path is relative to the output
+directory (`build.outDir`) or absolute. The report is emitted as an asset of the bundle, so it is part of
+`build.write: false` results too; it is not a font, so the manifest does not list it. Each build environment (client,
+SSR) and each output writes its own report; an absolute path outside the output directory is written as it is.
+
+```json
+{
+  "version": "4.0.0",
+  "mode": "manual",
+  "environment": "client",
+  "fonts": [
+    {
+      "fontName": "Material Icons",
+      "source": "src/fonts/material-icons.woff2",
+      "format": "woff2",
+      "output": "assets/material-icons-DKVKbtPS.woff2",
+      "originalSize": 124404,
+      "minifiedSize": 652,
+      "cached": false,
+      "glyphs": { "ligatures": ["close"] }
+    }
+  ],
+  "skipped": [
+    { "fontName": "Roboto", "source": "src/fonts/roboto.woff2", "reason": "minification failed: …" }
+  ],
+  "totals": { "originalSize": 124404, "minifiedSize": 652, "saved": 123752 }
+}
+```
+
+- `fonts`: one entry per minified file in the output, sorted by `fontName`, `source` and `format`; `source` is
+  relative to the root, `output` is the file name, or `"inline"` for a font inlined as a `data:` URL. `cached` tells
+  whether the result came from the [disk cache](#caching). `glyphs` are the `ligatures`, `raws`, `characters` and
+  `unicodeRanges` the font was minified with (target and `?subset=`); in auto mode `raws` lists every glyph found in
+  CSS `content`, those the font does not have are left out of the font.
+- `skipped`: fonts kept original, with the reason (minification failed, no smaller result, source of a compiled
+  `@font-face` not found).
+- The same build writes the same report, apart from `cached`.
 
 ### Target
 

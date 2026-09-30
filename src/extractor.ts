@@ -37,6 +37,7 @@ import { recordPreloadSources, redirectFontPreloads } from "./html";
 import { removeUnusedOriginals } from "./cleanup";
 import { createServeMiddleware } from "./serve";
 import { onServedFileChange } from "./serve-registry";
+import { createReport, emitReport } from "./report";
 
 // Modules vite:css skips: `?raw`, `?url`, workers
 const SPECIAL_QUERY_RE = /[?&](?:worker|sharedworker|raw|url)\b/;
@@ -143,7 +144,13 @@ const toInputList = (input: Rollup.NormalizedInputOptions["input"]): string[] =>
 const asBuildHookContext = (context: unknown): Rollup.PluginContext =>
   context as Rollup.PluginContext;
 
+function assertReportOption({ report }: PluginOption): void {
+  if (report === undefined || (typeof report === "string" && report.trim())) return;
+  throw new Error("[vite-font-extractor-plugin] `report` must be a file path");
+}
+
 export default function FontExtractor(pluginOption: PluginOption = { type: "auto" }): Plugin[] {
+  assertReportOption(pluginOption);
   const shared = createPluginContext(pluginOption);
   const { apply } = pluginOption;
   // Builds of a builder may run in parallel (client and SSR): each environment has its own build
@@ -303,9 +310,15 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         );
       },
     },
-    async generateBundle(_, bundle) {
+    async generateBundle(outputOptions, bundle) {
       const ctx = contextOf(this);
       removeUnusedOriginals(ctx, bundle, (referenceId) => this.getFileName(referenceId));
+      // After the cleanup: the report lists only fonts of the output, and it is not a font
+      if (pluginOption.report) {
+        const outDir = outputOptions.dir ?? resolve(ctx.root, ctx.buildConfig?.outDir ?? "dist");
+        const report = createReport(ctx, this.environment.name, bundle);
+        await emitReport(this, pluginOption.report, outDir, report);
+      }
       const logger = getLogger(ctx);
       const cached = logger.cachedCount() - ctx.cachedBefore;
       if (ctx.stats.minified || cached) {

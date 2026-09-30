@@ -211,12 +211,15 @@ async function readSource(
   return source;
 }
 
+// `cached`: read from the disk cache instead of minified
+export type MinifyResult = ExtractedResult & { cached?: boolean };
+
 export async function processMinify(
   ctx: PluginContext,
   fontName: string,
   fonts: MinifyFontOptions[],
   options: OptionsWithCacheSid,
-): Promise<ExtractedResult | null> {
+): Promise<MinifyResult | null> {
   const logger = getLogger(ctx);
 
   const outputs = selectOutputFormats(logger, fontName, fonts);
@@ -243,7 +246,7 @@ export async function processMinify(
   const cached = await readCache(ctx.cache, cacheKey, outputs);
   if (cached) {
     logger.cached(fontName);
-    return { ...emptyResult, ...cached };
+    return { ...emptyResult, ...cached, cached: true };
   }
 
   const sourceBuffer = Buffer.from(source);

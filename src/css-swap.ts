@@ -140,13 +140,24 @@ export async function swapCompiledFaces(
     const sources = await Promise.all(located.map((url) => locator.locate(url)));
     if (located.some((url, index) => url.kind === "data" && !sources[index])) {
       getLogger(ctx).warn(getInlinedFontMessage(`Font "${face.family}"`));
+      ctx.addReportRecord({
+        kind: "skipped",
+        fontName: face.family,
+        reason: "the source of an inlined data: URL was not found — keeping original",
+      });
     }
     for (const [index, url] of located.entries()) {
       if (url.kind !== "asset" || sources[index]) continue;
+      const fileName = pluginContext.getFileName(url.referenceId);
       getLogger(ctx).warn(
-        `Font "${face.family}": the source of ${pluginContext.getFileName(url.referenceId)} was not` +
+        `Font "${face.family}": the source of ${fileName} was not` +
           " found among the files the stylesheet imports (a path built by interpolation?) — keeping original",
       );
+      ctx.addReportRecord({
+        kind: "skipped",
+        fontName: face.family,
+        reason: `the source of ${fileName} was not found — keeping original`,
+      });
     }
     const found = sources.filter((source): source is FontSource => !!source);
     if (!found.length) continue;

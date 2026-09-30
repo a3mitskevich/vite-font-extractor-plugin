@@ -28,3 +28,4 @@ Features and fixes:
 - The fontext version is part of the cache key; a build prunes only entries no build of another config and no dev server used within 30 days
 - fontext warnings (`legacy-kern`) are logged
 - Exact sourcemaps for chunks with a `?subset=` import
+- `report` option: the build writes a JSON report of the minified fonts (source, output file, sizes, cache hit, glyphs) and of the fonts kept original, as an asset of the bundle
