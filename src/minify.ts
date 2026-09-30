@@ -244,6 +244,10 @@ export async function processMinify(
   };
 
   const cached = await readCache(ctx.cache, cacheKey, outputs);
+  logger.debug(
+    () =>
+      `minify "${fontName}" ${listExtensions(outputs)}: cache ${ctx.cache ? (cached ? "hit" : "miss") : "off"} (${cacheKey})`,
+  );
   if (cached) {
     logger.cached(fontName);
     return { ...emptyResult, ...cached, cached: true };

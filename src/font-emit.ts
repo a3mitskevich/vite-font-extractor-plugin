@@ -78,6 +78,10 @@ const readSource = async (ctx: PluginContext, file: string): Promise<Buffer> => 
   return pending;
 };
 
+const MAX_TRACED_OPTIONS_LENGTH = 120;
+const shorten = (text: string): string =>
+  text.length > MAX_TRACED_OPTIONS_LENGTH ? `${text.slice(0, MAX_TRACED_OPTIONS_LENGTH)}…` : text;
+
 const GLYPH_LIST_OPTIONS = ["ligatures", "raws", "unicodeRanges"] as const;
 
 // `url(a.woff2?subset=AB), url(a.woff)` without a target: the plain url has nothing to keep
@@ -144,6 +148,13 @@ async function minifyGroup(
       source,
       reason: `${font.extension}: ${reason} — keeping original`,
     });
+    getLogger(ctx).debug(
+      () =>
+        `minify "${fontName}" .${font.extension}: ${font.source.length} B → ` +
+        (buffer?.length ? `${buffer.length} B` : "no result") +
+        " — keeps original",
+      font.url,
+    );
   }
   ctx.reportMinified(fontName, fonts, minified);
   return minified;
@@ -155,14 +166,26 @@ async function minifyGroup(
  * Identical jobs of one build share one minification.
  */
 export async function minifyFace(ctx: PluginContext, job: FaceJob): Promise<Map<string, Buffer>> {
+  const logger = getLogger(ctx);
   const results = new Map<string, Buffer>();
   for (const sources of groupBySubset(job).values()) {
     const subset = parseUrlSubset(sources[0].query);
     const options = mergeSubsetOptions(job.options, subset, job.fontName);
-    if (!hasGlyphSelection(options)) continue;
+    if (!hasGlyphSelection(options)) {
+      logger.debug(
+        () =>
+          `minify "${job.fontName}": no glyphs selected for ${sources.map((source) => source.file + source.query).join(", ")} — keeps original`,
+      );
+      continue;
+    }
     if (options.auto) ctx.autoGlyphSets.add(options.sid);
     const key = `${[...new Set(sources.map((source) => source.file))].join("|")}::${options.sid}`;
     let pending = ctx.minifications.get(key);
+    logger.debug(
+      () =>
+        `minify "${job.fontName}" ${pending ? "reuses this build's result" : "starts"}: ` +
+        `${sources.map((source) => getFontExtension(source.file)).join(", ")}, options ${shorten(options.sid)}`,
+    );
     if (!pending) {
       pending = minifyGroup(ctx, job.fontName, options, sources).catch((error: unknown) => {
         const reason = toError(error);
@@ -209,6 +232,7 @@ export async function emitFont(
     const url = toDataUrl(source.file, content);
     ctx.inlinedFonts.add(getHash(url));
     reportEmitted(ctx, content, INLINE_OUTPUT);
+    getLogger(ctx).debug(`emit: inlined as data: (${content.length} B)`, source.file);
     return { type: "data", url };
   }
   const referenceId = emitter.emitFile({
@@ -224,6 +248,7 @@ export async function emitFont(
     isPlain: !parseUrlSubset(source.query),
   });
   reportEmitted(ctx, content, fileName);
+  getLogger(ctx).debug(`emit: asset ${fileName} (${content.length} B)`, source.file);
   return { type: "asset", referenceId, postfix };
 }
 

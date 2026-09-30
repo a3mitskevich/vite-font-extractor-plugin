@@ -23,19 +23,30 @@ export function resolveFaceOptions(
   { family, urls, report }: FaceOptionsRequest,
 ): OptionsWithCacheSid | null {
   const logger = getLogger(ctx);
-  if (!family || ctx.pluginOption.ignore?.includes(family)) return null;
+  if (!family || ctx.pluginOption.ignore?.includes(family)) {
+    logger.debug(() => (family ? `options: "${family}" is ignored` : "options: no font-family"));
+    return null;
+  }
   const options = ctx.optionsMap.get(family);
   if (!options) {
-    if (urls.some(hasSubsetParam)) return createSubsetOptions(family, {});
+    if (urls.some(hasSubsetParam)) {
+      logger.debug(`options: "${family}" has no target, minified by its ?subset=`);
+      return createSubsetOptions(family, {});
+    }
+    logger.debug(`options: "${family}" has no target and no ?subset= — not minified`);
     if (report)
       logger.warn(`Font "${family}" has no minify options — add to targets or use ?subset=`);
     return null;
   }
   const remote = urls.filter(isRemoteUrl);
   if (remote.length) {
+    logger.debug(
+      () => `options: "${family}" has remote urls (${remote.join(", ")}) — not minified`,
+    );
     if (report) logger.warn(`Font "${family}" has external url sources: ${remote.toString()}`);
     return null;
   }
+  logger.debug(() => `options: "${family}" → ${options.auto ? "auto glyphs" : "target"}`);
   if (report && options.auto) {
     logger.warn(
       `"auto" mode detected. "${family}" font is stubbed based on auto-detected glyphs.` +

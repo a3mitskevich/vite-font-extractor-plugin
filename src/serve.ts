@@ -160,6 +160,7 @@ function registerSubsetRequest(
     registered.delete(oldest);
     ctx.fontServeProxy.delete(oldest);
   }
+  getLogger(ctx).debug(`dev: ?subset= request registered`, url);
   return loader;
 }
 
@@ -223,9 +224,11 @@ export function createServeMiddleware(
       .then(
         (stub) => {
           if (!stub) {
+            getLogger(ctx).debug("dev: no minified result — original served", url);
             next();
             return;
           }
+          getLogger(ctx).debug(`dev: minified font served (${stub.content.length} B)`, url);
           getLogger(ctx).fix();
           getLogger(ctx).info(`Stub server response for: ${styler.path(url)}`);
           // Without `etag` Vite sends a weak one of the content and answers If-None-Match with 304

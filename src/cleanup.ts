@@ -1,6 +1,6 @@
 import { basename, relative } from "node:path";
 import { normalizePath, type Rollup } from "vite";
-import type { PluginContext } from "./context";
+import { type PluginContext, getLogger } from "./context";
 
 type GetFileName = (referenceId: string) => string;
 
@@ -67,6 +67,11 @@ export function removeUnusedOriginals(
   );
   const probes = new Set([...ctx.probeAssets].map(getFileName));
   const isReferenced = createReferenceCheck(bundle);
+  const removalReason = (fileName: string): string => {
+    if (minified.has(fileName)) return "minified font nothing loads";
+    if (probes.has(fileName)) return "source probe";
+    return "original of a minified font";
+  };
   const removed: string[] = [];
   for (const [fileName, item] of Object.entries(bundle)) {
     if (item.type !== "asset") continue;
@@ -77,6 +82,7 @@ export function removeUnusedOriginals(
     if (isOwned && !isReferenced(fileName)) {
       delete bundle[fileName];
       removed.push(fileName);
+      getLogger(ctx).debug(() => `cleanup: removed ${fileName} (${removalReason(fileName)})`);
     }
   }
   return removed;

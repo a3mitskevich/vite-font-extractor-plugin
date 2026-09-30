@@ -28,7 +28,9 @@ const FACE_URL_RE = /url\((['"]?)(.*?)\1\)/g;
 export function collectContentGlyphs(ctx: PluginContext, code: string, id: string): boolean {
   if (ctx.mode !== "auto") return false;
   const before = ctx.autoProxyOption.sid;
-  ctx.glyphsFindMap.set(id, findUnicodeGlyphs(stripCssComments(code)));
+  const glyphs = findUnicodeGlyphs(stripCssComments(code));
+  ctx.glyphsFindMap.set(id, glyphs);
+  if (glyphs.length) getLogger(ctx).debug(() => `auto: ${glyphs.length} glyphs in CSS content`, id);
   return ctx.autoProxyOption.sid !== before;
 }
 
@@ -64,6 +66,10 @@ function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceM
     // The plain url keeps working (served for the first family of the module's last transform)
     registerServeUrl(ctx, id, url, request);
     registerServeUrl(ctx, id, tagFamilyUrl(ctx, url, font), request);
+    getLogger(ctx).debug(
+      () => `dev: "${font.name}" ${url} registered as ${tagFamilyUrl(ctx, url, font)}`,
+      id,
+    );
   });
   // Face text differs from the source when it contains comments — keep plain urls then
   if (!code.includes(font.face)) {
@@ -78,14 +84,20 @@ function serveFont(ctx: PluginContext, code: string, id: string, font: FontFaceM
 
 // A face the dev server minifies: a target, or `?subset=` without one
 function toServedFace(ctx: PluginContext, face: string): FontFaceMeta | null {
+  const logger = getLogger(ctx);
   const name = extractFontName(face);
-  if (ctx.pluginOption.ignore?.includes(name)) return null;
+  if (ctx.pluginOption.ignore?.includes(name)) {
+    logger.debug(`dev: "${name}" is ignored`);
+    return null;
+  }
   const aliases = extractFonts(face);
   const options = ctx.optionsMap.get(name);
   if (!options) {
-    return aliases.some(hasSubsetParam)
-      ? { name, face, aliases, options: createSubsetOptions(name, {}) }
-      : null;
+    const hasSubset = aliases.some(hasSubsetParam);
+    logger.debug(
+      `dev: "${name}" has no target${hasSubset ? ", minified by its ?subset=" : " and no ?subset= — served as is"}`,
+    );
+    return hasSubset ? { name, face, aliases, options: createSubsetOptions(name, {}) } : null;
   }
   const remote = aliases.filter(isRemoteUrl);
   if (remote.length) {

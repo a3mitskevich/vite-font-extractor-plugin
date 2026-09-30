@@ -1,6 +1,6 @@
 import { dirname, join, resolve } from "node:path";
 import { normalizePath, type Rollup } from "vite";
-import type { PluginContext } from "./context";
+import { type PluginContext, getLogger } from "./context";
 
 const LINK_TAG_RE = /<link\b[^>]*>/gi;
 const PRELOAD_REL_RE = /\brel\s*=\s*["']?[^"'>]*\bpreload\b/i;
@@ -36,6 +36,24 @@ function findPlainResult(ctx: PluginContext, files: Set<string>): string | undef
   return names.size === 1 ? matches[0][0] : undefined;
 }
 
+function traceRedirect(
+  ctx: PluginContext,
+  html: string,
+  preloaded: string,
+  minified: string | undefined,
+  files: Set<string>,
+): void {
+  const logger = getLogger(ctx);
+  if (minified) {
+    logger.debug(`preload ${preloaded} → ${minified}`, html);
+    return;
+  }
+  const isMinifiedSource = [...ctx.emittedFonts.values()].some((font) => files.has(font.file));
+  if (logger.isDebug && isMinifiedSource) {
+    logger.debug(`preload ${preloaded} kept: its source has several minified results`, html);
+  }
+}
+
 /**
  * Build, `transformIndexHtml` (post): a `<link rel="preload">` of a font the CSS now loads minified
  * is pointed at the minified file. Vite has not resolved the asset placeholders of the HTML yet,
@@ -62,6 +80,7 @@ export function redirectFontPreloads(
           .filter((file) => !preloaded || preloaded.has(file)),
       );
       const minified = findPlainResult(ctx, files);
+      traceRedirect(ctx, filename, asset.fileName, minified && getFileName(minified), files);
       return minified ? `__VITE_ASSET__${minified}__` : placeholder;
     });
   });

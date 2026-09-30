@@ -5,10 +5,10 @@ import {
   type LogOptions,
   type LogType,
 } from "vite";
-import type { InternalLogger, MinifyStats, PluginOption } from "./types";
+import type { DebugMessage, InternalLogger, MinifyStats, PluginOption } from "./types";
 import { PLUGIN_NAME } from "./constants";
 import color from "picocolors";
-import { formatBar, formatReduction, formatSize } from "./styler";
+import styler, { formatBar, formatReduction, formatSize } from "./styler";
 
 const ICONS = {
   font: "🔤",
@@ -27,9 +27,30 @@ const TREE = {
   subLast: "     │  └─ ",
 };
 
+// `DEBUG=vite-font-extractor` (or `*`, `vite-font-extractor:*`), like the `debug` package
+const DEBUG_NAMESPACE = "vite-font-extractor";
+const DEBUG_SEPARATOR_RE = /[\s,]+/;
+
+export function isDebugEnabled(
+  option: PluginOption["debug"],
+  env: string | undefined = process.env.DEBUG,
+): boolean {
+  if (option !== undefined) return option;
+  return (env ?? "")
+    .split(DEBUG_SEPARATOR_RE)
+    .some((name) => name === "*" || name.startsWith(DEBUG_NAMESPACE));
+}
+
+export interface DebugOptions {
+  isEnabled: boolean;
+  // Paths under the root (Vite's normalized `config.root`) are printed relative to it
+  root?: string;
+}
+
 export const createInternalLogger = (
   logLevel: PluginOption["logLevel"],
   customLogger?: Logger,
+  { isEnabled: isDebug, root }: DebugOptions = { isEnabled: false },
 ): InternalLogger => {
   const logger = createLogger(logLevel, {
     prefix: `[${PLUGIN_NAME}]`,
@@ -39,6 +60,9 @@ export const createInternalLogger = (
 
   let needFix = false;
   let cachedFonts = 0;
+  const rootPrefix = root ? `${root.replace(/\/$/, "")}/` : null;
+  const toShortPaths = (text: string): string =>
+    rootPrefix ? text.replaceAll(rootPrefix, "") : text;
 
   const raw = (level: LogType, message: string, options?: LogOptions | LogErrorOptions): void => {
     if (needFix) {
@@ -56,6 +80,15 @@ export const createInternalLogger = (
       raw("error", `  ${color.red(ICONS.error)}${color.red(message)}`, options),
     fix: () => {
       needFix = true;
+    },
+
+    isDebug,
+    // The message is built only when debug is on: pass a thunk for anything costly
+    debug(message: DebugMessage, id?: string) {
+      if (!isDebug) return;
+      const text = typeof message === "function" ? message() : message;
+      const where = id ? ` ${color.dim("—")} ${styler.path(toShortPaths(id))}` : "";
+      raw("info", `  ${color.dim("[debug]")} ${toShortPaths(text)}${where}`);
     },
 
     banner() {

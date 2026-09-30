@@ -16,6 +16,8 @@ export interface PluginCommonConfig {
   logLevel?: InlineConfig["logLevel"];
   // Build: path of a JSON report of the fonts, relative to the output directory or absolute
   report?: string;
+  // Traces why each font is (not) minified; also on with `DEBUG=vite-font-extractor`
+  debug?: boolean;
 }
 
 export interface PluginManualOption {
@@ -70,8 +72,13 @@ export interface MinifyStats {
   saved: number;
 }
 
+export type DebugMessage = string | (() => string);
+
 export interface InternalLogger extends Pick<Logger, LogType> {
   fix(): void;
+  readonly isDebug: boolean;
+  // Printed as info only when debug is on; `id` is the module or file the line is about
+  debug(message: DebugMessage, id?: string): void;
   banner(): void;
   config(mode: string, details: string): void;
   phase(icon: string, name: string): void;

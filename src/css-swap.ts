@@ -30,6 +30,12 @@ function parseCompiledUrl(url: CssUrl): CompiledUrl {
   return { kind: "other", url };
 }
 
+function describeCompiledUrl(pluginContext: SwapContext, url: CompiledUrl): string {
+  if (url.kind === "asset") return `asset ${pluginContext.getFileName(url.referenceId)}`;
+  if (url.kind === "data") return `data: (${url.bytes.length} B)`;
+  return `other ${url.url.url}`;
+}
+
 const stemOf = (file: string): string => basename(file, extname(file));
 
 // Hash of the whole source: modules of one file (`?inline`, Vue style blocks) share a key only
@@ -57,7 +63,13 @@ class SourceLocator {
   ) {}
 
   private getCandidates(): Promise<string[]> {
-    this.candidates ??= getFontCandidates(this.ctx, this.id);
+    this.candidates ??= getFontCandidates(this.ctx, this.id).then((files) => {
+      getLogger(this.ctx).debug(
+        () => `L2: candidates ${files.length ? files.join(", ") : "none"}`,
+        this.id,
+      );
+      return files;
+    });
     return this.candidates;
   }
 
@@ -70,7 +82,13 @@ class SourceLocator {
       source: await readFontSource(this.ctx, file),
     });
     this.ctx.probeAssets.add(referenceId);
-    return this.pluginContext.getFileName(referenceId) === fileName;
+    const probed = this.pluginContext.getFileName(referenceId);
+    getLogger(this.ctx).debug(
+      () =>
+        `L2: probe ${file} → ${probed} ${probed === fileName ? "matches" : "differs from"} ${fileName}`,
+      this.id,
+    );
+    return probed === fileName;
   }
 
   private async locateAsset(referenceId: string): Promise<string | undefined> {
@@ -85,13 +103,24 @@ class SourceLocator {
     for (const file of [...named, ...others]) {
       if (await this.probe(file, fileName)) return file;
     }
+    getLogger(this.ctx).debug(
+      `L2: no ${extension || "extensionless"} candidate is the source of ${fileName}`,
+      this.id,
+    );
     return undefined;
   }
 
   private async locateData(bytes: Buffer): Promise<string | undefined> {
     for (const file of await this.getCandidates()) {
-      if ((await readFontSource(this.ctx, file)).equals(bytes)) return file;
+      if ((await readFontSource(this.ctx, file)).equals(bytes)) {
+        getLogger(this.ctx).debug(`L2: data: URL has the bytes of ${file}`, this.id);
+        return file;
+      }
     }
+    getLogger(this.ctx).debug(
+      `L2: no candidate has the bytes of a data: URL (${bytes.length} B)`,
+      this.id,
+    );
     return undefined;
   }
 
@@ -128,14 +157,27 @@ export async function swapCompiledFaces(
 ): Promise<TransformOutput | null> {
   if (!code.includes("@font-face")) return null;
   const locator = new SourceLocator(pluginContext, ctx, id);
+  const logger = getLogger(ctx);
   const output = new MagicString(code);
   for (const face of findFontFaces(code)) {
     const urls = face.urls.map(parseCompiledUrl);
-    if (urls.some((url) => isEmittedByPlugin(ctx, url))) continue;
+    logger.debug(
+      () =>
+        `L2: @font-face "${face.family}" urls: ${urls.map((url) => describeCompiledUrl(pluginContext, url)).join(", ")}`,
+      id,
+    );
+    if (urls.some((url) => isEmittedByPlugin(ctx, url))) {
+      logger.debug(`L2: "${face.family}" was minified before vite:css (L1)`, id);
+      continue;
+    }
     const plain = face.urls.map((url) => url.url);
     const options = resolveFaceOptions(ctx, { family: face.family, urls: plain, report: true });
     const located = urls.filter((url) => url.kind !== "other");
-    if (!options || !located.length) continue;
+    if (!options) continue;
+    if (!located.length) {
+      logger.debug(`L2: "${face.family}" has no asset or data: url — left as is`, id);
+      continue;
+    }
     if (options.auto) await waitForGlyphs();
     const sources = await Promise.all(located.map((url) => locator.locate(url)));
     if (located.some((url, index) => url.kind === "data" && !sources[index])) {
@@ -167,6 +209,7 @@ export async function swapCompiledFaces(
       const content = source && minified.get(source.file + source.query);
       if (!source || !content) continue;
       const emitted = await emitFont(pluginContext, ctx, source, content);
+      logger.debug(`L2: "${face.family}" ${source.file} swapped for the minified font`, id);
       output.overwrite(url.url.start, url.url.end, toCssUrl(emitted));
     }
   }

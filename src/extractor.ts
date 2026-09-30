@@ -10,7 +10,7 @@ import type { PluginOption } from "./types";
 import Cache from "./cache";
 import { createResolvers, getHash, intersection, mergePath } from "./utils";
 import { CSS_LANGS_RE, PLUGIN_NAME } from "./constants";
-import { createInternalLogger } from "./internal-logger";
+import { createInternalLogger, isDebugEnabled } from "./internal-logger";
 import {
   type PluginContext,
   type SharedContext,
@@ -59,7 +59,10 @@ const applyToBuild =
 
 function configureContext(ctx: SharedContext, config: ResolvedConfig): void {
   const { pluginOption } = ctx;
-  ctx.logger = createInternalLogger(pluginOption.logLevel ?? config.logLevel, config.customLogger);
+  ctx.logger = createInternalLogger(pluginOption.logLevel ?? config.logLevel, config.customLogger, {
+    isEnabled: isDebugEnabled(pluginOption.debug),
+    root: config.root,
+  });
   const logger = ctx.logger;
   logger.banner();
   if (!pluginOption.type) {
@@ -68,6 +71,7 @@ function configureContext(ctx: SharedContext, config: ResolvedConfig): void {
   const cacheStatus = pluginOption.cache ? "cache enabled" : "no cache";
   const targetCount = ctx.targets.length;
   logger.config(ctx.mode, `${targetCount} target${targetCount !== 1 ? "s" : ""}, ${cacheStatus}`);
+  logger.debug(() => `targets: ${ctx.targets.map((target) => `"${target.fontName}"`).join(", ")}`);
 
   const ignoredTargets = intersection(
     pluginOption.ignore ?? [],
@@ -117,7 +121,11 @@ function configureCache(ctx: SharedContext, config: ResolvedConfig): void {
 const createGlyphWait =
   (ctx: PluginContext, lookup: Pick<Rollup.PluginContext, "getModuleInfo">, id: string) =>
   (): Promise<void> =>
-    ctx.mode === "auto" ? waitForGraph(ctx.graph, lookup, id) : Promise.resolve();
+    ctx.mode === "auto"
+      ? waitForGraph(ctx.graph, lookup, id, (message, moduleId) =>
+          getLogger(ctx).debug(message, moduleId),
+        )
+      : Promise.resolve();
 
 // Auto mode: a glyph found after its font was emitted would render as a missing icon
 function checkAutoGlyphs(ctx: PluginContext): string | null {

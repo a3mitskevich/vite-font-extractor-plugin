@@ -8,6 +8,10 @@ import { isAbsolute } from "node:path";
 // A stuck wait (a plugin loading the waiting module itself) is released after this idle time;
 // the final check in buildEnd then reports glyphs the font missed
 export const GRAPH_IDLE_TIMEOUT_MS = 20_000;
+const MAX_TRACED_IDS = 5;
+
+// Debug line of the plugin logger, built only when debug is on
+export type GraphTrace = (message: () => string, id?: string) => void;
 
 export interface GraphState {
   // Discovered modules that are not parsed yet; externals and waiting modules stay here
@@ -18,6 +22,7 @@ export interface GraphState {
   pending: Promise<void> | null;
   timer: NodeJS.Timeout | null;
   timedOut: boolean;
+  trace: GraphTrace | null;
   reset(): void;
 }
 
@@ -40,6 +45,7 @@ export function createGraphState(): GraphState {
     pending: null,
     timer: null,
     timedOut: false,
+    trace: null,
     reset() {
       if (state.timer) clearTimeout(state.timer);
       state.release?.();
@@ -50,6 +56,7 @@ export function createGraphState(): GraphState {
       state.pending = null;
       state.timer = null;
       state.timedOut = false;
+      state.trace = null;
     },
   };
   return state;
@@ -70,7 +77,21 @@ const discover = (state: GraphState, id: string): void => {
   if (!state.parsed.has(id)) state.unparsed.add(id);
 };
 
-function releaseWaiters(state: GraphState): void {
+const listIds = (ids: string[]): string =>
+  ids.slice(0, MAX_TRACED_IDS).join(", ") +
+  (ids.length > MAX_TRACED_IDS ? ` and ${ids.length - MAX_TRACED_IDS} more` : "");
+
+function releaseWaiters(state: GraphState, isTimeout = false): void {
+  if (state.release) {
+    state.trace?.(
+      () =>
+        `graph wait: ${isTimeout ? `timed out after ${GRAPH_IDLE_TIMEOUT_MS} ms idle` : "released"}, ` +
+        `${state.waiting.size} waiting` +
+        (isTimeout
+          ? `; not parsed: ${listIds([...state.unparsed].filter((id) => !state.waiting.has(id)))}`
+          : ""),
+    );
+  }
   if (state.timer) clearTimeout(state.timer);
   state.timer = null;
   const release = state.release;
@@ -92,7 +113,7 @@ function armTimer(state: GraphState): void {
   if (state.timer) clearTimeout(state.timer);
   state.timer = setTimeout(() => {
     state.timedOut = true;
-    releaseWaiters(state);
+    releaseWaiters(state, true);
   }, GRAPH_IDLE_TIMEOUT_MS);
   state.timer.unref();
 }
@@ -114,8 +135,18 @@ export function onModuleParsed(state: GraphState, lookup: ModuleLookup, info: Pa
 }
 
 // Resolves once every discovered module except the waiting ones is transformed
-export function waitForGraph(state: GraphState, lookup: ModuleLookup, id: string): Promise<void> {
+export function waitForGraph(
+  state: GraphState,
+  lookup: ModuleLookup,
+  id: string,
+  trace?: GraphTrace,
+): Promise<void> {
   state.waiting.add(id);
+  if (trace) state.trace = trace;
+  state.trace?.(() => {
+    const pending = [...state.unparsed].filter((unparsed) => isPending(state, lookup, unparsed));
+    return `graph wait: starts, ${pending.length} modules not parsed yet`;
+  }, id);
   if (!state.pending) {
     state.pending = new Promise<void>((resolve) => {
       state.release = resolve;
