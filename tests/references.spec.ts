@@ -586,16 +586,25 @@ describe("Environments of one builder", () => {
       expect(usage.ssr).toHaveLength(1);
       expect([...usage.client, ...usage.ssr].sort()).toEqual(entries());
     };
+    // Cache hits in the summary of each environment: "Done — N fonts minified, M cached, …"
+    const cachedCounts = ({ messages }: EnvironmentOutputs): number[] =>
+      messages
+        .filter((m) => m.type === "info" && m.message.includes("Done"))
+        .map((m) => Number(/(\d+) cached/.exec(m.message)?.[1] ?? 0))
+        .sort((a, b) => a - b);
     try {
-      await buildEnvironments("parallel", options);
+      const first = await buildEnvironments("parallel", options);
       expectUsagePerEnvironment();
-      const first = entries();
+      expect(cachedCounts(first)).toEqual([0, 0]);
+      const firstEntries = entries();
 
       // Every font is a cache hit; the prune of each environment keeps the other's entries only
       writeFileSync(join(cachePath, "stale-entry.woff2"), "");
-      await buildEnvironments("parallel", options);
-      expect(entries()).toEqual(first);
+      const second = await buildEnvironments("parallel", options);
+      expect(entries()).toEqual(firstEntries);
       expectUsagePerEnvironment();
+      // SSR: `?subset=XYZ`; client: the icon font (woff2 and woff together) and `?subset=ABC`
+      expect(cachedCounts(second)).toEqual([1, 2]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -105,8 +105,6 @@ export interface BuildState {
   readonly matchedTargets: Set<string>;
   readonly stats: MinifyStats;
   isMinifyPhaseLogged: boolean;
-  // Logger's cached count when the build started, the summary reports the difference
-  cachedBefore: number;
   reportMinified(fontName: string, fonts: MinifiedSource[], minified: Map<string, Buffer>): void;
   // Fonts emitted and skipped by the build, for the `report` option
   readonly reportRecords: ReportRecord[];
@@ -194,7 +192,6 @@ function createBuildState(
     matchedTargets: new Set(),
     stats,
     isMinifyPhaseLogged: false,
-    cachedBefore: 0,
     reportMinified: (fontName, fonts, minified) =>
       reportMinified(getLogger(shared), stats, fontName, fonts, minified),
     reportRecords,

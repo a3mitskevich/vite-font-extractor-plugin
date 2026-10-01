@@ -124,13 +124,6 @@ describe("InternalLogger", () => {
       );
       expect(hasCached).toBeTruthy();
     });
-
-    it("should count cached fonts for the summary", () => {
-      expect(logger.cachedCount()).toBe(0);
-      logger.cached("Material Icons");
-      logger.cached("Roboto");
-      expect(logger.cachedCount()).toBe(2);
-    });
   });
 
   describe("skipped()", () => {

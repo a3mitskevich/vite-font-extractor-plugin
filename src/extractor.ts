@@ -269,7 +269,6 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     async buildStart(options) {
       const ctx = contextOf(this);
       resetBuildState(ctx);
-      ctx.cachedBefore = getLogger(ctx).cachedCount();
       if (ctx.isServe || ctx.mode !== "auto") return;
       const resolved = await Promise.all(
         toInputList(options.input).map((input) => this.resolve(input)),
@@ -376,10 +375,9 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         const report = createReport(ctx, this.environment.name, bundle);
         await emitReport(this, pluginOption.report, outDir, report);
       }
-      const logger = getLogger(ctx);
-      const cached = logger.cachedCount() - ctx.cachedBefore;
-      if (ctx.stats.minified || cached) {
-        logger.summary({ ...ctx.stats, cached });
+      // Counted per environment: a parallel build's summary has only its own fonts
+      if (ctx.stats.minified || ctx.stats.cached) {
+        getLogger(ctx).summary(ctx.stats);
       }
       await ctx.cache?.prune(ctx.environmentName);
     },

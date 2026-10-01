@@ -251,6 +251,7 @@ export async function processMinify(
       `minify "${fontName}" ${listExtensions(outputs)}: cache ${cache ? (cached ? "hit" : "miss") : "off"} (${cacheKey})`,
   );
   if (cached) {
+    ctx.stats.cached++;
     logger.cached(fontName);
     return { ...emptyResult, ...cached, cached: true };
   }
