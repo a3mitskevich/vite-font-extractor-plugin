@@ -382,6 +382,7 @@ interface ReportJson {
     glyphs: Record<string, unknown>;
   }>;
   skipped: Array<{ fontName: string; source?: string; reason: string }>;
+  ignored?: Array<{ fontName: string; id: string; reason: string }>;
   totals: { originalSize: number; minifiedSize: number; saved: number };
 }
 
@@ -485,6 +486,46 @@ describe("Build report", () => {
       expect(skip.reason).toMatch(/^minification failed: \S+/);
     }
     expect(report.totals).toEqual({ originalSize: 0, minifiedSize: 0, saved: 0 });
+  });
+
+  it("should list faces without options or with remote urls as skipped, left-out faces as ignored", async () => {
+    const pluginOptions: PluginOption = {
+      type: "manual",
+      report: REPORT_FILE,
+      targets: [ICON_TARGET, { fontName: "Remote Icons", ligatures: ["close"] }],
+      ignore: ["Ignored Icons"],
+      exclude: /\/vendor\//,
+      resolveTarget: (face) => (face.family === "Code Skipped" ? null : undefined),
+    };
+    const builds = await Promise.all(
+      [1, 2].map(() => buildWithConfig({ fixture: "report-faces", pluginOptions })),
+    );
+    const [report, again] = builds.map(({ output }) => readReport(output));
+
+    expect(report.fonts.map((font) => [font.fontName, font.source])).toEqual([
+      ["Font Name", "../fonts/icon-font.woff2"],
+    ]);
+    expect(report.skipped).toEqual([
+      {
+        fontName: "Remote Icons",
+        reason: "external url sources: https://example.com/remote-icons.woff2",
+      },
+      { fontName: "Untargeted", reason: "no minify options" },
+    ]);
+    expect(report.ignored).toEqual([
+      { fontName: "Code Skipped", id: "src/app.css", reason: "resolveTarget" },
+      { fontName: "Ignored Icons", id: "src/app.css", reason: "ignore" },
+      { fontName: "Vendor Icons", id: "vendor/vendor.css", reason: "include/exclude" },
+    ]);
+    expect(again).toEqual(report);
+  });
+
+  it("should leave ignored out of a report without ignored faces", async () => {
+    const { output } = await buildWithConfig({
+      fixture: "plain",
+      pluginOptions: { ...MANUAL_OPTIONS, report: REPORT_FILE },
+    });
+    expect(readReport(output)).not.toHaveProperty("ignored");
   });
 
   it("should write a report outside the output directory to disk", async () => {

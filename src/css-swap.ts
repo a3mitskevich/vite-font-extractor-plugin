@@ -9,6 +9,7 @@ import { resolveFaceOptions } from "./face-options";
 import { emitFont, type FontSource, minifyFace, readFontSource, toCssUrl } from "./font-emit";
 import type { TransformOutput } from "./css-pre-transform";
 import { getInlinedFontMessage } from "./inline-fonts";
+import { toReportSource } from "./report";
 import { cleanUrl, getHash } from "./utils";
 
 type SwapContext = Pick<Rollup.PluginContext, "emitFile" | "getFileName">;
@@ -230,4 +231,18 @@ export async function swapCompiledFaces(
   return output.hasChanged()
     ? { code: output.toString(), map: output.generateMap({ hires: "boundary", source: id }) }
     : null;
+}
+
+// A stylesheet outside `include`/`exclude` keeps its fonts: the build report lists its faces
+export function reportExcludedFaces(ctx: PluginContext, code: string, id: string): void {
+  if (!code.includes("@font-face")) return;
+  for (const face of findFontFaces(code)) {
+    if (!face.family) continue;
+    ctx.addReportRecord({
+      kind: "ignored",
+      fontName: face.family,
+      id: toReportSource(ctx, id),
+      reason: "include/exclude",
+    });
+  }
 }

@@ -1,0 +1,29 @@
+/* A target: minified */
+@font-face {
+  font-family: "Font Name";
+  src: url("../../fonts/icon-font.woff2") format("woff2");
+}
+
+/* No target and no ?subset= */
+@font-face {
+  font-family: "Untargeted";
+  src: url("../../fonts/text-font.woff2") format("woff2");
+}
+
+/* A target loaded from another host */
+@font-face {
+  font-family: "Remote Icons";
+  src: url("https://example.com/remote-icons.woff2") format("woff2");
+}
+
+/* Left out by `ignore` */
+@font-face {
+  font-family: "Ignored Icons";
+  src: url("../../fonts/icon-font.woff") format("woff");
+}
+
+/* Left out by `resolveTarget` returning null */
+@font-face {
+  font-family: "Code Skipped";
+  src: url("../../fonts/icon-font.ttf") format("truetype");
+}

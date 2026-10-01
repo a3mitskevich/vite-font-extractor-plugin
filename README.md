@@ -494,7 +494,11 @@ SSR) and each output writes its own report; an absolute path outside the output 
     }
   ],
   "skipped": [
-    { "fontName": "Roboto", "source": "src/fonts/roboto.woff2", "reason": "minification failed: …" }
+    { "fontName": "Roboto", "source": "src/fonts/roboto.woff2", "reason": "minification failed: …" },
+    { "fontName": "Inter", "reason": "no minify options" }
+  ],
+  "ignored": [
+    { "fontName": "Vendor Icons", "id": "vendor/icons.css", "reason": "include/exclude" }
   ],
   "totals": { "originalSize": 124404, "minifiedSize": 652, "saved": 123752 }
 }
@@ -506,7 +510,11 @@ SSR) and each output writes its own report; an absolute path outside the output 
   `unicodeRanges` the font was minified with (target and `?subset=`); in auto mode `raws` lists every glyph found in
   CSS `content`, those the font does not have are left out of the font.
 - `skipped`: fonts kept original, with the reason (minification failed, no smaller result, source of a compiled
-  `@font-face` not found).
+  `@font-face` not found, a face with no target and no `?subset=` — `no minify options` —, a face loading from
+  another host — `external url sources: …`).
+- `ignored`: faces left alone on purpose, so they are not problems: the stylesheet `id` (relative to the root) and the
+  `reason` — `ignore`, `include/exclude` or `resolveTarget` (it returned `null`). Present only when a face was
+  ignored; sorted by `fontName`, `id` and `reason`.
 - The same build writes the same report, apart from `cached`.
 - `debug`: on when `DEBUG` names `vite-font-extractor` (or `*`) and the option is not set. See
   [Debug trace](#debug-trace).

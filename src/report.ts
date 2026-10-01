@@ -36,7 +36,20 @@ export interface ReportSkip {
   reason: string;
 }
 
-export type ReportRecord = ({ kind: "font" } & ReportFont) | ({ kind: "skipped" } & ReportSkip);
+// Why the plugin left a face alone on purpose: not a problem, the answer to "why is it not minified"
+export type IgnoreReason = "ignore" | "include/exclude" | "resolveTarget";
+
+export interface ReportIgnored {
+  fontName: string;
+  // Module id of the stylesheet, relative to the root
+  id: string;
+  reason: IgnoreReason;
+}
+
+export type ReportRecord =
+  | ({ kind: "font" } & ReportFont)
+  | ({ kind: "skipped" } & ReportSkip)
+  | ({ kind: "ignored" } & ReportIgnored);
 
 export interface FontReport {
   version: string;
@@ -44,6 +57,8 @@ export interface FontReport {
   environment: string;
   fonts: ReportFont[];
   skipped: ReportSkip[];
+  // Present when a face was ignored
+  ignored?: ReportIgnored[];
   totals: { originalSize: number; minifiedSize: number; saved: number };
 }
 
@@ -131,6 +146,19 @@ export function createReport(
       (skip) => skip.reason,
     ),
   );
+  const ignored = unique(
+    ctx.reportRecords.flatMap((record) => {
+      if (record.kind !== "ignored") return [];
+      const { kind: _, ...face } = record;
+      return [face];
+    }),
+  ).sort(
+    byKeys<ReportIgnored>(
+      (face) => face.fontName,
+      (face) => face.id,
+      (face) => face.reason,
+    ),
+  );
   const originalSize = fonts.reduce((sum, font) => sum + font.originalSize, 0);
   const minifiedSize = fonts.reduce((sum, font) => sum + font.minifiedSize, 0);
   return {
@@ -139,6 +167,7 @@ export function createReport(
     environment,
     fonts,
     skipped,
+    ...(ignored.length ? { ignored } : {}),
     totals: { originalSize, minifiedSize, saved: originalSize - minifiedSize },
   };
 }

@@ -22,7 +22,7 @@ import {
 } from "./context";
 import { createCssResolvers } from "./css-candidates";
 import { transformFaceSources } from "./css-pre-transform";
-import { swapCompiledFaces } from "./css-swap";
+import { reportExcludedFaces, swapCompiledFaces } from "./css-swap";
 import { addEntries, onModuleParsed, waitForGraph } from "./graph-wait";
 import {
   loadSubsetImport,
@@ -290,6 +290,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
         collectContentGlyphs(ctx, code, id);
         if (!ctx.isModuleIncluded(id)) {
           getLogger(ctx).debug("L2: outside include/exclude — fonts left as they are", id);
+          reportExcludedFaces(ctx, code, id);
           return null;
         }
         const waitForGlyphs = createGlyphWait(ctx, this, id);
