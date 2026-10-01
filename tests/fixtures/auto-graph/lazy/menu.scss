@@ -1,0 +1,5 @@
+$menu-icon: "menu";
+
+.menu::before {
+  content: $menu-icon;
+}

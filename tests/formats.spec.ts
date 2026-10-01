@@ -1,17 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import type { OutputAsset, RollupOutput } from "rollup";
+import type { OutputAsset, RollupOutput } from "./utils";
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as fontkit from "fontkit";
 import {
-  buildByVersion,
+  buildFixture,
   findBrokenFontReferences,
   fixturesDir,
   fontsLength,
   generateId,
   type LoggerMessage,
   outDir,
-  viteBuild,
 } from "./utils";
 
 type Output = RollupOutput["output"];
@@ -53,8 +52,8 @@ afterAll(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-const build = (version: string, project: keyof typeof PROJECTS) =>
-  buildByVersion(version, {
+const build = (project: keyof typeof PROJECTS) =>
+  buildFixture({
     fixture: join(root, project),
     pluginOptions: {
       type: "manual",
@@ -79,34 +78,30 @@ const expectSingleWarning = (messages: LoggerMessage[], ...parts: string[]): voi
 };
 
 describe("Font formats without minification support", () => {
-  Object.keys(viteBuild).forEach((version) => {
-    describe(`vite@${version}`, () => {
-      it("keeps .otf and minifies the other formats of the face", async () => {
-        const { output, messages } = await build(version, "otfWithWoff2");
+  it("keeps .otf and minifies the other formats of the face", async () => {
+    const { output, messages } = await build("otfWithWoff2");
 
-        expectSingleWarning(messages, "otf", "keeping original");
-        expect(findBrokenFontReferences(output)).toEqual([]);
-        expect(Buffer.from(getFont(output, "otf").source).length).toBe(fontsLength.ttf);
-        const woff2 = Buffer.from(getFont(output, "woff2").source);
-        expect(woff2.length).toBeLessThan(fontsLength.woff2);
-        const glyphs = (fontkit.create(woff2) as fontkit.Font).layout("close").glyphs;
-        expect(glyphs).toHaveLength(1);
-        expect(glyphs[0].id).not.toBe(0);
-      });
+    expectSingleWarning(messages, "otf", "keeping original");
+    expect(findBrokenFontReferences(output)).toEqual([]);
+    expect(Buffer.from(getFont(output, "otf").source).length).toBe(fontsLength.ttf);
+    const woff2 = Buffer.from(getFont(output, "woff2").source);
+    expect(woff2.length).toBeLessThan(fontsLength.woff2);
+    const glyphs = (fontkit.create(woff2) as fontkit.Font).layout("close").glyphs;
+    expect(glyphs).toHaveLength(1);
+    expect(glyphs[0].id).not.toBe(0);
+  });
 
-      it("keeps a face with .otf only", async () => {
-        const { output, messages } = await build(version, "otfOnly");
+  it("keeps a face with .otf only", async () => {
+    const { output, messages } = await build("otfOnly");
 
-        expectSingleWarning(messages, "otf", "keeping original");
-        expect(Buffer.from(getFont(output, "otf").source).length).toBe(fontsLength.ttf);
-      });
+    expectSingleWarning(messages, "otf", "keeping original");
+    expect(Buffer.from(getFont(output, "otf").source).length).toBe(fontsLength.ttf);
+  });
 
-      it("keeps a face with .eot only", async () => {
-        const { output, messages } = await build(version, "eotOnly");
+  it("keeps a face with .eot only", async () => {
+    const { output, messages } = await build("eotOnly");
 
-        expectSingleWarning(messages, "eot", "keeping original");
-        expect(Buffer.from(getFont(output, "eot").source).length).toBe(fontsLength.eot);
-      });
-    });
+    expectSingleWarning(messages, "eot", "keeping original");
+    expect(Buffer.from(getFont(output, "eot").source).length).toBe(fontsLength.eot);
   });
 });

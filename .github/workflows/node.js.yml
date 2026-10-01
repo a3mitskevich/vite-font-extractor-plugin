@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ "master" ]
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -20,10 +23,13 @@ jobs:
     - run: npm run fmt:check
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      # A Windows-only failure must not cancel the other runs
+      fail-fast: false
       matrix:
-        node-version: [20.x, 22.x, 24.x]
+        os: [ubuntu-latest, windows-latest]
+        node-version: [22.x, 24.x]
 
     steps:
     - uses: actions/checkout@v4
@@ -34,5 +40,11 @@ jobs:
         cache: 'npm'
     - run: npm ci
     - run: npm run build
-    - run: npm run test:local
-    - run: npm run test:dist
+    # `test:local`/`test:dist` set the variable POSIX-style, which cmd.exe (npm's script shell on
+    # Windows) can not run — the target is set by the step instead
+    - run: npm test
+      env:
+        TEST_TARGET: local
+    - run: npm test
+      env:
+        TEST_TARGET: dist

@@ -1,1 +1,1 @@
-import './plain.scss'
+import "./plain.scss";

@@ -1,10 +1,11 @@
 @font-face {
-    font-family: 'Icons';
-    src: url("../fonts/icon-font.woff2") format("woff2"),
-         url("../fonts/icon-font.woff") format("woff");
+  font-family: "Icons";
+  src:
+    url("../fonts/icon-font.woff2") format("woff2"),
+    url("../fonts/icon-font.woff") format("woff");
 }
 
 .b {
-    font-family: 'Icons';
-    color: red;
+  font-family: "Icons";
+  color: red;
 }

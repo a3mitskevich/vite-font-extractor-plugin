@@ -1,0 +1,3 @@
+.close::before {
+  content: "close";
+}

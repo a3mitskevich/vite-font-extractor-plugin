@@ -12,6 +12,16 @@ export function parseUrlSubset(url: string): SubsetOptions | undefined {
   return value ? parseSubsetQuery(value) : undefined;
 }
 
+// `?subset=` for the debug trace
+export function describeSubset(subset: SubsetOptions | undefined): string {
+  if (!subset) return "no subset";
+  const parts = [
+    subset.characters ? `characters ${JSON.stringify(subset.characters)}` : "",
+    subset.unicodeRanges?.length ? `ranges ${subset.unicodeRanges.join(" ")}` : "",
+  ].filter(Boolean);
+  return parts.length ? `subset ${parts.join(", ")}` : "empty subset";
+}
+
 // Characters and ranges of `?subset=` extend the target options and switch it to the subset engine.
 // In auto mode the explicit `?subset=` replaces the detected glyphs of that face
 export function mergeSubsetOptions(

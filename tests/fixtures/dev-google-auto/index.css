@@ -1,0 +1,6 @@
+@import "https://fonts.googleapis.com/icon?family=Material+Icons+Outlined";
+
+.icon-close::before {
+  font-family: "Material Icons";
+  content: "close";
+}

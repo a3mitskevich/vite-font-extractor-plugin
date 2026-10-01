@@ -1,15 +1,14 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import type { OutputAsset, RollupOutput } from "rollup";
+import type { OutputAsset, RollupOutput } from "./utils";
 import * as fontkit from "fontkit";
 import { getSubsetKey, parseSubsetQuery } from "../src/utils";
-import { extractAssetReferences } from "../src/asset-refs";
+import { splitUrl, withoutSubsetParam } from "../src/font-emit";
 import {
-  buildByVersion,
+  buildFixture,
   createFixture,
   findBrokenFontReferences,
   type LoggerMessage,
   textFontsLength,
-  viteBuild,
 } from "./utils";
 
 type Output = Array<RollupOutput["output"][number]>;
@@ -99,92 +98,83 @@ describe("parseSubsetQuery", () => {
   });
 });
 
-describe("extractAssetReferences: decoded queries", () => {
-  it("reads a Vite 5-7 placeholder whose query has a space", () => {
-    expect(extractAssetReferences(`url("__VITE_ASSET__BgWNIZOv__$_?subset=A B__")`)).toEqual([
-      { referenceId: "BgWNIZOv", subset: { characters: "A B", unicodeRanges: undefined } },
-    ]);
+describe("url queries of minified fonts", () => {
+  it("splits a url into the file path and everything after it", () => {
+    expect(splitUrl("./a.woff2?v=2&subset=A B#x")).toEqual({
+      path: "./a.woff2",
+      query: "?v=2&subset=A B#x",
+    });
+    expect(splitUrl("./a.woff2")).toEqual({ path: "./a.woff2", query: "" });
   });
 
-  it("reads a Vite 8 CSS placeholder whose query has a space", () => {
-    expect(
-      extractAssetReferences(`url("__VITE_ASSET__VRAku6fj__?subset=A B") format("woff2")`),
-    ).toEqual([
-      { referenceId: "VRAku6fj", subset: { characters: "A B", unicodeRanges: undefined } },
-    ]);
-  });
-
-  it("reads placeholders listed one per line", () => {
-    const subset = { characters: "ABC", unicodeRanges: undefined };
-    expect(
-      extractAssetReferences("__VITE_ASSET__a__?subset=ABC\n__VITE_ASSET__b__?subset=ABC"),
-    ).toEqual([
-      { referenceId: "a", subset },
-      { referenceId: "b", subset },
-    ]);
+  it.each([
+    ["?subset=ABC", ""],
+    ["?v=2&subset=ABC", "?v=2"],
+    ["?subset=ABC&v=2", "?v=2"],
+    ["?v=2&subset=A B&w=1", "?v=2&w=1"],
+    ["?subset=ABC#iefix", "#iefix"],
+    ["?#iefix", "?#iefix"],
+    ["?v=2", "?v=2"],
+    ["", ""],
+  ])("keeps the params other than subset of %j", (query, expected) => {
+    expect(withoutSubsetParam(query)).toBe(expected);
   });
 });
 
 const encodedFixture = createFixture("subset-query-encoded", { fonts: [] });
 
 describe("?subset= encoding in builds", () => {
-  Object.keys(viteBuild).forEach((version) => {
-    describe(`vite@${version}`, () => {
-      let output: Output = [];
-      let messages: LoggerMessage[] = [];
-      let faces = new Map<string, string>();
+  let output: Output = [];
+  let messages: LoggerMessage[] = [];
+  let faces = new Map<string, string>();
 
-      beforeAll(async () => {
-        const result = await buildByVersion(version, {
-          fixture: encodedFixture.path,
-          pluginOptions: { type: "manual", targets: [], cache: false },
-        });
-        output = result.output;
-        messages = result.messages;
-        faces = getFaceFiles(output);
-      });
-
-      it("has no broken references and no warnings", () => {
-        expect(findBrokenFontReferences(output)).toEqual([]);
-        expect(messages.filter(({ type }) => type !== "info")).toEqual([]);
-      });
-
-      it("requests a literal comma with %2C", () => {
-        expectSubset(getAsset(output, faces.get("Comma")!), "a,b");
-      });
-
-      it("reads a lower-case u+ range", () => {
-        expectSubset(getAsset(output, faces.get("Range")!), "0123456789");
-      });
-
-      // Vite 6–8 write the decoded `?subset=A B` into the output
-      it("decodes %20 to a space", () => {
-        expectSubset(getAsset(output, faces.get("Space")!), "A B");
-      });
+  beforeAll(async () => {
+    const result = await buildFixture({
+      fixture: encodedFixture.path,
+      pluginOptions: { type: "manual", targets: [], cache: false },
     });
+    output = result.output;
+    messages = result.messages;
+    faces = getFaceFiles(output);
+  });
+
+  it("has no broken references and no warnings", () => {
+    expect(findBrokenFontReferences(output)).toEqual([]);
+    expect(messages.filter(({ type }) => type !== "info")).toEqual([]);
+  });
+
+  it("requests a literal comma with %2C", () => {
+    expectSubset(getAsset(output, faces.get("Comma")!), "a,b");
+  });
+
+  it("reads a lower-case u+ range", () => {
+    expectSubset(getAsset(output, faces.get("Range")!), "0123456789");
+  });
+
+  // Vite writes the decoded `?subset=A B` into the output
+  it("decodes %20 to a space", () => {
+    expectSubset(getAsset(output, faces.get("Space")!), "A B");
   });
 });
 
 const ignoreFixture = createFixture("subset-query-ignore", { fonts: [] });
 
 describe("ignore with ?subset=", () => {
-  Object.keys(viteBuild).forEach((version) => {
-    it(`keeps an ignored family original on vite@${version}`, async () => {
-      const { output, messages } = await buildByVersion(version, {
-        fixture: ignoreFixture.path,
-        pluginOptions: { type: "manual", targets: [], ignore: ["Ignored"], cache: false },
-      });
-      const faces = getFaceFiles(output);
-
-      expect(findBrokenFontReferences(output)).toEqual([]);
-      expect(messages.filter(({ type }) => type !== "info")).toEqual([]);
-      const ignored = getAsset(output, faces.get("Ignored")!.split("?")[0]);
-      expect(Buffer.from(ignored.source).length).toBe(textFontsLength.woff2);
-      const kept = Buffer.from(getAsset(output, faces.get("Kept")!).source);
-      expect(kept.length).toBeLessThan(textFontsLength.woff);
-      const font = fontkit.create(kept) as fontkit.Font;
-      expect(font.hasGlyphForCodePoint("X".codePointAt(0)!)).toBe(true);
-      expect(font.hasGlyphForCodePoint("A".codePointAt(0)!)).toBe(false);
+  it(`keeps an ignored family original`, async () => {
+    const { output, messages } = await buildFixture({
+      fixture: ignoreFixture.path,
+      pluginOptions: { type: "manual", targets: [], ignore: ["Ignored"], cache: false },
     });
+    const faces = getFaceFiles(output);
+
+    expect(findBrokenFontReferences(output)).toEqual([]);
+    expect(messages.filter(({ type }) => type !== "info")).toEqual([]);
+    const ignored = getAsset(output, faces.get("Ignored")!.split("?")[0]);
+    expect(Buffer.from(ignored.source).length).toBe(textFontsLength.woff2);
+    const kept = Buffer.from(getAsset(output, faces.get("Kept")!).source);
+    expect(kept.length).toBeLessThan(textFontsLength.woff);
+    const font = fontkit.create(kept) as fontkit.Font;
+    expect(font.hasGlyphForCodePoint("X".codePointAt(0)!)).toBe(true);
+    expect(font.hasGlyphForCodePoint("A".codePointAt(0)!)).toBe(false);
   });
 });

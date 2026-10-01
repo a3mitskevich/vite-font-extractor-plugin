@@ -1,5 +1,5 @@
 import color from "picocolors";
-import { basename, dirname, sep } from "node:path";
+import { basename, dirname } from "node:path";
 import type { Colors } from "picocolors/types";
 import type { StyleMessage } from "./types";
 
@@ -9,8 +9,9 @@ const aliases = {
   warn: color.yellow,
   tag: color.cyan,
   error: color.red,
+  // The plugin's paths are normalized (`/` on every OS), so the separator is not `path.sep`
   path: (message: string): string =>
-    [color.dim(dirname(message) + sep), color.green(basename(message))].join(""),
+    [color.dim(dirname(message) + "/"), color.green(basename(message))].join(""),
 };
 
 export default new Proxy(
@@ -50,9 +51,4 @@ export function formatBar(ratio: number, width: number = DEFAULT_BAR_WIDTH): str
   return (
     color.dim("▎") + color.green("█".repeat(filled)) + color.dim("░".repeat(empty)) + color.dim("▎")
   );
-}
-
-export function formatSizeComparison(original: number, result: number): string {
-  const ratio = 1 - result / original;
-  return `${color.dim(formatSize(original))} → ${color.bold(formatSize(result))}  ${formatBar(ratio)} ${formatReduction(original, result)}`;
 }

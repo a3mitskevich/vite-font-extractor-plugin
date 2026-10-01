@@ -1,1 +1,1 @@
-import('./lazy.js').then(({ mount }) => mount())
+import("./lazy.js").then(({ mount }) => mount());

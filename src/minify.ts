@@ -6,15 +6,21 @@ import type {
   OptionsWithCacheSid,
   Target,
 } from "./types";
-import { camelCase, getHash } from "./utils";
+import { camelCase, getHash, toError } from "./utils";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { SUPPORT_START_FONT_REGEX, SUPPORTED_RESULTS_FORMATS } from "./constants";
 import styler from "./styler";
-import type Cache from "./cache";
+import type { CacheUsage } from "./cache";
 import { type PluginContext, getLogger, getResolvers } from "./context";
 import { checkIconGlyphs, formatGlyphs, type IconGlyphs, splitGlyphTexts } from "./glyph-filter";
+import { createProblemReport, type ProblemReport } from "./strict-report";
 
 const SHA256_HEX_LENGTH = 64;
+// Part of the cache key: another fontext may write other bytes for the same input
+const FONTEXT_VERSION = (
+  createRequire(import.meta.url)("fontext/package.json") as { version: string }
+).version;
 // A font-family may contain any character; the cache key is a flat file name
 const UNSAFE_FILE_NAME_CHARS_RE = /[^\w-]/g;
 
@@ -50,7 +56,6 @@ function createExtractOption(
         characters: target.characters,
         ligatures: target.ligatures,
         unicodeRanges: target.unicodeRanges,
-        withWhitespace: target.withWhitespace,
       }
     : {
         ...base,
@@ -58,12 +63,11 @@ function createExtractOption(
         raws: glyphs?.raws ?? target.raws,
         ligatures: glyphs?.ligatures ?? target.ligatures,
         unicodeRanges: target.unicodeRanges,
-        withWhitespace: target.withWhitespace,
       };
 }
 
 async function hasCachedFormats(
-  cache: Cache,
+  cache: CacheUsage,
   cacheKey: string,
   fonts: MinifyFontOptions[],
 ): Promise<boolean> {
@@ -73,19 +77,33 @@ async function hasCachedFormats(
   return checks.every(Boolean);
 }
 
+// null when an entry can not be read: a build of another config may prune it after the check
 async function readCachedFormats(
-  cache: Cache,
+  cache: CacheUsage,
   cacheKey: string,
   fonts: MinifyFontOptions[],
-): Promise<Partial<ExtractedResult>> {
-  const entries = await Promise.all(
-    fonts.map(async (font) => [font.extension, await cache.get(`${cacheKey}.${font.extension}`)]),
-  );
-  return Object.fromEntries(entries);
+): Promise<Partial<ExtractedResult> | null> {
+  try {
+    const entries = await Promise.all(
+      fonts.map(async (font) => [font.extension, await cache.get(`${cacheKey}.${font.extension}`)]),
+    );
+    return Object.fromEntries(entries);
+  } catch {
+    return null;
+  }
+}
+
+async function readCache(
+  cache: CacheUsage | null,
+  cacheKey: string,
+  fonts: MinifyFontOptions[],
+): Promise<Partial<ExtractedResult> | null> {
+  if (!cache || !(await hasCachedFormats(cache, cacheKey, fonts))) return null;
+  return readCachedFormats(cache, cacheKey, fonts);
 }
 
 async function writeCachedFormats(
-  cache: Cache,
+  cache: CacheUsage,
   cacheKey: string,
   fonts: MinifyFontOptions[],
   result: ExtractedResult,
@@ -155,7 +173,7 @@ const listExtensions = (fonts: MinifyFontOptions[]): string =>
 
 // fontext can not write every format a @font-face may list (otf) — such files stay as they are
 function selectOutputFormats(
-  logger: InternalLogger,
+  reportProblem: ProblemReport,
   fontName: string,
   fonts: MinifyFontOptions[],
 ): MinifyFontOptions[] {
@@ -164,9 +182,8 @@ function selectOutputFormats(
   const unsupported = fonts.filter((font) => !isSupported(font));
   if (unsupported.length) {
     const extensions = listExtensions(unsupported);
-    logger.warn(
-      `Font "${fontName}": ${extensions} is not supported for minification — keeping original ${extensions}`,
-    );
+    const problem = `Font "${fontName}": ${extensions} is not supported for minification`;
+    reportProblem(`${problem} — keeping original ${extensions}`, { strictMessage: problem });
   }
   return fonts.filter(isSupported);
 }
@@ -174,16 +191,16 @@ function selectOutputFormats(
 // Any readable file is a source, even one whose format can not be written back
 async function readSource(
   ctx: PluginContext,
+  reportProblem: ProblemReport,
   fontName: string,
   fonts: MinifyFontOptions[],
 ): Promise<Buffer | string | null> {
   const logger = getLogger(ctx);
   const entryPoint = fonts.find((font) => SUPPORT_START_FONT_REGEX.test(font.extension));
   if (!entryPoint) {
-    logger.warn(
-      `Font "${fontName}": ${listExtensions(fonts)} can not be read for minification — keeping original.` +
-        " Add a woff2, woff, ttf or otf source.",
-    );
+    const problem = `Font "${fontName}": ${listExtensions(fonts)} can not be read for minification`;
+    const hint = " Add a woff2, woff, ttf or otf source.";
+    reportProblem(`${problem} — keeping original.${hint}`, { strictMessage: `${problem}.${hint}` });
     return null;
   }
   const source =
@@ -194,19 +211,23 @@ async function readSource(
   return source;
 }
 
+// `cached`: read from the disk cache instead of minified
+export type MinifyResult = ExtractedResult & { cached?: boolean };
+
 export async function processMinify(
   ctx: PluginContext,
   fontName: string,
   fonts: MinifyFontOptions[],
   options: OptionsWithCacheSid,
-): Promise<ExtractedResult | null> {
+  reportProblem: ProblemReport = createProblemReport(ctx, false),
+): Promise<MinifyResult | null> {
   const logger = getLogger(ctx);
 
-  const outputs = selectOutputFormats(logger, fontName, fonts);
+  const outputs = selectOutputFormats(reportProblem, fontName, fonts);
   if (!outputs.length) {
     return null;
   }
-  const source = await readSource(ctx, fontName, fonts);
+  const source = await readSource(ctx, reportProblem, fontName, fonts);
   if (!source) {
     return null;
   }
@@ -216,12 +237,23 @@ export async function processMinify(
   const cacheKey =
     camelCase(fontName).replace(UNSAFE_FILE_NAME_CHARS_RE, "_") +
     "-" +
-    getHash(options.sid + sourceHash);
-  const emptyResult: ExtractedResult = { meta: [], report: { originalSize: 0, formats: {} } };
+    getHash(options.sid + sourceHash + FONTEXT_VERSION);
+  const emptyResult: ExtractedResult = {
+    meta: [],
+    report: { originalSize: 0, formats: {} },
+    warnings: [],
+  };
 
-  if (ctx.cache && (await hasCachedFormats(ctx.cache, cacheKey, outputs))) {
+  const cache = ctx.cache?.usage(ctx.environmentName) ?? null;
+  const cached = await readCache(cache, cacheKey, outputs);
+  logger.debug(
+    () =>
+      `minify "${fontName}" ${listExtensions(outputs)}: cache ${cache ? (cached ? "hit" : "miss") : "off"} (${cacheKey})`,
+  );
+  if (cached) {
+    ctx.stats.cached++;
     logger.cached(fontName);
-    return { ...emptyResult, ...(await readCachedFormats(ctx.cache, cacheKey, outputs)) };
+    return { ...emptyResult, ...cached, cached: true };
   }
 
   const sourceBuffer = Buffer.from(source);
@@ -231,8 +263,14 @@ export async function processMinify(
   }
   const extractOption = createExtractOption(fontName, outputs, options.target, glyphs);
   const minifyResult = await extract(sourceBuffer, extractOption);
-  if (ctx.cache) {
-    await writeCachedFormats(ctx.cache, cacheKey, outputs, minifyResult);
+  for (const warning of minifyResult.warnings) {
+    logger.warn(`Font "${fontName}": ${warning.message}`);
+  }
+  if (cache) {
+    // The result is valid without the cache: a failed write costs only the next extraction
+    await writeCachedFormats(cache, cacheKey, outputs, minifyResult).catch((error: unknown) => {
+      logger.warn(`Font "${fontName}": the result was not cached: ${toError(error).message}`);
+    });
   }
   return { ...emptyResult, ...minifyResult };
 }

@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { FontExtractorPlugin } from "../src";
 import {
-  buildByVersion,
+  buildFixture,
   dir,
   findBrokenFontReferences,
   fixtures,
@@ -14,7 +14,6 @@ import {
   openFont,
   type OutputItem,
   rendersLigature,
-  viteBuild,
 } from "./utils";
 
 const PACKAGE_NAME = "vite-font-extractor-plugin";
@@ -39,36 +38,32 @@ describe.skipIf(!existsSync(DIST_CJS))("dist: CommonJS build", () => {
     const cjs = loadCjs();
     expect(typeof cjs.default).toBe("function");
     expect(cjs.FontExtractor).toBe(cjs.default);
-    expect(cjs.default({ type: "manual", targets: [] }).name).toBe(PACKAGE_NAME);
+    const names = cjs.default({ type: "manual", targets: [] }).map((part) => part.name);
+    expect(names).toContain(PACKAGE_NAME);
   });
 
-  // Oldest and newest supported Vite
-  Object.keys(viteBuild)
-    .filter((version) => /^[58]\./.test(version))
-    .forEach((version) => {
-      it(`should minify fonts in a vite@${version} build`, async () => {
-        const { output, messages } = await buildByVersion(version, {
-          fixture: fixtures.plain.path,
-          pluginFactory: loadCjs().default,
-          pluginOptions: {
-            type: "manual",
-            targets: [{ fontName: "Font Name", ligatures: ["close"] }],
-            cache: false,
-          },
-        });
-        const items = output as OutputItem[];
-
-        expect(messages.filter((m) => m.type === "warn" || m.type === "error")).toEqual([]);
-        expect(findBrokenFontReferences(items)).toEqual([]);
-        const fonts = getFontAssets(items);
-        expect(fonts).toHaveLength(4);
-        fonts.forEach((asset) => {
-          const ext = asset.fileName.split(".").pop() as keyof typeof fontsLength;
-          expect(Buffer.from(asset.source).length, asset.fileName).toBeLessThan(fontsLength[ext]);
-        });
-        getReadableFontAssets(items).forEach((asset) => {
-          expect(rendersLigature(openFont(asset.source), "close"), asset.fileName).toBe(true);
-        });
-      });
+  it("should minify fonts in a Vite build", async () => {
+    const { output, messages } = await buildFixture({
+      fixture: fixtures.plain.path,
+      pluginFactory: loadCjs().default,
+      pluginOptions: {
+        type: "manual",
+        targets: [{ fontName: "Font Name", ligatures: ["close"] }],
+        cache: false,
+      },
     });
+    const items = output as OutputItem[];
+
+    expect(messages.filter((m) => m.type === "warn" || m.type === "error")).toEqual([]);
+    expect(findBrokenFontReferences(items)).toEqual([]);
+    const fonts = getFontAssets(items);
+    expect(fonts).toHaveLength(4);
+    fonts.forEach((asset) => {
+      const ext = asset.fileName.split(".").pop() as keyof typeof fontsLength;
+      expect(Buffer.from(asset.source).length, asset.fileName).toBeLessThan(fontsLength[ext]);
+    });
+    getReadableFontAssets(items).forEach((asset) => {
+      expect(rendersLigature(openFont(asset.source), "close"), asset.fileName).toBe(true);
+    });
+  });
 });

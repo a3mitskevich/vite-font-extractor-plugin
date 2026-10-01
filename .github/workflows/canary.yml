@@ -1,0 +1,49 @@
+name: Canary
+
+# The plugin against the next Vite (and the Rolldown it brings). Runs on a schedule only, so it
+# never gates a pull request; a failure shows up as a red run of this workflow.
+on:
+  schedule:
+    # Mondays, 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vite-next:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: '.nvmrc'
+        cache: 'npm'
+    - run: npm ci
+
+    - name: Pick the next Vite
+      id: vite
+      # `beta` when it is ahead of `latest` (after a release it still names the older prerelease)
+      run: |
+        node -e '
+          const raw = JSON.parse(require("node:child_process").execSync("npm view vite dist-tags --json"));
+          const tags = Array.isArray(raw) ? raw[0] : raw;
+          const core = (v) => v.split("-")[0].split(".").map(Number);
+          const isAhead = (a, b) => {
+            const [x, y] = [core(a), core(b)];
+            const i = x.findIndex((n, k) => n !== y[k]);
+            return i !== -1 && x[i] > y[i];
+          };
+          const version = tags.beta && isAhead(tags.beta, tags.latest) ? tags.beta : tags.latest;
+          console.log(`dist-tags: ${JSON.stringify(tags)} -> ${version}`);
+          require("node:fs").appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`);
+        '
+    - run: npm i "vite@${{ steps.vite.outputs.version }}" --no-save --no-audit --no-fund
+
+    - name: Versions under test
+      run: node --input-type=module -e 'const vite = await import("vite"); console.log(`vite ${vite.version}, rolldown ${vite.rolldownVersion}, node ${process.version}`);'
+
+    - run: npm run build
+    - run: npm run test:local
+    - run: npm run test:dist

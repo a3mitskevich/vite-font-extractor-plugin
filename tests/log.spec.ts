@@ -1,23 +1,21 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildByVersion,
+  buildFixture,
   type BuildOptions,
-  type ContainerVersion,
   type CssMinify,
   fixtures,
   type FixturesNames,
-  viteBuild,
 } from "./utils";
 
 describe("Build log", () => {
-  const runCommonTest = (version: ContainerVersion, fixturesNames: FixturesNames) => {
-    describe(`Log test for vite@${version}`, () => {
+  const runCommonTest = (fixturesNames: FixturesNames) => {
+    describe(`Log test`, () => {
       fixturesNames.forEach((fixtureName) => {
         const fixture = fixtures[fixtureName];
         Array.from(["lightningcss", "esbuild"] as CssMinify[]).forEach((cssMinify) => {
           describe(`Build test for "${fixtureName}" fixture with "${cssMinify}" css minificator`, () => {
             const build = async (options?: BuildOptions) =>
-              buildByVersion(version, {
+              buildFixture({
                 ...options,
                 cssMinify,
                 fixture: fixture.path,
@@ -51,12 +49,5 @@ describe("Build log", () => {
     });
   };
 
-  const runAllTests = () => {
-    Object.keys(viteBuild).forEach((version) => {
-      runCommonTest(version, ["plain", "plain-html", "mixins", "import-css", "import-js"]);
-    });
-  };
-
-  runAllTests();
-  // runCommonTest(versionV4, ['plain-html']) // for single debug
+  runCommonTest(["plain", "plain-html", "mixins", "import-css", "import-js"]);
 });

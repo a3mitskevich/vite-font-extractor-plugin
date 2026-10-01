@@ -1,0 +1,12 @@
+$name: "text";
+
+@font-face {
+  font-family: "Text";
+  src: url("../fonts/text.woff2?subset=ABC") format("woff2");
+}
+
+// The file of this face is written with interpolation: no candidate names it
+@font-face {
+  font-family: "Text Bold";
+  src: url("../fonts/#{$name}-bold.woff2?subset=ABC") format("woff2");
+}

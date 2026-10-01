@@ -1,0 +1,3 @@
+.search::before {
+  content: "search";
+}

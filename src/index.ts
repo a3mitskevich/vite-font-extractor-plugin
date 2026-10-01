@@ -1,5 +1,5 @@
 import FontExtractor from "./extractor";
-export type { PluginOption, Target } from "./types";
+export type { FaceMatcher, FontFaceInfo, PluginOption, Target } from "./types";
 
 type FontExtractorPlugin = typeof FontExtractor;
 

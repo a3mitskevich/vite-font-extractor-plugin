@@ -1,0 +1,13 @@
+/* Only a file of public/: left to the pass after vite:css */
+@font-face {
+  font-family: "Public Font";
+  src: url("/fonts/public-font.woff2") format("woff2");
+}
+
+/* A local file and a file of public/: minified before vite:css */
+@font-face {
+  font-family: "Mixed Font";
+  src:
+    url("/fonts/public-font.woff2") format("woff2"),
+    url("../fonts/text-font.woff") format("woff");
+}

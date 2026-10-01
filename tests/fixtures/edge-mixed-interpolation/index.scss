@@ -1,0 +1,8 @@
+$dir: "../fonts";
+
+@font-face {
+  font-family: "Material Icons";
+  src:
+    url("../fonts/icon-font.woff2") format("woff2"),
+    url("#{$dir}/icon-font.woff") format("woff");
+}

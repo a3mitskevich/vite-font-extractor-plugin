@@ -1,5 +1,7 @@
-import { type Connect, send, type ViteDevServer } from "vite";
-import { cleanUrl, createSubsetOptions, getFontExtension, toError } from "./utils";
+import { existsSync } from "node:fs";
+import { basename, resolve } from "node:path";
+import { type Connect, isFileLoadingAllowed, normalizePath, send, type ViteDevServer } from "vite";
+import { cleanUrl, createSubsetOptions, getFontExtension, stripBase, toError } from "./utils";
 import { type PluginContext, getLogger } from "./context";
 import type {
   MinifyFontOptions,
@@ -8,9 +10,22 @@ import type {
   SubsetOptions,
 } from "./types";
 import { processMinify } from "./minify";
-import { SUPPORT_START_FONT_REGEX } from "./constants";
-import { mergeSubsetOptions, parseUrlSubset } from "./subset-options";
+import { FONT_MIME_TYPES, SUPPORT_START_FONT_REGEX } from "./constants";
+import { describeSubset, mergeSubsetOptions, parseUrlSubset } from "./subset-options";
 import styler from "./styler";
+import { hasGlyphSelection, splitUrl } from "./font-emit";
+import { forgetServeModule } from "./serve-registry";
+
+// A font requested with `?subset=`, other params may come first
+const SUBSET_REQUEST_RE = /\.(?:woff2?|ttf|otf|eot)\?(?:[^#]*&)?subset=/i;
+// Module requests of Vite (`import url from './font.woff2?subset=A'` is fetched with `&import`)
+const MODULE_REQUEST_RE = /[?&](?:import|url|raw|inline|worker|sharedworker)\b/;
+const FS_PREFIX = "/@fs/";
+const WINDOWS_DRIVE_RE = /^\/[A-Za-z]:/;
+// Every distinct `?subset=` url gets a loader: the oldest ones go past this many
+const MAX_SUBSET_REQUESTS = 500;
+// Coalesces the reloads of auto-mode fonts while many stylesheets load
+const AUTO_RELOAD_DELAY_MS = 50;
 
 export type ServeFontLoader = () => Promise<ServeFontStubResponse | null>;
 
@@ -22,7 +37,8 @@ export interface ServeFontRequest {
   // Other local urls of the same @font-face, without base
   aliases: string[];
   fontName: string;
-  auto: boolean;
+  // Options of the face (face-options.ts): its target, the auto target, or `?subset=` alone
+  options: OptionsWithCacheSid;
 }
 
 function resolveServeOptions(
@@ -30,18 +46,15 @@ function resolveServeOptions(
   request: ServeFontRequest,
   subset: SubsetOptions | undefined,
 ): OptionsWithCacheSid | null {
-  if (request.auto) {
+  if (request.options.auto) {
     // An explicit `?subset=` replaces the detected glyphs, like in build. Without it there is
     // nothing to extract until auto mode finds glyphs — the original is served meanwhile
     if (subset) return mergeSubsetOptions(ctx.autoProxyOption, subset, request.fontName);
     return ctx.autoProxyOption.target.raws?.length ? ctx.autoProxyOption : null;
   }
-  const options = ctx.optionsMap.get(request.fontName);
-  if (options) {
-    return mergeSubsetOptions(options, subset, request.fontName);
-  }
-  // A face without target options is minified by its `?subset=` alone, like in build
-  return subset ? createSubsetOptions(request.fontName, subset) : null;
+  // Like in build: a plain url of a face without a target has nothing to keep
+  const options = mergeSubsetOptions(request.options, subset, request.fontName);
+  return hasGlyphSelection(options) ? options : null;
 }
 
 // EOT and SVG can not be a minification source — another format of the @font-face is used
@@ -103,12 +116,91 @@ export function createServeFontLoader(
   };
 }
 
+function fileOfRequest(ctx: PluginContext, path: string): string | null {
+  let pathname: string;
+  try {
+    pathname = decodeURIComponent(stripBase(path, ctx.base));
+  } catch {
+    return null;
+  }
+  if (!pathname.startsWith(FS_PREFIX)) return normalizePath(resolve(ctx.root, `.${pathname}`));
+  const file = pathname.slice(FS_PREFIX.length - 1);
+  return normalizePath(resolve(WINDOWS_DRIVE_RE.test(file) ? file.slice(1) : file));
+}
+
+/**
+ * Dev: a font requested with `?subset=` that no @font-face registered — a JS import or
+ * `new URL()`. Vite serves its asset url with the query, the plugin minifies it like build.
+ */
+function registerSubsetRequest(
+  ctx: PluginContext,
+  url: string,
+  registered: Set<string>,
+): ServeFontLoader | undefined {
+  if (!SUBSET_REQUEST_RE.test(url) || MODULE_REQUEST_RE.test(url)) return undefined;
+  const { path, query } = splitUrl(url);
+  const file = fileOfRequest(ctx, path);
+  // Only files Vite itself would serve (server.fs.allow / deny)
+  if (!file || !ctx.server || !isFileLoadingAllowed(ctx.server.config, file)) return undefined;
+  if (!existsSync(file)) return undefined;
+  const fontName = `subset (${basename(file)})`;
+  const loader = createServeFontLoader(ctx, {
+    importer: file,
+    url: file + query,
+    aliases: [],
+    fontName,
+    options: createSubsetOptions(fontName, {}),
+  });
+  ctx.fontServeProxy.set(url, loader);
+  registered.add(url);
+  // Evicted in insertion order; a url requested again is registered again
+  for (const oldest of registered) {
+    if (registered.size <= MAX_SUBSET_REQUESTS) break;
+    registered.delete(oldest);
+    ctx.fontServeProxy.delete(oldest);
+  }
+  getLogger(ctx).debug(
+    () => `dev: ?subset= request registered, ${describeSubset(parseUrlSubset(query))}`,
+    url,
+  );
+  return loader;
+}
+
+/**
+ * Dev, auto mode: the glyphs of a stylesheet changed, so the fonts of auto @font-face rules change
+ * too. Their modules are transformed again with the new glyph version in the font urls, and HMR
+ * sends the stylesheets to the browser, which then loads the new fonts.
+ */
+export function reloadAutoFonts(ctx: PluginContext, changedId: string): void {
+  const server = ctx.server;
+  if (!server) return;
+  if (ctx.autoReloadTimer) clearTimeout(ctx.autoReloadTimer);
+  ctx.autoReloadTimer = setTimeout(() => {
+    ctx.autoReloadTimer = null;
+    const environment = server.environments.client;
+    for (const id of ctx.autoFaceModules) {
+      if (id === changedId) continue;
+      const module = environment.moduleGraph.getModuleById(id);
+      if (!module) {
+        forgetServeModule(ctx, id);
+        continue;
+      }
+      environment.moduleGraph.invalidateModule(module);
+      environment.reloadModule(module).catch((error: unknown) => {
+        getLogger(ctx).error(`Failed to reload ${styler.path(id)}: ${toError(error).message}`);
+      });
+    }
+  }, AUTO_RELOAD_DELAY_MS);
+}
+
 // Serves minified fonts; on a miss or any failure Vite serves the original file
 export function createServeMiddleware(
   ctx: PluginContext,
   server: ViteDevServer,
 ): Connect.NextHandleFunction {
   const inFlightRequests = new Map<string, Promise<ServeFontStubResponse | null>>();
+  // `?subset=` urls outside @font-face; @font-face urls in fontServeProxy are never evicted
+  const subsetRequests = new Set<string>();
   const load = (url: string, loader: ServeFontLoader): Promise<ServeFontStubResponse | null> => {
     const pending = inFlightRequests.get(url);
     if (pending) return pending;
@@ -123,7 +215,9 @@ export function createServeMiddleware(
 
   return (req, res, next) => {
     const url = req.url;
-    const loader = url ? ctx.fontServeProxy.get(url) : undefined;
+    const loader = url
+      ? (ctx.fontServeProxy.get(url) ?? registerSubsetRequest(ctx, url, subsetRequests))
+      : undefined;
     if (!url || !loader) {
       next();
       return;
@@ -132,16 +226,21 @@ export function createServeMiddleware(
       .then(
         (stub) => {
           if (!stub) {
+            getLogger(ctx).debug("dev: no minified result — original served", url);
             next();
             return;
           }
+          getLogger(ctx).debug(`dev: minified font served (${stub.content.length} B)`, url);
           getLogger(ctx).fix();
           getLogger(ctx).info(`Stub server response for: ${styler.path(url)}`);
-          send(req, res, stub.content, `font/${stub.extension}`, {
-            cacheControl: "no-cache",
-            headers: server.config.server.headers,
-            etag: "",
-          });
+          // Without `etag` Vite sends a weak one of the content and answers If-None-Match with 304
+          send(
+            req,
+            res,
+            stub.content,
+            FONT_MIME_TYPES[stub.extension] ?? "application/octet-stream",
+            { cacheControl: "no-cache", headers: server.config.server.headers },
+          );
         },
         (error: unknown) => {
           logFailure(url, error);

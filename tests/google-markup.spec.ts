@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import type { RollupOutput } from "rollup";
+import type { RollupOutput } from "./utils";
 import { extractGoogleFontsUrls } from "../src/utils";
 import { getGoogleFontFamilies, getGoogleFontText, setGoogleFontText } from "../src/google-fonts";
-import { buildByVersion, createFixture, type LoggerMessage, viteBuild } from "./utils";
+import { buildFixture, createFixture, type LoggerMessage } from "./utils";
 
 const ICONS = "https://fonts.googleapis.com/icon?family=Material+Icons";
 const CSS2 =
@@ -88,46 +88,42 @@ const collectGoogleUrls = (output: RollupOutput["output"]): string[] =>
   );
 
 describe("Google Fonts markup", () => {
-  Object.keys(viteBuild).forEach((version) => {
-    describe(`vite@${version}`, () => {
-      let urls: string[] = [];
-      let messages: LoggerMessage[] = [];
+  let urls: string[] = [];
+  let messages: LoggerMessage[] = [];
 
-      beforeAll(async () => {
-        const result = await buildByVersion(version, {
-          fixture: fixture.path,
-          pluginOptions: {
-            type: "manual",
-            cache: false,
-            targets: Object.entries(TARGETS).map(([fontName, ligature]) => ({
-              fontName,
-              ligatures: [ligature],
-            })),
-          },
-        });
-        urls = collectGoogleUrls(result.output);
-        messages = result.messages;
-      });
-
-      it("reports no warnings or errors", () => {
-        expect(messages.filter(({ type }) => type !== "info")).toEqual([]);
-      });
-
-      it.each([
-        ["one-line link, href first", "Material+Icons", "close"],
-        ["one-line link, rel first", "Material+Icons+Outlined", "star"],
-        ["link with unquoted rel", "Material+Icons+Round", "home"],
-        ["CSS @import url()", "Material+Icons+Sharp", "delete"],
-      ])("adds text to %s", (_, family, text) => {
-        const url = urls.find((item) => item.includes(`family=${family}&text=`));
-        expect(url, `${family} in ${urls.join("\n")}`).toBeDefined();
-        expect(url!.endsWith(`&text=${text}`)).toBe(true);
-      });
-
-      it("adds text of both css2 families and keeps axes", () => {
-        const url = urls.find((item) => item.includes("css2?"));
-        expect(url).toBe(`${CSS2}&text=menu+search`);
-      });
+  beforeAll(async () => {
+    const result = await buildFixture({
+      fixture: fixture.path,
+      pluginOptions: {
+        type: "manual",
+        cache: false,
+        targets: Object.entries(TARGETS).map(([fontName, ligature]) => ({
+          fontName,
+          ligatures: [ligature],
+        })),
+      },
     });
+    urls = collectGoogleUrls(result.output);
+    messages = result.messages;
+  });
+
+  it("reports no warnings or errors", () => {
+    expect(messages.filter(({ type }) => type !== "info")).toEqual([]);
+  });
+
+  it.each([
+    ["one-line link, href first", "Material+Icons", "close"],
+    ["one-line link, rel first", "Material+Icons+Outlined", "star"],
+    ["link with unquoted rel", "Material+Icons+Round", "home"],
+    ["CSS @import url()", "Material+Icons+Sharp", "delete"],
+  ])("adds text to %s", (_, family, text) => {
+    const url = urls.find((item) => item.includes(`family=${family}&text=`));
+    expect(url, `${family} in ${urls.join("\n")}`).toBeDefined();
+    expect(url!.endsWith(`&text=${text}`)).toBe(true);
+  });
+
+  it("adds text of both css2 families and keeps axes", () => {
+    const url = urls.find((item) => item.includes("css2?"));
+    expect(url).toBe(`${CSS2}&text=menu+search`);
   });
 });

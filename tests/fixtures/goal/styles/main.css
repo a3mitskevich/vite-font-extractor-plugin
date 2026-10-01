@@ -1,0 +1,11 @@
+/* Written in the module: minified before vite:css */
+@font-face {
+  font-family: "Icons";
+  src:
+    url("../fonts/icons.woff2") format("woff2"),
+    url("../fonts/icons.woff") format("woff");
+}
+
+.icon {
+  font-family: "Icons";
+}
