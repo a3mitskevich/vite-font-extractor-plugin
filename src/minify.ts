@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { SUPPORT_START_FONT_REGEX, SUPPORTED_RESULTS_FORMATS } from "./constants";
 import styler from "./styler";
-import type Cache from "./cache";
+import type { CacheUsage } from "./cache";
 import { type PluginContext, getLogger, getResolvers } from "./context";
 import { checkIconGlyphs, formatGlyphs, type IconGlyphs, splitGlyphTexts } from "./glyph-filter";
 import { createProblemReport, type ProblemReport } from "./strict-report";
@@ -67,7 +67,7 @@ function createExtractOption(
 }
 
 async function hasCachedFormats(
-  cache: Cache,
+  cache: CacheUsage,
   cacheKey: string,
   fonts: MinifyFontOptions[],
 ): Promise<boolean> {
@@ -79,7 +79,7 @@ async function hasCachedFormats(
 
 // null when an entry can not be read: a build of another config may prune it after the check
 async function readCachedFormats(
-  cache: Cache,
+  cache: CacheUsage,
   cacheKey: string,
   fonts: MinifyFontOptions[],
 ): Promise<Partial<ExtractedResult> | null> {
@@ -94,7 +94,7 @@ async function readCachedFormats(
 }
 
 async function readCache(
-  cache: Cache | null,
+  cache: CacheUsage | null,
   cacheKey: string,
   fonts: MinifyFontOptions[],
 ): Promise<Partial<ExtractedResult> | null> {
@@ -103,7 +103,7 @@ async function readCache(
 }
 
 async function writeCachedFormats(
-  cache: Cache,
+  cache: CacheUsage,
   cacheKey: string,
   fonts: MinifyFontOptions[],
   result: ExtractedResult,
@@ -244,10 +244,11 @@ export async function processMinify(
     warnings: [],
   };
 
-  const cached = await readCache(ctx.cache, cacheKey, outputs);
+  const cache = ctx.cache?.usage(ctx.environmentName) ?? null;
+  const cached = await readCache(cache, cacheKey, outputs);
   logger.debug(
     () =>
-      `minify "${fontName}" ${listExtensions(outputs)}: cache ${ctx.cache ? (cached ? "hit" : "miss") : "off"} (${cacheKey})`,
+      `minify "${fontName}" ${listExtensions(outputs)}: cache ${cache ? (cached ? "hit" : "miss") : "off"} (${cacheKey})`,
   );
   if (cached) {
     logger.cached(fontName);
@@ -264,9 +265,9 @@ export async function processMinify(
   for (const warning of minifyResult.warnings) {
     logger.warn(`Font "${fontName}": ${warning.message}`);
   }
-  if (ctx.cache) {
+  if (cache) {
     // The result is valid without the cache: a failed write costs only the next extraction
-    await writeCachedFormats(ctx.cache, cacheKey, outputs, minifyResult).catch((error: unknown) => {
+    await writeCachedFormats(cache, cacheKey, outputs, minifyResult).catch((error: unknown) => {
       logger.warn(`Font "${fontName}": the result was not cached: ${toError(error).message}`);
     });
   }

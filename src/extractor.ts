@@ -204,7 +204,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
   // No `sharedDuringBuild`: a shared instance gets configResolved for the config of every
   // environment, the last one wins the logger, resolvers and cache (its owner has the outDir)
   const environmentContext = perEnvironmentState((environment) =>
-    createEnvironmentContext(shared, environment.config.build),
+    createEnvironmentContext(shared, environment.name, environment.config.build),
   );
   const contextOf = (hookContext: Rollup.PluginContext): PluginContext =>
     shared.isServe ? shared : environmentContext(hookContext);
@@ -268,7 +268,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
     },
     async buildStart(options) {
       const ctx = contextOf(this);
-      resetBuildState(ctx, ctx.isServe ? "" : this.environment.name);
+      resetBuildState(ctx);
       ctx.cachedBefore = getLogger(ctx).cachedCount();
       if (ctx.isServe || ctx.mode !== "auto") return;
       const resolved = await Promise.all(
@@ -381,7 +381,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       if (ctx.stats.minified || cached) {
         logger.summary({ ...ctx.stats, cached });
       }
-      await ctx.cache?.prune();
+      await ctx.cache?.prune(ctx.environmentName);
     },
   };
 

@@ -77,7 +77,7 @@ A Vite plugin that extracts and minifies font glyphs — both icon fonts (by lig
 
 **`src/minify.ts`** — `processMinify`: calls `fontext.extract()`, disk cache (key: font, options, source hash, fontext version), fontext warnings.
 
-**`src/cache.ts`** — Async file-system cache in `<config.cacheDir>/.font-extractor-cache`; `.usage/<owner>.json` per build config or dev server; a build prunes entries no owner used within 30 days.
+**`src/cache.ts`** — Async file-system cache in `<config.cacheDir>/.font-extractor-cache`; `.usage/<owner>-<environment>.json` per build environment of a config (`<owner>.json` for the dev server): `usage(ctx.environmentName)` records the keys each environment uses, since client and SSR builds may run in parallel; each environment prunes when its build ends — writes only its own usage file (another one still running keeps the file of its last build) and removes entries no owner used within 30 days, protecting the in-memory keys of every environment of the process.
 
 **`src/inline-fonts.ts`**, **`src/utils.ts`** (regex helpers, `camelCase`, `stripCssComments`, `toError`), **`src/internal-logger.ts`** (phases, progress bars, summary; `debug(message | () => message, id?)` prints dim `[debug]` info lines only when `debug: true` or `DEBUG` names `vite-font-extractor` — `isDebugEnabled` — with paths relative to the root: pass a thunk for anything costly, check `logger.isDebug` before extra work; one line per decision), **`src/types.ts`** (`PluginOption` is a discriminated union on `type: 'auto' | 'manual'`; public `FontFaceInfo`, `FaceMatcher`).
 

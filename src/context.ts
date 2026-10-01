@@ -72,6 +72,8 @@ export interface SharedContext {
  * a builder may run in parallel. Dev has one, on the shared context.
  */
 export interface BuildState {
+  // Name of the build environment, "" in dev: the cache records its usage per environment
+  readonly environmentName: string;
   // Build options of the environment, null in dev
   readonly buildConfig: ResolvedBuildOptions | null;
   // Auto mode: glyphs of CSS `content` per module id; the auto target keeps the glyphs of its build
@@ -165,6 +167,7 @@ function createAutoOption(autoTarget: IconTarget): OptionsWithCacheSid<IconTarge
 
 function createBuildState(
   shared: SharedContext,
+  environmentName: string,
   buildConfig: ResolvedBuildOptions | null,
 ): BuildState {
   const glyphsFindMap = new Map<string, string[]>();
@@ -172,6 +175,7 @@ function createBuildState(
   const stats: MinifyStats = { minified: 0, cached: 0, saved: 0 };
   const reportRecords: ReportRecord[] = [];
   return {
+    environmentName,
     buildConfig,
     glyphsFindMap,
     autoProxyOption,
@@ -229,7 +233,7 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
     fontServeProxy: new Map(),
     servedModules: new Map(),
   };
-  return Object.assign(shared, createBuildState(shared, null));
+  return Object.assign(shared, createBuildState(shared, "", null));
 }
 
 /**
@@ -238,10 +242,11 @@ export function createPluginContext(pluginOption: PluginOption): PluginContext {
  */
 export function createEnvironmentContext(
   shared: PluginContext,
+  environmentName: string,
   buildConfig: ResolvedBuildOptions,
 ): PluginContext {
   const context = Object.create(shared) as PluginContext;
-  return Object.assign(context, createBuildState(shared, buildConfig));
+  return Object.assign(context, createBuildState(shared, environmentName, buildConfig));
 }
 
 function reportMinified(
@@ -272,8 +277,8 @@ function reportMinified(
 
 // Called on every (re)build start of an environment; `build --watch` on Rolldown transforms every
 // module again. Dev keeps its state: there buildStart runs once
-export function resetBuildState(ctx: PluginContext, environment = ""): void {
-  ctx.cache?.resetUsage(environment);
+export function resetBuildState(ctx: PluginContext): void {
+  ctx.cache?.resetUsage(ctx.environmentName);
   if (ctx.isServe) return;
   ctx.progress.clear();
   ctx.rawSources.clear();

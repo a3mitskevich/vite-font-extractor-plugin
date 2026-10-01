@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { createBuilder, type ViteBuilder } from "vite";
 import type { LoggerMessage, OutputAsset, Plugin, RollupOutput } from "./utils";
 import { createHash } from "node:crypto";
-import { rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { basename, join, relative } from "node:path";
 import type { PluginOption } from "../src";
 import {
   buildFixture,
@@ -405,11 +405,21 @@ function createCssProbe(): { plugin: Plugin; transformed: Promise<void> } {
 
 const MANUAL_OPTIONS: PluginOption = { type: "manual", targets: [ICON_TARGET], cache: false };
 
+interface EnvironmentBuildOptions {
+  pluginOptions?: PluginOption;
+  ssrInput?: string;
+  // Part of the cache owner: builds that share one keep each other's usage files
+  out?: string;
+}
+
 async function buildEnvironments(
   order: BuildOrder,
-  pluginOptions: PluginOption = MANUAL_OPTIONS,
+  {
+    pluginOptions = MANUAL_OPTIONS,
+    ssrInput = join(ENVIRONMENTS_FIXTURE, "server.js"),
+    out = join(outDir, generateId()),
+  }: EnvironmentBuildOptions = {},
 ): Promise<EnvironmentOutputs> {
-  const out = join(outDir, generateId());
   const customLogger = createFakeLogger();
   const probe = createCssProbe();
   const outputs = new Map<string, OutputItem[]>();
@@ -430,7 +440,7 @@ async function buildEnvironments(
         build: {
           ssr: true,
           outDir: join(out, "server"),
-          rolldownOptions: { input: join(ENVIRONMENTS_FIXTURE, "server.js") },
+          rolldownOptions: { input: ssrInput },
         },
       },
     },
@@ -511,7 +521,9 @@ describe("Environments of one builder", () => {
   it.each(["parallel", "ssr-after-client-css"] as const)(
     "should collect auto glyphs and wait for the graph per environment (%s)",
     async (order) => {
-      const outputs = await buildEnvironments(order, { type: "auto", cache: false });
+      const outputs = await buildEnvironments(order, {
+        pluginOptions: { type: "auto", cache: false },
+      });
       expectMinifiedEnvironments(outputs);
       const icon = getFontAssets(outputs.client).find(
         (asset) =>
@@ -534,5 +546,58 @@ describe("Environments of one builder", () => {
     });
     expect(namesOf(second)).toEqual(namesOf(first));
     expect(namesOf(parallel)).toEqual(namesOf(first));
+  });
+
+  it("should record the cache usage of each environment of a parallel build", async () => {
+    const root = join(outDir, `environments-cache-${generateId()}`);
+    const cachePath = join(root, "cache", ".font-extractor-cache");
+    const usageDir = join(cachePath, ".usage");
+    // The SSR build minifies a font of its own: no stylesheet, another subset than the client's
+    const ssrInput = join(root, "server.js");
+    const font = relative(root, join(fixturesDir, "fonts", "text-font.woff2"));
+    mkdirSync(root, { recursive: true });
+    writeFileSync(
+      ssrInput,
+      `import url from "./${font}?subset=XYZ";\nexport const render = () => url;\n`,
+    );
+    const options: EnvironmentBuildOptions = {
+      pluginOptions: { ...MANUAL_OPTIONS, cache: join(root, "cache") },
+      ssrInput,
+      out: join(root, "dist"),
+    };
+    const entries = (): string[] =>
+      readdirSync(cachePath, { withFileTypes: true })
+        .filter((entry) => entry.isFile())
+        .map((entry) => entry.name)
+        .sort();
+    // Usage file per environment: `<owner>-client.json` → its keys
+    const readUsage = (): Record<string, string[]> =>
+      Object.fromEntries(
+        readdirSync(usageDir).map((file) => [
+          file.replace(/^[^-]+-|\.json$/g, ""),
+          (JSON.parse(readFileSync(join(usageDir, file), "utf8")) as { keys: string[] }).keys,
+        ]),
+      );
+    const expectUsagePerEnvironment = (): void => {
+      const usage = readUsage();
+      expect(Object.keys(usage).sort()).toEqual(["client", "ssr"]);
+      // Icon font of the stylesheet and `?subset=ABC` for the client, `?subset=XYZ` for SSR
+      expect(usage.client).toHaveLength(3);
+      expect(usage.ssr).toHaveLength(1);
+      expect([...usage.client, ...usage.ssr].sort()).toEqual(entries());
+    };
+    try {
+      await buildEnvironments("parallel", options);
+      expectUsagePerEnvironment();
+      const first = entries();
+
+      // Every font is a cache hit; the prune of each environment keeps the other's entries only
+      writeFileSync(join(cachePath, "stale-entry.woff2"), "");
+      await buildEnvironments("parallel", options);
+      expect(entries()).toEqual(first);
+      expectUsagePerEnvironment();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
