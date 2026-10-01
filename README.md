@@ -246,6 +246,8 @@ With `strict: true` a build fails instead of shipping the original file of a tar
 - minification fails (e.g. a ligature the font does not have)
 - the source file of a face is not found, including a face Vite inlined as a `data:` URL
 - a face loads from another host
+- a face loads a file of `public/`: Vite copies it as it is (move the file out of `public/` to minify it); without
+  `strict` the face is left alone silently, the [debug trace](#debug-trace) and the [report](#build-report) name it
 - a format can not be minified (`.otf`) or no format can be read (eot only)
 - a target matches no `@font-face` or Google Fonts family of a client build (SSR builds often load no stylesheet)
 
@@ -373,8 +375,9 @@ DEBUG=vite-font-extractor npx vite build
 - **Before vite:css (L1)** — each `@font-face` written in the module and the file each url resolves to, or why the
   pass skips it (computed by the preprocessor or auto mode: left to the second pass; a `public/`, remote or `data:`
   url).
-- **After vite:css (L2)** — the url kinds of the compiled face (Vite asset, `data:`), the candidate source files the
-  stylesheet imports, each probe and whether it matched, and each url swapped for the minified font.
+- **After vite:css (L2)** — the url kinds of the compiled face (Vite asset, `data:`, `public/` file), the candidate
+  source files the stylesheet imports, each probe and whether it matched, and each url swapped for the minified font.
+  A target face loading a file of `public/` gets a line of its own.
 - **Minification** — whether a result of this build is reused, the cache key and hit/miss, each format's size
   before and after, and whether the result is emitted as a file or inlined as `data:`.
 - **JS `?subset=` imports and `new URL()`** — each `new URL()` rewritten into an import, the file an import resolves
@@ -515,7 +518,7 @@ SSR) and each output writes its own report; an absolute path outside the output 
   CSS `content`, those the font does not have are left out of the font.
 - `skipped`: fonts kept original, with the reason (minification failed, no smaller result, source of a compiled
   `@font-face` not found, a face with no target and no `?subset=` — `no minify options` —, a face loading from
-  another host — `external url sources: …`).
+  another host — `external url sources: …` —, a file of `public/`).
 - `ignored`: faces left alone on purpose, so they are not problems: the stylesheet `id` (relative to the root) and the
   `reason` — `ignore`, `include/exclude` or `resolveTarget` (it returned `null`). Present only when a face was
   ignored; sorted by `fontName`, `id` and `reason`.

@@ -11,6 +11,7 @@ import {
   getFontAssets,
   type OutputItem,
   outDir,
+  textFontsLength,
 } from "./utils";
 
 const root = join(outDir, `strict-${generateId()}`);
@@ -93,6 +94,51 @@ describe("Strict mode", () => {
     await expect(
       strictBuild(fixtures["font-family-resource-is-url"].path, [ICONS]),
     ).rejects.toThrow(/Strict mode: Font "Font Name" has external url sources/);
+  });
+
+  describe("a target face loading a font of public/", () => {
+    const fixture = join(fixturesDir, "strict-public");
+    const textTarget = (fontName: string): Target => ({
+      fontName,
+      engine: "subset",
+      characters: "ABC",
+    });
+
+    it("should fail when the face loads only the file of public/", async () => {
+      await expect(strictBuild(fixture, [textTarget("Public Font")])).rejects.toThrow(
+        /Strict mode: Font "Public Font" loads \/fonts\/public-font\.woff2 from public\/, which Vite copies as it is; move the file out of public\//,
+      );
+    });
+
+    it("should fail when the face loads a local file too", async () => {
+      await expect(strictBuild(fixture, [textTarget("Mixed Font")])).rejects.toThrow(
+        /Strict mode: Font "Mixed Font" loads \/fonts\/public-font\.woff2 from public\//,
+      );
+    });
+
+    it("should only trace it outside strict mode", async () => {
+      const { output, messages } = await buildFixture({
+        fixture,
+        pluginOptions: {
+          type: "manual",
+          targets: [textTarget("Public Font"), textTarget("Mixed Font")],
+          cache: false,
+          debug: true,
+        },
+      });
+      expect(messages.filter((m) => m.type === "warn" || m.type === "error")).toEqual([]);
+      const traced = messages.filter((m) => m.message.includes("in public/ — copied as it is"));
+      expect(traced.map((m) => m.message)).toEqual([
+        expect.stringContaining('"Mixed Font": /fonts/public-font.woff2 in public/'),
+        expect.stringContaining('"Public Font": /fonts/public-font.woff2 in public/'),
+      ]);
+      // The local file of "Mixed Font" is minified, the CSS keeps loading the file of public/
+      const items = output as OutputItem[];
+      const woff = getFontAssets(items).find((asset) => asset.fileName.endsWith(".woff"));
+      expect(woff?.source.length).toBeLessThan(textFontsLength.woff);
+      const css = items.find((item) => item.fileName.endsWith(".css"));
+      expect(css?.type === "asset" && String(css.source)).toContain("/fonts/public-font.woff2");
+    });
   });
 
   it("should fail when a format of a target face can not be minified", async () => {

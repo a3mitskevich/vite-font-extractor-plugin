@@ -5,9 +5,9 @@ import { normalizePath, type Rollup } from "vite";
 import { type PluginContext, getCssResolvers, getLogger } from "./context";
 import { type CssUrl, findFontFaces } from "./css-faces";
 import { collectFontFiles } from "./css-candidates";
-import { resolveFaceOptions } from "./face-options";
+import { reportPublicUrls, resolveFaceOptions } from "./face-options";
 import { emitFont, type FontSource, minifyFace, readFontSource, toCssUrl } from "./font-emit";
-import type { TransformOutput } from "./css-pre-transform";
+import { safeDecode, type TransformOutput } from "./css-pre-transform";
 import { getInlinedFontMessage } from "./inline-fonts";
 import { toReportSource } from "./report";
 import { cleanUrl, getHash } from "./utils";
@@ -17,15 +17,22 @@ type SwapContext = Pick<Rollup.PluginContext, "emitFile" | "getFileName">;
 // `__VITE_ASSET__<ref>__?subset=A` as vite:css leaves it in the compiled CSS
 const ASSET_PLACEHOLDER_RE = /^__VITE_ASSET__([\w$]+)__(.*)$/s;
 const DATA_URL_RE = /^data:[^;,]*;base64,(.*)$/s;
+// A file of `public/` in a build: vite:css puts a hash of the url in the placeholder
+const PUBLIC_PLACEHOLDER_RE = /^__VITE_PUBLIC_ASSET__([a-z\d]{8})__$/;
+const PUBLIC_HASH_LENGTH = 8;
+const ROOT_URL_RE = /url\(\s*(['"]?)(\/[^'")\s]+)\1\s*\)/g;
 
 type CompiledUrl =
   | { kind: "asset"; url: CssUrl; referenceId: string; postfix: string }
   | { kind: "data"; url: CssUrl; bytes: Buffer }
+  | { kind: "public"; url: CssUrl; hash: string }
   | { kind: "other"; url: CssUrl };
 
 function parseCompiledUrl(url: CssUrl): CompiledUrl {
   const asset = ASSET_PLACEHOLDER_RE.exec(url.url);
   if (asset) return { kind: "asset", url, referenceId: asset[1], postfix: asset[2] };
+  const publicFile = PUBLIC_PLACEHOLDER_RE.exec(url.url);
+  if (publicFile) return { kind: "public", url, hash: publicFile[1] };
   const data = DATA_URL_RE.exec(url.url);
   if (data) return { kind: "data", url, bytes: Buffer.from(data[1], "base64") };
   return { kind: "other", url };
@@ -34,7 +41,17 @@ function parseCompiledUrl(url: CssUrl): CompiledUrl {
 function describeCompiledUrl(pluginContext: SwapContext, url: CompiledUrl): string {
   if (url.kind === "asset") return `asset ${pluginContext.getFileName(url.referenceId)}`;
   if (url.kind === "data") return `data: (${url.bytes.length} B)`;
+  if (url.kind === "public") return "public file";
   return `other ${url.url.url}`;
+}
+
+// The url of a `public/` file, found by its hash among the root-relative urls of the module source
+function findPublicUrl(ctx: PluginContext, id: string, hash: string): string {
+  for (const match of (ctx.rawSources.get(id) ?? "").matchAll(ROOT_URL_RE)) {
+    const url = safeDecode(match[2]);
+    if (getHash(url, PUBLIC_HASH_LENGTH) === hash) return url;
+  }
+  return "a file";
 }
 
 // A url as `resolveTarget` and `match` see it: an asset of Vite by the file name Vite gave it
@@ -181,9 +198,15 @@ export async function swapCompiledFaces(
       id,
       report: "all",
     });
-    const located = urls.filter((url) => url.kind !== "other");
+    const located = urls.filter((url) => url.kind === "asset" || url.kind === "data");
     if (!faceOptions) continue;
     const { options, reportProblem } = faceOptions;
+    const publicUrls = urls.flatMap((url) =>
+      url.kind === "public" ? [findPublicUrl(ctx, id, url.hash)] : [],
+    );
+    if (publicUrls.length) {
+      reportPublicUrls(ctx, { family: face.family, urls: publicUrls, id }, reportProblem);
+    }
     if (!located.length) {
       logger.debug(`L2: "${face.family}" has no asset or data: url — left as is`, id);
       continue;

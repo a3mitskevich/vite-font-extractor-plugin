@@ -4,7 +4,7 @@ import { MagicString } from "magic-string";
 import type { Rollup } from "vite";
 import { type PluginContext, getCssResolvers, getLogger } from "./context";
 import { type CssUrl, findFontFaces } from "./css-faces";
-import { resolveFaceOptions, isRemoteUrl } from "./face-options";
+import { isRemoteUrl, reportPublicUrls, resolveFaceOptions } from "./face-options";
 import { emitFont, type FontSource, minifyFace, splitUrl, toCssUrl } from "./font-emit";
 import { cleanUrl } from "./utils";
 
@@ -16,7 +16,7 @@ export interface TransformOutput {
   map: ReturnType<MagicString["generateMap"]>;
 }
 
-const safeDecode = (url: string): string => {
+export const safeDecode = (url: string): string => {
   try {
     return decodeURI(url);
   } catch {
@@ -88,6 +88,12 @@ export async function transformFaceSources(
     if (!sources.length) {
       logger.debug(`L1: "${face.family}" has no local source — left to L2`, id);
       continue;
+    }
+    // The pass after vite:css skips this face once its other urls are minified here
+    const publicUrls = urls.filter((url) => isPublicUrl(ctx, splitUrl(safeDecode(url)).path));
+    if (publicUrls.length) {
+      const publicFace = { family: face.family, urls: publicUrls, id };
+      reportPublicUrls(ctx, publicFace, faceOptions.reportProblem);
     }
     const minified = await minifyFace(ctx, { fontName: face.family, sources, ...faceOptions });
     for (const [index, url] of face.urls.entries()) {

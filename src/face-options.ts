@@ -162,3 +162,29 @@ export function resolveFaceOptions(
   }
   return { options: target, reportProblem };
 }
+
+/**
+ * Urls of the face point at files in `public/`: Vite copies them as they are, so the font ships
+ * original. A problem of strict builds only; otherwise traced and listed in the report.
+ */
+export function reportPublicUrls(
+  ctx: PluginContext,
+  face: FontFaceInfo,
+  reportProblem: ProblemReport,
+): void {
+  const urls = face.urls.join(", ");
+  getLogger(ctx).debug(
+    `"${face.family}": ${urls} in public/ — copied as it is, not minified`,
+    face.id || undefined,
+  );
+  ctx.addReportRecord({
+    kind: "skipped",
+    fontName: face.family,
+    reason: `${urls} in public/ — copied as it is`,
+  });
+  if (!ctx.pluginOption.strict) return;
+  const problem = `Font "${face.family}" loads ${urls} from public/, which Vite copies as it is`;
+  reportProblem(`${problem} — keeping original`, {
+    strictMessage: `${problem}; move the file out of public/ to minify it`,
+  });
+}
