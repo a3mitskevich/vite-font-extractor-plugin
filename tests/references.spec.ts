@@ -554,7 +554,11 @@ describe("Environments of one builder", () => {
     const usageDir = join(cachePath, ".usage");
     // The SSR build minifies a font of its own: no stylesheet, another subset than the client's
     const ssrInput = join(root, "server.js");
-    const font = relative(root, join(fixturesDir, "fonts", "text-font.woff2"));
+    // An import specifier, so `/` on Windows too
+    const font = relative(root, join(fixturesDir, "fonts", "text-font.woff2")).replaceAll(
+      "\\",
+      "/",
+    );
     mkdirSync(root, { recursive: true });
     writeFileSync(
       ssrInput,
