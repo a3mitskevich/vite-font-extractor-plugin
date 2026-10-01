@@ -619,7 +619,8 @@ describe("Dev server: ?subset= outside of @font-face", () => {
   };
 
   it("should minify a JS ?subset= import", async () => {
-    await withDevServer(fixtures["subset-js"].path, SUBSET_OPTIONS, async (dev) => {
+    const options: PluginOption = { ...SUBSET_OPTIONS, debug: true };
+    await withDevServer(fixtures["subset-js"].path, options, async (dev) => {
       const js = await (await fetch(`${dev.origin}/index.js`)).text();
       const moduleUrl = ASSET_IMPORT_RE.exec(js)?.[1];
       expect(moduleUrl).toBeDefined();
@@ -631,6 +632,12 @@ describe("Dev server: ?subset= outside of @font-face", () => {
       expect(status).toBe(200);
       expectAbcFont(body);
       expect(problemsOf(dev.messages)).toEqual([]);
+      const registered = dev.messages.filter(({ message }) =>
+        message.includes("dev: ?subset= request registered"),
+      );
+      expect(registered.map(({ message }) => message)).toEqual([
+        expect.stringContaining('request registered, subset characters "ABC"'),
+      ]);
     });
   });
 

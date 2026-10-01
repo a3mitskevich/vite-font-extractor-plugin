@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import { MagicString } from "magic-string";
 import type { Rollup } from "vite";
-import type { PluginContext } from "./context";
+import { type PluginContext, type SharedContext, getLogger } from "./context";
 import {
   emitFont,
   type FontSource,
@@ -11,6 +11,7 @@ import {
   toJsExpression,
 } from "./font-emit";
 import { createProblemReport } from "./strict-report";
+import { describeSubset, parseUrlSubset } from "./subset-options";
 import { createSubsetOptions } from "./utils";
 
 // `import url from './font.woff2?subset=ABC'`, other params may come first
@@ -28,13 +29,21 @@ type LoadContext = Pick<Rollup.PluginContext, "emitFile" | "getFileName" | "addW
  */
 export async function resolveSubsetImport(
   pluginContext: ResolveContext,
+  ctx: SharedContext,
   source: string,
   importer: string | undefined,
 ): Promise<string | null> {
+  const logger = getLogger(ctx);
   const { path, query } = splitUrl(source);
   const resolved = await pluginContext.resolve(path, importer, { skipSelf: true });
-  if (!resolved || resolved.external) return null;
-  return VIRTUAL_PREFIX + splitUrl(resolved.id).path + query;
+  if (!resolved || resolved.external) {
+    const reason = resolved ? "external" : "not resolved";
+    logger.debug(`subset import: ${source} is ${reason} — left to Vite`, importer);
+    return null;
+  }
+  const file = splitUrl(resolved.id).path;
+  logger.debug(`subset import: ${source} → ${file}${query} (module of the plugin)`, importer);
+  return VIRTUAL_PREFIX + file + query;
 }
 
 export async function loadSubsetImport(
@@ -54,7 +63,14 @@ export async function loadSubsetImport(
     reportProblem: createProblemReport(ctx, false),
   });
   // A failed minification keeps the original file, as for an @font-face
-  const content = minified.get(file + query) ?? (await readFontSource(ctx, file));
+  const result = minified.get(file + query);
+  getLogger(ctx).debug(
+    () =>
+      `subset import: load, ${describeSubset(parseUrlSubset(query))} → ` +
+      (result ? `minified (${result.length} B)` : "original kept"),
+    file,
+  );
+  const content = result ?? (await readFontSource(ctx, file));
   return `export default ${toJsExpression(await emitFont(pluginContext, ctx, source, content))};`;
 }
 
@@ -68,10 +84,15 @@ export const NEW_URL_CODE_RE = /new\s+URL\([^)]*subset=/;
  * which the plugin resolves to the minified font. Vite's own `new URL` handling would emit the
  * original file with `?subset=` left on the url.
  */
-export function rewriteNewUrlSubsets(code: string, id: string): Rollup.TransformResult {
+export function rewriteNewUrlSubsets(
+  ctx: SharedContext,
+  code: string,
+  id: string,
+): Rollup.TransformResult {
   const output = new MagicString(code);
   const imports: string[] = [];
   for (const match of code.matchAll(NEW_URL_RE)) {
+    getLogger(ctx).debug(`new URL: ${match[2]} rewritten into an import`, id);
     const name = `__vite_font_extractor_url_${imports.length}`;
     imports.push(`import ${name} from ${JSON.stringify(match[2])};`);
     output.overwrite(

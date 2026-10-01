@@ -377,10 +377,14 @@ DEBUG=vite-font-extractor npx vite build
   stylesheet imports, each probe and whether it matched, and each url swapped for the minified font.
 - **Minification** — whether a result of this build is reused, the cache key and hit/miss, each format's size
   before and after, and whether the result is emitted as a file or inlined as `data:`.
+- **JS `?subset=` imports and `new URL()`** — each `new URL()` rewritten into an import, the file an import resolves
+  to (or why it is left to Vite: external, not resolved), and the subset parsed from the url with the size of the
+  minified font, or that the original is kept.
 - **Auto mode** — the number of glyphs found per stylesheet, the start of the graph wait with the number of modules not parsed
   yet, its release, or a timeout listing the modules it still waited for.
 - **Output** — each `<link rel="preload">` pointed at a minified font, and each file removed from the bundle.
-- **Dev server** — every font url registered for a family, and whether a request got a minified font or the
+- **Dev server** — every font url registered for a family, each `?subset=` request of a JS import or `new URL()` with
+  the subset parsed from it, and whether a request got a minified font or the
   original.
 
 Debug lines are `info` messages: with `logLevel: 'warn'` Vite's logger hides them. `debug: false` turns the trace off

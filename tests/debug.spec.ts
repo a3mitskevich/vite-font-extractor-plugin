@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import type { PluginOption } from "../src";
 import { createInternalLogger, isDebugEnabled } from "../src/internal-logger";
-import { buildFixture, createFakeLogger, fixtures, type LoggerMessage } from "./utils";
+import { join } from "node:path";
+import { buildFixture, createFakeLogger, fixtures, fixturesDir, type LoggerMessage } from "./utils";
 
 const DEBUG_MARK = "[debug]";
 const ICON_TARGET = { fontName: "Font Name", ligatures: ["close"] };
@@ -72,6 +73,47 @@ describe("Debug tracing", () => {
     expect(hasLine(lines, "auto: 1 glyphs in CSS content")).toBe(true);
     expect(hasLine(lines, "graph wait: starts", "modules not parsed yet")).toBe(true);
     expect(hasLine(lines, "graph wait: released")).toBe(true);
+  });
+
+  it("traces a JS ?subset= import", async () => {
+    const { messages } = await buildFixture({
+      fixture: fixtures["subset-js"].path,
+      pluginOptions: { type: "manual", targets: [], cache: false, debug: true },
+    });
+    const lines = debugLines(messages);
+    expect(
+      hasLine(
+        lines,
+        "subset import: ../fonts/text-font.woff2?subset=ABC →",
+        "text-font.woff2?subset=ABC (module of the plugin)",
+        "index.js",
+      ),
+    ).toBe(true);
+    expect(
+      hasLine(
+        lines,
+        'subset import: load, subset characters "ABC" → minified (',
+        "text-font.woff2",
+      ),
+    ).toBe(true);
+    expect(hasLine(lines, "emit: asset assets/text-font-", ".woff2")).toBe(true);
+  });
+
+  it("traces a new URL() with ?subset= rewritten into an import", async () => {
+    const { messages } = await buildFixture({
+      fixture: join(fixturesDir, "subset-new-url"),
+      pluginOptions: { type: "manual", targets: [], cache: false, debug: true },
+    });
+    const lines = debugLines(messages);
+    expect(
+      hasLine(
+        lines,
+        "new URL: ../fonts/text-font.woff2?subset=ABC rewritten into an import",
+        "index.js",
+      ),
+    ).toBe(true);
+    expect(hasLine(lines, "subset import: ../fonts/text-font.woff2?subset=ABC →")).toBe(true);
+    expect(hasLine(lines, 'subset import: load, subset characters "ABC" → minified (')).toBe(true);
   });
 
   it("prints nothing without the option or DEBUG", async () => {

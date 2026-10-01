@@ -11,7 +11,7 @@ import type {
 } from "./types";
 import { processMinify } from "./minify";
 import { FONT_MIME_TYPES, SUPPORT_START_FONT_REGEX } from "./constants";
-import { mergeSubsetOptions, parseUrlSubset } from "./subset-options";
+import { describeSubset, mergeSubsetOptions, parseUrlSubset } from "./subset-options";
 import styler from "./styler";
 import { hasGlyphSelection, splitUrl } from "./font-emit";
 import { forgetServeModule } from "./serve-registry";
@@ -159,7 +159,10 @@ function registerSubsetRequest(
     registered.delete(oldest);
     ctx.fontServeProxy.delete(oldest);
   }
-  getLogger(ctx).debug(`dev: ?subset= request registered`, url);
+  getLogger(ctx).debug(
+    () => `dev: ?subset= request registered, ${describeSubset(parseUrlSubset(query))}`,
+    url,
+  );
   return loader;
 }
 

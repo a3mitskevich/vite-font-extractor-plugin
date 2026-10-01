@@ -219,7 +219,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       async handler(source, importer) {
         // Dev serves `?subset=` imports through the middleware
         if (shared.isServe || (importer && !shared.isModuleIncluded(importer))) return null;
-        return resolveSubsetImport(this, source, importer);
+        return resolveSubsetImport(this, shared, source, importer);
       },
     },
     load: {
@@ -249,7 +249,7 @@ export default function FontExtractor(pluginOption: PluginOption = { type: "auto
       filter: filters.newUrl,
       handler(code, id) {
         if (!shared.isModuleIncluded(id)) return null;
-        return rewriteNewUrlSubsets(code, id);
+        return rewriteNewUrlSubsets(shared, code, id);
       },
     },
   };
